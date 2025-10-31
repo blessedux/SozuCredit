@@ -484,7 +484,7 @@ export default function WalletPage() {
 
       {/* Trust Points Modal */}
       <Dialog open={isTrustModalOpen} onOpenChange={setIsTrustModalOpen}>
-        <DialogContent className="bg-black border-white/20 text-white max-w-md">
+        <DialogContent className="bg-black/80 backdrop-blur-md border-white/20 text-white max-w-md">
           <DialogHeader>
             <DialogTitle className="text-white text-2xl">{t.trustPointsTitle}</DialogTitle>
             <DialogDescription className="text-white/60">
@@ -514,14 +514,14 @@ export default function WalletPage() {
                 <Button
                   onClick={() => setModalView("invite")}
                   variant="outline"
-                  className="w-full border-2 border-white text-white hover:bg-white/10 font-semibold"
+                  className="w-full border-2 border-white bg-transparent text-white hover:bg-white/10 font-semibold"
                 >
                   {t.viewInviteCode}
                 </Button>
                 <Button
                   onClick={() => setModalView("vouch")}
                   variant="outline"
-                  className="w-full border-2 border-white/30 bg-white/5 text-white hover:bg-white/20 hover:border-white/50 font-semibold"
+                  className="w-full border-2 border-white/30 bg-transparent text-white hover:bg-white/20 hover:border-white/50 font-semibold"
                 >
                   {t.vouchForUser}
                 </Button>
@@ -562,7 +562,7 @@ export default function WalletPage() {
                   }
                 }}
                 variant="outline"
-                className="w-full border-2 border-white text-white hover:bg-white/10 font-semibold"
+                className="w-full border-2 border-white bg-transparent text-white hover:bg-white/10 font-semibold"
               >
                 {t.copyCode}
               </Button>
@@ -570,7 +570,7 @@ export default function WalletPage() {
               <Button
                 onClick={() => setModalView("main")}
                 variant="outline"
-                className="w-full border-2 border-white/30 bg-white/5 text-white hover:bg-white/20 hover:border-white/50"
+                className="w-full border-2 border-white/30 bg-transparent text-white hover:bg-white/20 hover:border-white/50"
               >
                 {t.back}
               </Button>
@@ -623,7 +623,7 @@ export default function WalletPage() {
                   onClick={handleVouch}
                   disabled={vouchLoading || !vouchUsername.trim() || !vouchPoints}
                   variant="outline"
-                  className="w-full border-2 border-white text-white hover:bg-white/10 font-semibold disabled:border-white/30 disabled:text-white/50 disabled:hover:bg-transparent"
+                  className="w-full border-2 border-white bg-transparent text-white hover:bg-white/10 font-semibold disabled:border-white/30 disabled:text-white/50 disabled:hover:bg-transparent"
                 >
                   {vouchLoading ? t.sending : t.sendPoints}
                 </Button>
@@ -635,7 +635,7 @@ export default function WalletPage() {
                     setVouchPoints("1")
                   }}
                   variant="outline"
-                  className="w-full border-2 border-white/30 bg-white/5 text-white hover:bg-white/20 hover:border-white/50"
+                  className="w-full border-2 border-white/30 bg-transparent text-white hover:bg-white/20 hover:border-white/50"
                 >
                   {t.cancel}
                 </Button>
@@ -683,7 +683,7 @@ export default function WalletPage() {
                   </Avatar>
                   <Button
                     variant="outline"
-                    className="border-white/20 text-white hover:bg-white/10"
+                    className="border-2 border-white/20 bg-transparent text-white hover:bg-white/10"
                   >
                     <Camera className="w-4 h-4 mr-2" />
                     {t.changePicture}
@@ -731,16 +731,16 @@ export default function WalletPage() {
                   </Label>
                   <div className="flex gap-4">
                     <Button
-                      variant={language === "es" ? "default" : "outline"}
+                      variant="outline"
                       onClick={() => handleLanguageChange("es")}
-                      className={language === "es" ? "" : "border-white/20 text-white hover:bg-white/10"}
+                      className={`border-2 bg-transparent ${language === "es" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
                     >
                       {t.spanish}
                     </Button>
                     <Button
-                      variant={language === "en" ? "default" : "outline"}
+                      variant="outline"
                       onClick={() => handleLanguageChange("en")}
-                      className={language === "en" ? "" : "border-white/20 text-white hover:bg-white/10"}
+                      className={`border-2 bg-transparent ${language === "en" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
                     >
                       {t.english}
                     </Button>
@@ -752,14 +752,14 @@ export default function WalletPage() {
                   <Button
                     onClick={handleSaveProfile}
                     variant="outline"
-                    className="flex-1 border-2 border-white text-white hover:bg-white/10"
+                    className="flex-1 border-2 border-white bg-transparent text-white hover:bg-white/10"
                   >
                     {t.save}
                   </Button>
                   <Button
                     variant="outline"
                     onClick={() => setIsProfileSheetOpen(false)}
-                    className="flex-1 border-white/20 text-white hover:bg-white/10"
+                    className="flex-1 border-2 border-white/20 bg-transparent text-white hover:bg-white/10"
                   >
                     {t.cancel}
                   </Button>

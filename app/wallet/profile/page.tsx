@@ -177,16 +177,16 @@ export default function ProfilePage() {
               </Label>
               <div className="flex gap-4">
                 <Button
-                  variant={language === "es" ? "default" : "outline"}
+                  variant="outline"
                   onClick={() => handleLanguageChange("es")}
-                  className={language === "es" ? "" : "border-white/20 text-white hover:bg-white/10"}
+                  className={`border-2 ${language === "es" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
                 >
                   {t.spanish}
                 </Button>
                 <Button
-                  variant={language === "en" ? "default" : "outline"}
+                  variant="outline"
                   onClick={() => handleLanguageChange("en")}
-                  className={language === "en" ? "" : "border-white/20 text-white hover:bg-white/10"}
+                  className={`border-2 ${language === "en" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
                 >
                   {t.english}
                 </Button>
