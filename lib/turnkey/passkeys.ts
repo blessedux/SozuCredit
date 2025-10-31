@@ -94,9 +94,13 @@ export async function generateAuthChallenge(username: string): Promise<PasskeyCh
 
     const data = await response.json()
     
+    // Use rpId from the server response (correct for Vercel deployment)
+    // Fallback to window.location.hostname for client-side compatibility
+    const rpId = data.rp?.id || (typeof window !== "undefined" ? window.location.hostname : "localhost")
+    
     return {
       challenge: data.challenge,
-      rpId: typeof window !== "undefined" ? window.location.hostname : "localhost",
+      rpId,
       allowCredentials: data.allowCredentials || [],
       timeout: data.timeout,
       userVerification: data.userVerification || "required",

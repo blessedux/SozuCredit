@@ -1,5 +1,5 @@
 import { generateChallenge } from "@/lib/webauthn/utils"
-import { challengeStore, cleanupChallenges, rpID, rpName } from "@/lib/webauthn/config"
+import { challengeStore, cleanupChallenges, getRpID, rpName } from "@/lib/webauthn/config"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
@@ -24,6 +24,9 @@ export async function POST(request: NextRequest) {
 
     // Generate challenge
     const challenge = generateChallenge()
+
+    // Get the correct rpID from the request (for Vercel deployment)
+    const rpID = getRpID(request)
 
     // Store challenge temporarily (in production, use Redis)
     challengeStore.set(username, {
