@@ -1,326 +1,416 @@
-Sozu Credit
+# Sozu Credit
 
-A passkeys-powered Stellar wallet PWA for entrepreneurs to receive payments, create payment links, manage accounting & taxes, and request decentralized credit via community vouching. Built with a Vercel AI SDK assistant for hands-free business ops, receipt OCR, and low-friction UX.
+**Vouched, not Verified. Credit for everyone.**
 
-Tagline: Vouched, not Verified. Credit for everyone.
+> A simple, passkeys-powered wallet that gives entrepreneurs instant access to high-yield DeFi and unlocks decentralized credit through community vouching and education.
 
-⸻
+---
 
-1. Product Summary (Executive)
-   • Simple PWA wallet (installable on mobile/desktop)
-   • Passkeys login (WebAuthn) — no passwords, no KYC
-   • Payments:
-   • Receive via deep links / QR / payment pages
-   • Send instantly (Peanut Protocol rail option)
-   • Yield on idle balance (Blend vaults adapter)
-   • Off-ramp connector to Mercado Pago (MP) account (where available)
-   • Credit via Vouching: on-chain Trust Graph scores unlock micro-credit lines from Sozu CreditPools
-   • ERP Lite: invoices, categories, tax summaries, CSV/PDF exports
-   • AI Agent (Vercel AI SDK):
-   • import receipt photos → OCR → auto-categorize → tax-ready
-   • insights & nudges (“raise prices 5%,” “buy in bulk,” “eligible for credit +$150”)
-   • conversational actions (“create a payment link for $35 coffee beans”)
-   • Aesthetic: Zen, calm, neutral, one-thumb usability
+## 🎯 Value Proposition
 
-⸻
+**Sozu Credit** is a next-generation financial platform that combines:
 
-2. Architecture (High-Level)
+- ✅ **Simple UX** — One-tap access, no passwords, no complexity
+- 🔐 **Passkeys Powered** — Secure, instant login with biometric authentication (no passwords, no KYC)
+- 💰 **High-Yield DeFi** — Automatic 10-20% APY on USDC holdings via Stellar smart wallets
+- 📚 **Education Gateway** — Learn to unlock decentralized credit opportunities
+- 🤝 **Community Vouching** — Get vouched by other users to access credit based on trust, not traditional credit scores
 
-[ PWA (Next.js) ]
-├─ Passkeys (WebAuthn)
-├─ Vercel AI SDK Agent (chat & actions)
-├─ Receipt OCR (on-device first; server fallback)
-├─ Payment Links (QR/deep link)
-└─ Local-first cache (SW + IndexedDB)
+### What Makes Us Different?
 
-[ API (Node.js / Edge) ]
-├─ Payment Service (Stellar, Peanut adapter)
-├─ Yield Service (Blend adapter)
-├─ Off-Ramp Service (Mercado Pago connector)
-├─ Accounting Service (ledger, categories, tax)
-└─ AI Actions (secure server-side tools)
+1. **No Passwords, No KYC** — Sign in instantly with your fingerprint or face ID via passkeys
+2. **Earn While You Hold** — Your USDC automatically earns 10-20% APY in DeFi vaults
+3. **Community-Based Credit** — Access microloans through vouching from other entrepreneurs, not banks
+4. **Learn While You Earn** — Educational courses unlock higher credit limits and opportunities
+5. **Simple & Fast** — Beautiful, minimal design that works offline and on any device
 
-[ Smart Contracts (Soroban) ]
-├─ TrustGraph (vouches, reputation)
-├─ CreditPool (terms, disbursements, repayments)
-├─ PaymentLinkRegistry (optional)
-└─ YieldAdapter (Blend), RailAdapter (Peanut)
+---
 
-[ Data ]
-├─ Postgres (wallet meta, receipts, accounting)
-├─ Object Storage (receipt images)
-└─ Analytics (privacy-preserving product metrics)
+## 🚀 Quick Start
 
-⸻
+### For Users
 
-3. App Flow (ASCII)
+1. **Sign Up** — Tap to create account with passkeys (no email, no password)
+2. **Receive USDC** — Get paid directly to your Stellar smart wallet
+3. **Earn Yield** — Funds automatically earn 10-20% APY in defivaults
+4. **Get Vouched** — Invite others or get vouched to build your trust score
+5. **Unlock Credit** — Complete education modules to access decentralized credit pools
 
-┌───────────────────────────────────┐
-│ Home / Balance │
-│ • Receive • Pay • Links • Credit │
-└───────────────┬───────────────────┘
-│
-Create Payment Link
-│
-QR / Deep Link Page
-│
-┌─────────▼──────────┐
-│ Payment Rail │
-│ Stellar | Peanut │
-└─────────┬──────────┘
-│
-Idle Balance → Yield (Blend)
-│
-┌────────▼─────────┐
-│ ERP / Ledger │ ← AI classifies receipts
-│ categories & tax│ (photo → OCR → entry)
-└────────┬─────────┘
-│
-┌───────▼────────┐
-│ Trust Graph │ (vouches ↑)
-│ Reputation Score│
-└───────┬─────────┘
-│
-Request Credit
-│
-┌───────▼────────┐
-│ Credit Pool │ (limit/terms)
-│ Disburse/Repay │
-└─────────────────┘
+### For Developers
 
-Off-Ramp → Mercado Pago (where supported)
-
-⸻
-
-4. Tech Stack
-
-Frontend / PWA
-• Next.js (App Router), React, TypeScript
-• Service Worker + IndexedDB (local-first, offline)
-• Tailwind (minimal, accessible, zen theme)
-• WebAuthn Passkeys (e.g., @simplewebauthn/browser)
-• State: Zustand or Redux Toolkit (thin)
-
-AI
-• Vercel AI SDK (agentic UI, server tools)
-• Action routers for: payments, ledger ops, OCR imports, tax summaries, credit requests
-
-OCR & Parsing
-• On-device: tesseract.js (fast path)
-• Server fallback: configurable OCR provider
-• Post-OCR parsers (total, tax, dates, merchant)
-
-Backend
-• Node.js / Edge runtime handlers
-• REST/GraphQL (or tRPC) endpoints for actions
-• Postgres (Supabase/Neon) + Prisma
-• Object storage (e.g., Supabase Storage / S3)
-
-Blockchain
-• Stellar Soroban smart contracts:
-• TrustGraph (vouch, unvouch, score)
-• CreditPool (terms, disburse, repay, penalty)
-• YieldAdapter (Blend)
-• RailAdapter (Peanut)
-• Ledger settlement + payment link registry (optional)
-
-Off-Ramp
-• Mercado Pago connector (OAuth, payouts)\*
-\*Modular; disable where unavailable.
-
-Observability & QA
-• Sentry (FE/BE), Pino logs, OpenTelemetry (optional)
-• Feature flags (ConfigCat/Unleash)
-
-⸻
-
-5. Contracts (Soroban) — Minimal Interfaces
-
-// TrustGraph
-fn vouch(voucher: Address, borrower: Address, weight: u32) -> Result<()>;
-fn unvouch(voucher: Address, borrower: Address) -> Result<()>;
-fn score(borrower: Address) -> u32;
-
-// CreditPool
-fn request_credit(borrower: Address, amount: i128) -> CreditOffer;
-fn accept_terms(borrower: Address, offer_id: BytesN<32>) -> Result<()>;
-fn disburse(offer_id: BytesN<32>) -> Result<()>;
-fn repay(borrower: Address, offer_id: BytesN<32>, amount: i128) -> Result<()>;
-fn terms(offer_id: BytesN<32>) -> Terms;
-
-// Adapters
-fn deposit_to_yield(account: Address, amount: i128) -> Result<()>;
-fn withdraw_from_yield(account: Address, amount: i128) -> Result<()>;
-fn rail_pay(from: Address, to: Address, amount: i128, memo: Bytes) -> Result<()>;
-
-⸻
-
-6. Data Model (Core)
-
-Users
-• id, passkey_pub, stellar_address, mp_account_id?, locale, tax_profile
-
-PaymentLinks
-• id, owner_id, amount, currency, status, memo, qr_svg, deep_link_url
-
-LedgerEntries
-• id, user_id, type (income/expense/transfer), amount, currency, category, tax_code, source (link/ocr/manual), tx_ref, created_at
-
-Receipts
-• id, user_id, image_url, ocr_json, parsed_total, parsed_tax, merchant, date
-
-Vouches
-• id, voucher_id, borrower_id, weight, created_at
-
-Credit
-• offer_id, borrower_id, limit, apr, term_days, status
-• repayments[] (date, amount)
-
-⸻
-
-7. AI Agent (Vercel AI SDK) — Action Surface
-   • createPaymentLink(amount, memo?)
-   • categorizeReceipt(imageUrl)
-   • summarizeTaxes(period)
-   • recommendCreditLimit(userId) (reads TrustGraph score + cashflow)
-   • coachGrowthTip(userId) (pricing, inventory, collections)
-   • prepareOfframp(amount) (MP connector)
-
-Guardrails:
-• Read-only by default; mutations require explicit user confirmation (“Yes, create link”).
-
-⸻
-
-8. Security & Compliance Notes
-   • Passkeys only (no SMS/OTP).
-   • Zero-knowledge UX: store only what’s required for features; encrypt PII at rest.
-   • No KYC for vouching credit (community-based). Respect local laws on lending; ship configurable APR caps and geo-feature flags.
-   • Exportability: one-tap CSV/PDF for taxes & audits.
-   • Off-ramp depends on local provider rules (MP ToS). Strict OAuth scopes, no credential storage.
-
-⸻
-
-9. Impact
-   • Access: entrepreneurs can accept payments today, not after a bank process.
-   • Lower costs: direct rails reduce 30–40% fee drag.
-   • Credit equality: reputation & repayments—not paperwork—unlock growth.
-   • Financial literacy: AI nudges improve margins and survival rates.
-   • Transparency without exposure: private payments + public trust graph.
-
-⸻
-
-10. Roadmap
-
-Phase 0 — Prototype (Week 1–2)
-• Passkeys auth, Stellar wallet create/import
-• Receive flow (QR / deep link), simple balance
-• Payment Link MVP (testnet)
-• Minimal ledger & exports (CSV)
-
-Phase 1 — Ops Core (Month 1)
-• AI agent wired to actions (create link, categorize)
-• OCR (on-device + fallback), auto-categorization
-• TrustGraph contract (vouch/score), profile screen
-• CreditPool mock (simulated offers), repayments UI
-
-Phase 2 — Rails & Yield (Month 2)
-• Peanut rail adapter (send/receive option)
-• Blend yield adapter (idle balance deposit/withdraw)
-• Off-ramp: MP connector (pilot market)
-• Tax dashboards (monthly VAT, income summary)
-
-Phase 3 — Credit Go-Live (Month 3)
-• Real CreditPool disbursement (testnet → limited mainnet)
-• Risk params: min score, APR caps, delinquency rules
-• Notifications (repayments, due dates, nudges)
-
-Phase 4 — White-Label M2K (Month 4)
-• Themes, multi-tenant orgs, course modules
-• Mentor vouch dashboard & KPI analytics
-• Grants/Pool funding portal (impact partners)
-
-⸻
-
-11. TODO (Engineering)
-    • PWA shell, SW, offline cache
-    • Passkeys auth flow (register/login)
-    • Stellar account gen; balance & tx history
-    • Payment Link service + QR & link page
-    • Ledger write on payment success (webhooks)
-    • OCR pipeline (tesseract + fallback)
-    • AI actions (Vercel AI SDK) with confirmation guards
-    • TrustGraph (contract + SDK + UI)
-    • CreditPool (contract + schedule engine)
-    • Peanut adapter (rail option toggle)
-    • Blend adapter (idle funds → vault)
-    • Mercado Pago off-ramp connector (sandbox)
-    • Tax exports (CSV/PDF), categories & VAT codes
-    • Sentry + product analytics (privacy-preserving)
-    • Theming (M2K white-label), i18n (es/en)
-
-⸻
-
-12. Local Dev
-
-# 1) Clone
-
+```bash
+# Clone repository
 git clone https://github.com/sozu-capital/sozu-credit.git
 cd sozu-credit
 
-# 2) Env
+# Install dependencies
+pnpm install
 
+# Set up environment variables
 cp .env.example .env.local
 
-# set: DATABASE_URL, STORAGE_BUCKET, STELLAR_RPC_URL, SOROBAN_KEYS,
-
-# MP_CLIENT_ID/SECRET (optional), OCR_FALLBACK_API (optional)
-
-# 3) Install & Run
-
-pnpm i
+# Run development server
 pnpm dev
+```
 
-# 4) Contracts (Soroban)
+See [Local Development](#local-development) for detailed setup instructions.
 
-cd contracts && make test && make deploy:testnet
+---
 
-Scripts
-• pnpm dev — run web + API
-• pnpm test — unit tests
-• pnpm build — production build
-• pnpm lint — code quality
+## 💡 Core Features
 
-⸻
+### 1. **Passkeys Authentication**
 
-13. ENV Reference (.env.example)
+- 🔒 Zero passwords — sign in with biometrics (fingerprint, face ID, or hardware key)
+- ⚡ Instant access — no email verification, no SMS codes
+- 🛡️ More secure than traditional passwords
+- 🌍 Works on all devices (mobile, desktop, hardware keys)
 
-NODE_ENV=development
-DATABASE_URL=postgres://...
-STELLAR_RPC_URL=https://...
-SOROBAN_SECRET_KEY=...
-OCR_FALLBACK_API_URL=
-MP_CLIENT_ID=
-MP_CLIENT_SECRET=
-BLOB_STORAGE_URL=
-BLOB_STORAGE_TOKEN=
-BLEND_ADAPTER_CONTRACT_ID=
-PEANUT_ADAPTER_CONTRACT_ID=
-TRUST_GRAPH_CONTRACT_ID=
-CREDIT_POOL_CONTRACT_ID=
-SENTRY_DSN=
+### 2. **Stellar Smart Wallets**
 
-⸻
+- 💼 Automatic wallet creation per user
+- 💵 USDC on Stellar network
+- 📊 Real-time balance tracking
+- 🔄 Seamless deposits and withdrawals
 
-14. UX Principles (Zen)
-    • Clear one action per screen
-    • Big readable numbers, neutral palette, high contrast
-    • Haptics & micro-copy for confidence
-    • Undo for destructive actions, confirmations for money moves
-    • Always show “what happens next”
+### 3. **High-Yield DeFi Vaults**
 
-⸻
+- 🏦 Automatic 10-20% APY on USDC
+- 🔄 Auto-deposit incoming funds to yield vaults
+- 📈 Real-time yield tracking
+- 💸 Easy withdrawals anytime
 
-15. Licensing & Governance
-    • Code: Apache-2.0 (pro-ecosystem)
-    • Contracts: MIT or Apache-2.0
-    • Governance: parameterized by Pool sponsors + community councils (APR caps, limits)
+### 4. **Trust Points & Vouching**
+
+- 🏅 Earn trust points through community vouching
+- 🤝 Vouch for other users to build reputation
+- 📊 Trust score determines credit eligibility
+- 🎁 Bonus points for daily activities and referrals
+
+### 5. **Education Portal**
+
+- 📚 Financial literacy courses
+- 🎓 Complete modules to unlock credit
+- 📈 Learn DeFi and blockchain basics
+- 🏆 Achieve certifications for better rates
+
+### 6. **Decentralized Credit**
+
+- 💳 Access microloans based on community vouching
+- 🎯 No traditional credit checks
+- ⚡ Fast approval and disbursement
+- 📊 Transparent terms and rates
+
+---
+
+## 🏗️ Architecture
+
+```
+┌─────────────────────────────────────┐
+│         Frontend (Next.js PWA)      │
+│  ┌──────────────────────────────┐  │
+│  │  Passkeys Auth (WebAuthn)    │  │
+│  │  Stellar Wallet UI           │  │
+│  │  DeFi Vault Dashboard        │  │
+│  │  Trust Points & Vouching     │  │
+│  │  Education Portal            │  │
+│  └──────────────────────────────┘  │
+└──────────────┬──────────────────────┘
+               │
+┌──────────────▼──────────────────────┐
+│      API Layer (Next.js Edge)        │
+│  • Wallet Management                │
+│  • Vault Operations                 │
+│  • Trust Points API                 │
+│  • Education Progress               │
+└──────────────┬──────────────────────┘
+               │
+┌──────────────▼──────────────────────┐
+│      Stellar Blockchain              │
+│  • Smart Wallets                     │
+│  • USDC Asset Management            │
+│  • DeFi Vault Integration           │
+│  • Transaction Settlement           │
+└──────────────────────────────────────┘
+```
+
+### Tech Stack
+
+**Frontend**
+
+- Next.js 14+ (App Router)
+- React + TypeScript
+- Tailwind CSS
+- WebAuthn/Passkeys
+- PWA support (offline-first)
+
+**Backend**
+
+- Next.js API Routes (Edge Runtime)
+- Supabase (PostgreSQL + Auth)
+- Stellar SDK
+- DeFi Protocol SDKs (Blend/Stellar AMM)
+
+**Blockchain**
+
+- Stellar Network
+- Soroban Smart Contracts (future)
+- USDC on Stellar
+
+---
+
+## 📱 User Flow
+
+### New User Journey
+
+1. **Sign Up** → Tap fingerprint/face ID → Wallet created instantly
+2. **Get Invite Link** → Share with others → Receive trust points
+3. **Receive USDC** → Funds auto-deposit to yield vault → Earn 10-20% APY
+4. **Complete Education** → Learn DeFi basics → Unlock credit eligibility
+5. **Get Vouched** → Build trust score → Access credit pools
+6. **Request Credit** → Community vouching determines terms → Receive funds
+
+### Existing User Flow
+
+- View balance (wallet + vault combined)
+- Track yield earnings in real-time
+- Vouch for other users
+- Send/receive USDC instantly
+- Manage credit and repayments
+
+---
+
+## 🔐 Security & Privacy
+
+- **Passkeys Only** — No passwords stored, biometric authentication only
+- **Encrypted Keys** — Stellar wallet keys encrypted at rest
+- **Self-Custody** — Users control their funds
+- **Zero-Knowledge UX** — Minimal data collection, maximum privacy
+- **Community-Based** — No KYC required for vouching-based credit
+
+---
+
+## 🎓 Education System
+
+Complete courses to unlock credit opportunities:
+
+- ✅ **Introduction to Micro-Credit** — Basics of decentralized lending
+- ✅ **Financial Responsibility** — Loan repayment and planning
+- ✅ **Business Planning** — Create solid business plans
+- ✅ **Community & Trust** — Understanding the vouching system
+- ✅ **Managing Your Funds** — Best practices for DeFi funds
+
+**Progress = Credit Eligibility** — Complete all courses to unlock full credit limits.
+
+---
+
+## 🤝 Community Vouching
+
+### How It Works
+
+1. **Earn Trust Points** — Start with 5 points, earn more through:
+
+   - Daily bonuses
+   - Inviting new users
+   - Receiving vouches from others
+
+2. **Vouch for Others** — Give trust points to users you believe in
+
+   - Each vouch increases their trust score
+   - Your vouches build your reputation
+
+3. **Unlock Credit** — Higher trust scores = better credit terms
+   - Community vouching replaces traditional credit checks
+   - Transparent trust graph visible to all
+
+### Invite System
+
+- **Share Your Invite Link** — Get unique URL to share
+- **New Users Join** — They can vouch for you or you can vouch for them
+- **Build Your Network** — Stronger network = more credit opportunities
+
+---
+
+## 💰 DeFi Integration
+
+### Yield Vaults (10-20% APY)
+
+- **Automatic Deposits** — Incoming USDC automatically goes to vault
+- **High Yield** — Earn 10-20% APY on idle funds
+- **Easy Withdrawals** — Access your funds anytime
+- **Real-Time Tracking** — See your earnings grow daily
+
+### Supported Protocols
+
+- **Blend Protocol** — Stellar-based lending
+- **Stellar AMM** — Automated market maker pools
+- **Future Integrations** — Additional protocols coming soon
+
+---
+
+## 📊 Database Schema
+
+### Core Tables
+
+- **Users** — Passkeys, Stellar wallets, profiles
+- **Trust Points** — Balance, vouches, reputation
+- **USDC Holdings** — Wallet balance + vault balance
+- **Vault Deposits** — Deposit history, yield earnings
+- **Vouches** — Who vouched for whom, trust points transferred
+- **Education Progress** — Course completions, certifications
+
+See `scripts/001_create_schema.sql` for full schema.
+
+---
+
+## 🛠️ Local Development
+
+### Prerequisites
+
+- Node.js 18+
+- pnpm (or npm/yarn)
+- Supabase account (or local PostgreSQL)
+
+### Setup
+
+```bash
+# 1. Clone repository
+git clone https://github.com/sozu-capital/sozu-credit.git
+cd sozu-credit
+
+# 2. Install dependencies
+pnpm install
+
+# 3. Copy environment variables
+cp .env.example .env.local
+
+# 4. Set required environment variables
+# See .env.example for full list
+
+# 5. Run database migrations
+# (If using Supabase, migrations run automatically)
+# Or run scripts in /scripts directory
+
+# 6. Start development server
+pnpm dev
+```
+
+### Environment Variables
+
+```env
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+
+# Stellar
+STELLAR_NETWORK=testnet  # or 'mainnet'
+STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org
+
+# USDC Asset
+USDC_ASSET_CODE=USDC
+USDC_ISSUER=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+
+# Vault Protocol
+VAULT_PROTOCOL=blend  # or 'stellar_amm'
+VAULT_MIN_DEPOSIT=10
+```
+
+---
+
+## 🧪 Testing
+
+```bash
+# Run all tests
+pnpm test
+
+# Run tests in watch mode
+pnpm test:watch
+
+# Run E2E tests
+pnpm test:e2e
+```
+
+---
+
+## 📈 Roadmap
+
+### ✅ Phase 1: Foundation (Completed)
+
+- Passkeys authentication
+- Stellar wallet creation
+- Trust points & vouching
+- Basic UI/UX
+
+### 🚧 Phase 2: DeFi Integration (In Progress)
+
+- USDC asset setup
+- Yield vault integration
+- Auto-deposit logic
+- Balance aggregation
+
+### 📅 Phase 3: Education Portal
+
+- Course modules
+- Progress tracking
+- Certification system
+- Credit unlocking
+
+### 📅 Phase 4: Credit Pools
+
+- Decentralized credit contracts
+- Disbursement system
+- Repayment tracking
+- Trust score integration
+
+### 📅 Phase 5: Advanced Features
+
+- Multi-asset support
+- Payment links
+- Receipt OCR
+- AI financial assistant
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+### Development Guidelines
+
+- Use TypeScript for all new code
+- Follow existing code style (ESLint + Prettier)
+- Write tests for new features
+- Update documentation as needed
+
+---
+
+## 📄 License
+
+- **Code**: Apache-2.0
+- **Smart Contracts**: MIT or Apache-2.0
+
+---
+
+## 🙋 Support
+
+- **Documentation**: See `/docs` directory
+- **Issues**: [GitHub Issues](https://github.com/sozu-capital/sozu-credit/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/sozu-capital/sozu-credit/discussions)
+
+---
+
+## 🎯 Mission
+
+**Sozu Credit** believes that credit should be accessible to everyone, not just those with traditional credit scores. Through community vouching, education, and DeFi integration, we're building a more inclusive financial system where trust and reputation matter more than paperwork.
+
+**Vouched, not Verified. Credit for everyone.**
+
+---
+
+## 📚 Additional Resources
+
+- [Defindex/Blend Protocol Plan](./DEFINDEX_BLEND_PROTOCOL_PLAN.md)
+- [Auth Flow Documentation](./AUTH_FLOW_FIX.md)
+- [Testing Guide](./TESTING_AUTH_FLOW.md)
+- [Mobile Optimization](./MOBILE_ANIMATION_OPTIMIZATION.md)
