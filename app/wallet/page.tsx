@@ -36,12 +36,14 @@ export default function WalletPage() {
   const [vouchPoints, setVouchPoints] = useState("1")
   const [vouchLoading, setVouchLoading] = useState(false)
   const [inviteCode, setInviteCode] = useState("")
+  const [currentAPY, setCurrentAPY] = useState(18.0)
   
   // Profile state
   const [username, setUsername] = useState("")
   const [walletAddress, setWalletAddress] = useState("")
   const [language, setLanguage] = useState<"es" | "en">("es")
   const [profilePic, setProfilePic] = useState<string | null>(null)
+  const [walletCopied, setWalletCopied] = useState(false)
   
   const texts = {
     es: {
@@ -52,6 +54,8 @@ export default function WalletPage() {
       profilePicture: "Foto de Perfil",
       walletAddress: "Dirección de Billetera",
       walletAddressDesc: "Tu dirección privada de billetera",
+      walletCopied: "Dirección copiada al portapapeles",
+      clickToCopy: "Toca para copiar",
       language: "Idioma",
       save: "Guardar",
       cancel: "Cancelar",
@@ -60,6 +64,7 @@ export default function WalletPage() {
       changePicture: "Cambiar Foto",
       // Balance
       totalBalance: "Saldo Total",
+      todayAPY: "APY de Hoy",
       // Trust Points
       trustPoints: "Puntos de Confianza",
       trustPointsTitle: "Puntos de Confianza",
@@ -105,6 +110,8 @@ export default function WalletPage() {
       profilePicture: "Profile Picture",
       walletAddress: "Wallet Address",
       walletAddressDesc: "Your private wallet address",
+      walletCopied: "Address copied to clipboard",
+      clickToCopy: "Tap to copy",
       language: "Language",
       save: "Save",
       cancel: "Cancel",
@@ -113,6 +120,7 @@ export default function WalletPage() {
       changePicture: "Change Picture",
       // Balance
       totalBalance: "Total Balance",
+      todayAPY: "Today's APY",
       // Trust Points
       trustPoints: "Trust Points",
       trustPointsTitle: "Trust Points",
@@ -227,6 +235,19 @@ export default function WalletPage() {
           setInviteCode(code)
           
           // Load profile data
+          // TODO: Replace mock wallet generation with Turnkey wallet generation
+          // Integration plan:
+          // 1. Create API endpoint /api/wallet/generate using Turnkey SDK
+          // 2. Use Turnkey's CreatePrivateKeys function to generate wallet per user
+          // 3. Store wallet address in database (add wallet_address column to profiles or vaults table)
+          // 4. Fetch real wallet address from database instead of generating mock
+          // 5. Ensure wallet is generated during user registration in /api/auth/register/verify
+          // 
+          // Example Turnkey integration:
+          // - Use @turnkey/http and @turnkey/api-key-stamper packages
+          // - Create wallet using CreatePrivateKeys activity with curve SECP256K1
+          // - Extract Ethereum address from public key
+          // - Store wallet_id and address in database for user
           const mockWalletAddress = "0x" + userId.replace(/-/g, "").substring(0, 40).padEnd(40, "0")
           setUsername(userId.substring(0, 8))
           setWalletAddress(mockWalletAddress)
@@ -241,6 +262,69 @@ export default function WalletPage() {
       // Check immediately
       checkAuth()
     }
+  }, [])
+
+  // Real-time APY updates with smooth, gradual transitions
+  useEffect(() => {
+    // Initialize with a random starting point in the range
+    const minAPY = 14.5
+    const maxAPY = 21.5
+    const range = maxAPY - minAPY
+    const startAPY = minAPY + (Math.random() * range)
+    setCurrentAPY(startAPY)
+
+    // Use a ref-like pattern to track current and target values
+    let currentValue = startAPY
+    let targetAPY = startAPY
+    let updateCount = 0
+    let targetChangeCounter = 0
+
+    // Calculate how many updates we need for a 10-minute period
+    const updatesPerMinute = 30 // Every 2 seconds = 30 updates per minute
+    const updatesIn10Minutes = updatesPerMinute * 10 // 300 updates
+
+    const apyInterval = setInterval(() => {
+      updateCount++
+      targetChangeCounter++
+
+      // Choose a new target every 20-30 updates (40-60 seconds)
+      // This ensures gradual direction changes with smooth transitions
+      if (targetChangeCounter >= (20 + Math.floor(Math.random() * 11))) {
+        // Pick a new target APY in the range
+        // Ensure the new target is different enough to create visible movement
+        const newTarget = minAPY + (Math.random() * range)
+        // Only change if it's different enough (at least 0.5% difference)
+        if (Math.abs(newTarget - targetAPY) > 0.5) {
+          targetAPY = newTarget
+        }
+        targetChangeCounter = 0
+      }
+
+      // Smooth interpolation towards target (0.03 = very gradual, takes ~33 steps to reach target)
+      // This ensures subtle, smooth transitions
+      const smoothnessFactor = 0.03
+      const difference = targetAPY - currentValue
+      const increment = difference * smoothnessFactor
+
+      // Update current value smoothly
+      currentValue = currentValue + increment
+
+      // Clamp to range to ensure it never goes outside bounds
+      currentValue = Math.max(minAPY, Math.min(maxAPY, currentValue))
+
+      // Update state with 2 decimal places
+      setCurrentAPY(Math.round(currentValue * 100) / 100)
+
+      // Reset after 10 minutes to start a new cycle
+      if (updateCount >= updatesIn10Minutes) {
+        updateCount = 0
+        // Start fresh with a new random value in range
+        currentValue = minAPY + (Math.random() * range)
+        targetAPY = currentValue
+      }
+    }, 2000) // Update every 2 seconds
+
+    return () => clearInterval(apyInterval)
   }, [])
 
   const balance = Number(vault?.balance || 0).toFixed(2)
@@ -314,6 +398,16 @@ export default function WalletPage() {
     // TODO: Save language preference
   }
 
+  const handleCopyWalletAddress = async () => {
+    try {
+      await navigator.clipboard.writeText(walletAddress)
+      setWalletCopied(true)
+      setTimeout(() => setWalletCopied(false), 2000)
+    } catch (err) {
+      console.error("Failed to copy wallet address:", err)
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-black dark text-white">
@@ -355,6 +449,10 @@ export default function WalletPage() {
               >
                 {isBalanceVisible ? balance : maskedBalance}
               </div>
+              {/* Real-time APY Display */}
+              <div className="mt-2 text-xs text-white/50 font-normal">
+                {t.todayAPY}: <span className="font-medium">{currentAPY.toFixed(2)}%</span>
+              </div>
             </div>
           </div>
         </div>
@@ -364,7 +462,7 @@ export default function WalletPage() {
           onClick={() => setIsTrustModalOpen(true)}
           className="fixed bottom-6 left-6 z-10"
         >
-          <div className="px-4 py-2 rounded-full bg-white/10 border border-white/20 flex items-center gap-2 hover:bg-white/20 transition-colors cursor-pointer">
+          <div className="px-4 py-2 rounded-full flex items-center gap-2 transition-colors cursor-pointer">
             <Award className="w-5 h-5 text-white" />
             <span className="text-white font-semibold">
               {trustPoints?.balance || 5} TRUST
@@ -378,7 +476,7 @@ export default function WalletPage() {
           className="fixed bottom-6 right-6 z-10"
           aria-label={t.openProfile}
         >
-          <div className="w-14 h-14 rounded-full bg-white/10 border border-white/20 flex items-center justify-center hover:bg-white/20 transition-colors cursor-pointer">
+          <div className="w-14 h-14 rounded-full flex items-center justify-center transition-colors cursor-pointer">
             <Wallet className="w-6 h-6 text-white" />
           </div>
         </button>
@@ -415,7 +513,8 @@ export default function WalletPage() {
               <div className="flex flex-col gap-2 pt-4">
                 <Button
                   onClick={() => setModalView("invite")}
-                  className="w-full bg-white text-black hover:bg-white/90 font-semibold"
+                  variant="outline"
+                  className="w-full border-2 border-white text-white hover:bg-white/10 font-semibold"
                 >
                   {t.viewInviteCode}
                 </Button>
@@ -462,7 +561,8 @@ export default function WalletPage() {
                     alert(t.codeCopied)
                   }
                 }}
-                className="w-full bg-white text-black hover:bg-white/90 font-semibold"
+                variant="outline"
+                className="w-full border-2 border-white text-white hover:bg-white/10 font-semibold"
               >
                 {t.copyCode}
               </Button>
@@ -522,7 +622,8 @@ export default function WalletPage() {
                 <Button
                   onClick={handleVouch}
                   disabled={vouchLoading || !vouchUsername.trim() || !vouchPoints}
-                  className="w-full bg-white text-black hover:bg-white/90 font-semibold disabled:bg-white/30 disabled:text-black/50"
+                  variant="outline"
+                  className="w-full border-2 border-white text-white hover:bg-white/10 font-semibold disabled:border-white/30 disabled:text-white/50 disabled:hover:bg-transparent"
                 >
                   {vouchLoading ? t.sending : t.sendPoints}
                 </Button>
@@ -609,12 +710,17 @@ export default function WalletPage() {
                     <Wallet className="w-4 h-4" />
                     {t.walletAddress}
                   </Label>
-                  <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
+                  <div 
+                    onClick={handleCopyWalletAddress}
+                    className="p-4 bg-white/5 border border-white/10 rounded-lg cursor-pointer hover:bg-white/10 transition-colors"
+                  >
                     <code className="text-sm text-white/80 font-mono break-all">
                       {walletAddress}
                     </code>
                   </div>
-                  <p className="text-sm text-white/60">{t.walletAddressDesc}</p>
+                  <p className={`text-sm ${walletCopied ? "text-green-400" : "text-white/60"}`}>
+                    {walletCopied ? t.walletCopied : t.clickToCopy}
+                  </p>
                 </div>
 
                 {/* Language Selection */}
@@ -645,7 +751,8 @@ export default function WalletPage() {
                 <div className="flex gap-4 pt-4">
                   <Button
                     onClick={handleSaveProfile}
-                    className="flex-1"
+                    variant="outline"
+                    className="flex-1 border-2 border-white text-white hover:bg-white/10"
                   >
                     {t.save}
                   </Button>
