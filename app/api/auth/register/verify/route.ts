@@ -1,8 +1,14 @@
 import { createClient } from "@/lib/supabase/server"
 import { challengeStore } from "@/lib/webauthn/config"
 import { NextResponse } from "next/server"
+import type { NextRequest } from "next/server"
+import { corsHeaders, handleOPTIONS } from "@/lib/cors"
 
-export async function POST(request: Request) {
+export async function OPTIONS(request: NextRequest) {
+  return handleOPTIONS(request)
+}
+
+export async function POST(request: NextRequest) {
   try {
     const { username, credential, challenge } = await request.json()
 
@@ -29,7 +35,10 @@ export async function POST(request: Request) {
         console.error("[Register] Challenge not found in store and not provided in request for username:", username)
         console.error("[Register] Challenge store size:", challengeStore.size)
         console.error("[Register] Available usernames in store:", Array.from(challengeStore.keys()))
-        return NextResponse.json({ error: "Challenge not found or expired" }, { status: 400 })
+        return NextResponse.json(
+          { error: "Challenge not found or expired" },
+          { status: 400, headers: corsHeaders(request) }
+        )
       }
       
       // Challenge provided in request - use it for verification
@@ -43,13 +52,16 @@ export async function POST(request: Request) {
       console.log("[Register] Supabase client created successfully")
     } catch (clientError: any) {
       console.error("[Register] Failed to create Supabase client:", clientError)
-      return NextResponse.json({ 
-        error: "Failed to initialize database connection",
-        details: {
-          message: clientError.message,
-          hint: "Check that NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set correctly in .env.local"
-        }
-      }, { status: 500 })
+      return NextResponse.json(
+        { 
+          error: "Failed to initialize database connection",
+          details: {
+            message: clientError.message,
+            hint: "Check that NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set correctly in Vercel."
+          }
+        },
+        { status: 500, headers: corsHeaders(request) }
+      )
     }
     
     // Use a valid email format - Supabase requires proper email format with valid TLD
@@ -90,19 +102,22 @@ export async function POST(request: Request) {
       // Check for network errors
       if (authError.message?.includes("Failed to fetch") || authError.message?.includes("NetworkError") || authError.message?.includes("fetch")) {
         console.error("[Register] Network error detected - check Supabase URL and connectivity")
-        return NextResponse.json({ 
-          error: "Network error connecting to Supabase",
-          details: {
-            message: authError.message,
-            hint: "Check your internet connection and verify NEXT_PUBLIC_SUPABASE_URL is correct (should be like https://xxxxx.supabase.co, not api.supabase.com). Make sure your Supabase project is not paused.",
-            troubleshooting: [
-              "1. Verify NEXT_PUBLIC_SUPABASE_URL in .env.local is correct",
-              "2. Check your Supabase project is active (not paused)",
-              "3. Restart your dev server after changing env vars",
-              "4. Check network connectivity"
-            ]
-          }
-        }, { status: 500 })
+        return NextResponse.json(
+          { 
+            error: "Network error connecting to Supabase",
+            details: {
+              message: authError.message,
+              hint: "Check your internet connection and verify NEXT_PUBLIC_SUPABASE_URL is correct (should be like https://xxxxx.supabase.co, not api.supabase.com). Make sure your Supabase project is not paused.",
+              troubleshooting: [
+                "1. Verify NEXT_PUBLIC_SUPABASE_URL in Vercel is correct",
+                "2. Check your Supabase project is active (not paused)",
+                "3. Redeploy after changing env vars",
+                "4. Check network connectivity"
+              ]
+            }
+          },
+          { status: 500, headers: corsHeaders(request) }
+        )
       }
       
       // The error is likely due to the trigger handle_new_user() failing
@@ -111,24 +126,30 @@ export async function POST(request: Request) {
       // We'll proceed with error message that points to the fix
       
       if (authError && !authData?.user) {
-        return NextResponse.json({ 
-          error: authError.message || "Database error saving new user",
-          details: {
-            code: authError.status,
-            message: authError.message,
-            name: authError.name,
-            hint: "This error is likely due to the database trigger handle_new_user() failing. Please run scripts/005_fix_trigger.sql in your Supabase SQL Editor to fix the trigger schema mismatch.",
-            fullError: JSON.stringify(authError, Object.getOwnPropertyNames(authError)),
-          }
-        }, { status: 400 })
+        return NextResponse.json(
+          { 
+            error: authError.message || "Database error saving new user",
+            details: {
+              code: authError.status,
+              message: authError.message,
+              name: authError.name,
+              hint: "This error is likely due to the database trigger handle_new_user() failing. Please run scripts/005_fix_trigger.sql in your Supabase SQL Editor to fix the trigger schema mismatch.",
+              fullError: JSON.stringify(authError, Object.getOwnPropertyNames(authError)),
+            }
+          },
+          { status: 400, headers: corsHeaders(request) }
+        )
       }
     }
 
     if (!authData?.user) {
       console.error("[Register] Signup succeeded but no user returned")
-      return NextResponse.json({ 
-        error: "Failed to create user - no user returned",
-      }, { status: 400 })
+      return NextResponse.json(
+        { 
+          error: "Failed to create user - no user returned",
+        },
+        { status: 400, headers: corsHeaders(request) }
+      )
     }
 
     console.log("[Register] User created:", authData.user.id)
@@ -192,11 +213,14 @@ export async function POST(request: Request) {
         console.error("[Register] Error creating profile:", profileError)
         // Check if it's a duplicate key error (trigger might have created it during insert)
         if (!profileError.code?.includes("23505") && !profileError.message?.includes("duplicate")) {
-          return NextResponse.json({ 
-            error: "Failed to create profile", 
-            details: profileError.message,
-            code: profileError.code
-          }, { status: 500 })
+          return NextResponse.json(
+            { 
+              error: "Failed to create profile", 
+              details: profileError.message,
+              code: profileError.code
+            },
+            { status: 500, headers: corsHeaders(request) }
+          )
         } else {
           console.log("[Register] Profile was created by trigger after all, continuing...")
         }
@@ -260,17 +284,36 @@ export async function POST(request: Request) {
 
     if (passkeyError) {
       console.error("[Register] Error storing passkey:", passkeyError)
-      return NextResponse.json({ 
-        error: "Failed to store passkey", 
-        details: passkeyError.message 
-      }, { status: 500 })
+      return NextResponse.json(
+        { 
+          error: "Failed to store passkey", 
+          details: passkeyError.message 
+        },
+        { status: 500, headers: corsHeaders(request) }
+      )
     }
 
     console.log("[Register] Registration successful for user:", authData.user.id)
 
-    return NextResponse.json({ success: true, userId: authData.user.id })
+    return NextResponse.json(
+      { success: true, userId: authData.user.id },
+      { headers: corsHeaders(request) }
+    )
   } catch (error) {
-    console.error("[v0] Registration verification error:", error)
-    return NextResponse.json({ error: "Failed to verify registration" }, { status: 500 })
+    console.error("[Register] Registration verification error:", error)
+    
+    // Provide more detailed error in development, generic in production
+    const isDevelopment = process.env.NODE_ENV === "development"
+    
+    return NextResponse.json(
+      {
+        error: "Failed to verify registration",
+        ...(isDevelopment && {
+          details: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        }),
+      },
+      { status: 500, headers: corsHeaders(request) }
+    )
   }
 }

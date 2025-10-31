@@ -1,13 +1,22 @@
 import { generateChallenge } from "@/lib/webauthn/utils"
 import { challengeStore, cleanupChallenges, rpID, rpName } from "@/lib/webauthn/config"
 import { NextResponse } from "next/server"
+import type { NextRequest } from "next/server"
+import { corsHeaders, handleOPTIONS } from "@/lib/cors"
 
-export async function POST(request: Request) {
+export async function OPTIONS(request: NextRequest) {
+  return handleOPTIONS(request)
+}
+
+export async function POST(request: NextRequest) {
   try {
     const { username } = await request.json()
 
     if (!username || typeof username !== "string") {
-      return NextResponse.json({ error: "Username is required" }, { status: 400 })
+      return NextResponse.json(
+        { error: "Username is required" },
+        { status: 400, headers: corsHeaders(request) }
+      )
     }
 
     // Clean up old challenges
@@ -22,33 +31,39 @@ export async function POST(request: Request) {
       timestamp: Date.now(),
     })
 
-    // Return WebAuthn registration options
-    return NextResponse.json({
-      challenge,
-      rp: {
-        name: rpName,
-        id: rpID,
+    // Return WebAuthn registration options with CORS headers
+    return NextResponse.json(
+      {
+        challenge,
+        rp: {
+          name: rpName,
+          id: rpID,
+        },
+        user: {
+          id: username,
+          name: username,
+          displayName: username,
+        },
+        pubKeyCredParams: [
+          { alg: -7, type: "public-key" }, // ES256
+          { alg: -257, type: "public-key" }, // RS256
+        ],
+        authenticatorSelection: {
+          authenticatorAttachment: "platform",
+          requireResidentKey: true,
+          residentKey: "required",
+          userVerification: "required",
+        },
+        timeout: 60000,
+        attestation: "none",
       },
-      user: {
-        id: username,
-        name: username,
-        displayName: username,
-      },
-      pubKeyCredParams: [
-        { alg: -7, type: "public-key" }, // ES256
-        { alg: -257, type: "public-key" }, // RS256
-      ],
-      authenticatorSelection: {
-        authenticatorAttachment: "platform",
-        requireResidentKey: true,
-        residentKey: "required",
-        userVerification: "required",
-      },
-      timeout: 60000,
-      attestation: "none",
-    })
+      { headers: corsHeaders(request) }
+    )
   } catch (error) {
-    console.error("[v0] Registration challenge error:", error)
-    return NextResponse.json({ error: "Failed to generate challenge" }, { status: 500 })
+    console.error("[Register Challenge] Error:", error)
+    return NextResponse.json(
+      { error: "Failed to generate challenge" },
+      { status: 500, headers: corsHeaders(request) }
+    )
   }
 }

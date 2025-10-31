@@ -1,15 +1,24 @@
 import { createClient } from "@/lib/supabase/server"
 import { challengeStore } from "@/lib/webauthn/config"
 import { NextResponse } from "next/server"
+import type { NextRequest } from "next/server"
+import { corsHeaders, handleOPTIONS } from "@/lib/cors"
 
-export async function POST(request: Request) {
+export async function OPTIONS(request: NextRequest) {
+  return handleOPTIONS(request)
+}
+
+export async function POST(request: NextRequest) {
   try {
     const { username, credential } = await request.json()
 
     // Verify challenge exists
     const storedChallenge = challengeStore.get(username)
     if (!storedChallenge) {
-      return NextResponse.json({ error: "Challenge not found or expired" }, { status: 400 })
+      return NextResponse.json(
+        { error: "Challenge not found or expired" },
+        { status: 400, headers: corsHeaders(request) }
+      )
     }
 
     // Clean up challenge
@@ -20,7 +29,10 @@ export async function POST(request: Request) {
     const { data: profile } = await supabase.from("profiles").select("id").eq("username", username).single()
 
     if (!profile) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 })
+      return NextResponse.json(
+        { error: "User not found" },
+        { status: 404, headers: corsHeaders(request) }
+      )
     }
 
     const { data: passkey } = await supabase
@@ -31,7 +43,10 @@ export async function POST(request: Request) {
       .single()
 
     if (!passkey) {
-      return NextResponse.json({ error: "Invalid passkey" }, { status: 401 })
+      return NextResponse.json(
+        { error: "Invalid passkey" },
+        { status: 401, headers: corsHeaders(request) }
+      )
     }
 
     // Update last used timestamp
@@ -43,12 +58,28 @@ export async function POST(request: Request) {
 
     // Return success - the client will use sessionStorage for authentication
     // The middleware will check sessionStorage on client side
-    return NextResponse.json({ 
-      success: true, 
-      userId: profile.id
-    })
+    return NextResponse.json(
+      { 
+        success: true, 
+        userId: profile.id
+      },
+      { headers: corsHeaders(request) }
+    )
   } catch (error) {
-    console.error("[v0] Login verification error:", error)
-    return NextResponse.json({ error: "Failed to verify login" }, { status: 500 })
+    console.error("[Login] Login verification error:", error)
+    
+    // Provide more detailed error in development, generic in production
+    const isDevelopment = process.env.NODE_ENV === "development"
+    
+    return NextResponse.json(
+      {
+        error: "Failed to verify login",
+        ...(isDevelopment && {
+          details: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        }),
+      },
+      { status: 500, headers: corsHeaders(request) }
+    )
   }
 }

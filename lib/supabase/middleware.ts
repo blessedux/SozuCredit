@@ -51,10 +51,16 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (!supabaseUrl || !supabaseAnonKey) {
+    const missing = []
+    if (!supabaseUrl) missing.push("NEXT_PUBLIC_SUPABASE_URL")
+    if (!supabaseAnonKey) missing.push("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+    
+    console.error(`[Middleware] Missing required environment variables: ${missing.join(", ")}`)
+    console.error("[Middleware] Please set these in Vercel Dashboard → Settings → Environment Variables")
+    
     throw new Error(
-      "Your project's URL and Key are required to create a Supabase client!\n\n" +
-      "Check your Supabase project's API settings to find these values:\n" +
-      "https://supabase.com/dashboard/project/_/settings/api"
+      `Missing Supabase environment variables: ${missing.join(", ")}. ` +
+      "Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Vercel Dashboard → Settings → Environment Variables."
     )
   }
 
