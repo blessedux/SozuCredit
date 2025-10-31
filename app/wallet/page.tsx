@@ -45,6 +45,7 @@ export default function WalletPage() {
   
   const texts = {
     es: {
+      // Profile
       title: "Mi Perfil",
       editProfile: "Editar Perfil",
       username: "Nombre de Usuario",
@@ -57,8 +58,47 @@ export default function WalletPage() {
       english: "Inglés",
       spanish: "Español",
       changePicture: "Cambiar Foto",
+      // Balance
+      totalBalance: "Saldo Total",
+      // Trust Points
+      trustPoints: "Puntos de Confianza",
+      trustPointsTitle: "Puntos de Confianza",
+      currentBalance: "Tu saldo actual:",
+      whatAreTrustPoints: "¿Qué son los Puntos de Confianza?",
+      trustPointsDesc: "Los puntos de confianza son una medida de tu reputación en la plataforma. Puedes usarlos para apoyar a otros usuarios o aumentar tu elegibilidad para créditos.",
+      howToGetMore: "¿Cómo obtener más puntos?",
+      waitForDaily: "Espera para reclamar tu bono diario",
+      inviteUsers: "Invita nuevos usuarios con tu código de invitación",
+      receivePoints: "Recibe puntos de otros usuarios que te apoyen",
+      viewInviteCode: "Ver Código de Invitación",
+      vouchForUser: "Apoyar un Proyecto",
+      // Invite Code
+      yourInviteCode: "Tu Código de Invitación",
+      inviteCodeDesc: "Comparte este código con nuevos usuarios. Cuando se registren, ambos recibirán puntos adicionales.",
+      copyCode: "Copiar Código",
+      codeCopied: "Código copiado al portapapeles",
+      back: "Volver",
+      // Vouch
+      vouchTitle: "Apoyar un Proyecto",
+      vouchDesc: "Ingresa el nombre de usuario y envía puntos de confianza para apoyarlos.",
+      usernameLabel: "Nombre de Usuario",
+      usernamePlaceholder: "Nombre de usuario",
+      pointsToSend: "Puntos a Enviar",
+      available: "Disponible:",
+      sending: "Enviando...",
+      sendPoints: "Enviar Puntos",
+      pointsSentSuccess: "Puntos de confianza enviados exitosamente",
+      pointsSentError: "Error al enviar puntos",
+      notAuthenticated: "Usuario no autenticado",
+      // Profile button
+      openProfile: "Abrir perfil",
+      closeProfile: "Cerrar perfil",
+      // Social share
+      inviteMessage: "¡Únete a Sozu Credit! Usa mi código de invitación: {code} y recibamos ambos puntos de confianza extra. 🚀",
+      codeCopiedShare: "Código copiado al portapapeles. ¡Listo para compartir!",
     },
     en: {
+      // Profile
       title: "My Profile",
       editProfile: "Edit Profile",
       username: "Username",
@@ -71,6 +111,44 @@ export default function WalletPage() {
       english: "English",
       spanish: "Spanish",
       changePicture: "Change Picture",
+      // Balance
+      totalBalance: "Total Balance",
+      // Trust Points
+      trustPoints: "Trust Points",
+      trustPointsTitle: "Trust Points",
+      currentBalance: "Your current balance:",
+      whatAreTrustPoints: "What are Trust Points?",
+      trustPointsDesc: "Trust points are a measure of your reputation on the platform. You can use them to support other users or increase your eligibility for credits.",
+      howToGetMore: "How to get more points?",
+      waitForDaily: "Wait to claim your daily bonus",
+      inviteUsers: "Invite new users with your invite code",
+      receivePoints: "Receive points from other users who support you",
+      viewInviteCode: "View Invite Code",
+      vouchForUser: "Vouch for Project",
+      // Invite Code
+      yourInviteCode: "Your Invite Code",
+      inviteCodeDesc: "Share this code with new users. When they register, both of you will receive additional points.",
+      copyCode: "Copy Code",
+      codeCopied: "Code copied to clipboard",
+      back: "Back",
+      // Vouch
+      vouchTitle: "Vouch for Project",
+      vouchDesc: "Enter the username and send trust points to support them.",
+      usernameLabel: "Username",
+      usernamePlaceholder: "Username",
+      pointsToSend: "Points to Send",
+      available: "Available:",
+      sending: "Sending...",
+      sendPoints: "Send Points",
+      pointsSentSuccess: "Trust points sent successfully",
+      pointsSentError: "Error sending points",
+      notAuthenticated: "User not authenticated",
+      // Profile button
+      openProfile: "Open profile",
+      closeProfile: "Close profile",
+      // Social share
+      inviteMessage: "Join Sozu Credit! Use my invite code: {code} and let's both get extra trust points. 🚀",
+      codeCopiedShare: "Code copied to clipboard. Ready to share!",
     },
   }
   
@@ -181,7 +259,7 @@ export default function WalletPage() {
     try {
       const userId = sessionStorage.getItem("dev_username")
       if (!userId) {
-        throw new Error("Usuario no autenticado")
+        throw new Error(t.notAuthenticated)
       }
 
       const response = await fetch("/api/wallet/vouch", {
@@ -198,7 +276,7 @@ export default function WalletPage() {
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.error || "Error al enviar puntos")
+        throw new Error(error.error || t.pointsSentError)
       }
 
       // Refresh trust points after vouch
@@ -217,9 +295,9 @@ export default function WalletPage() {
       setVouchUsername("")
       setVouchPoints("1")
       setModalView("main")
-      alert("Puntos de confianza enviados exitosamente")
+      alert(t.pointsSentSuccess)
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Error al enviar puntos")
+      alert(err instanceof Error ? err.message : t.pointsSentError)
     } finally {
       setVouchLoading(false)
     }
@@ -270,7 +348,7 @@ export default function WalletPage() {
           {/* Balance Display Box */}
           <div className="mb-8">
             <div className="border border-white/20 rounded-lg p-8 text-center">
-              <div className="text-sm text-white/60 mb-4">Saldo Total</div>
+              <div className="text-sm text-white/60 mb-4">{t.totalBalance}</div>
               <div 
                 className="text-6xl font-bold text-white cursor-pointer select-none flex items-center justify-center min-h-[4rem]"
                 onClick={toggleBalanceVisibility}
@@ -298,7 +376,7 @@ export default function WalletPage() {
         <button
           onClick={() => setIsProfileSheetOpen(true)}
           className="fixed bottom-6 right-6 z-10"
-          aria-label="Abrir perfil"
+          aria-label={t.openProfile}
         >
           <div className="w-14 h-14 rounded-full bg-white/10 border border-white/20 flex items-center justify-center hover:bg-white/20 transition-colors cursor-pointer">
             <Wallet className="w-6 h-6 text-white" />
@@ -310,44 +388,43 @@ export default function WalletPage() {
       <Dialog open={isTrustModalOpen} onOpenChange={setIsTrustModalOpen}>
         <DialogContent className="bg-black border-white/20 text-white max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-white text-2xl">Puntos de Confianza</DialogTitle>
+            <DialogTitle className="text-white text-2xl">{t.trustPointsTitle}</DialogTitle>
             <DialogDescription className="text-white/60">
-              Tu saldo actual: <span className="font-bold text-white">{trustPoints?.balance || 5} TRUST</span>
+              {t.currentBalance} <span className="font-bold text-white">{trustPoints?.balance || 5} TRUST</span>
             </DialogDescription>
           </DialogHeader>
 
           {modalView === "main" && (
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <h3 className="text-lg font-semibold text-white">¿Qué son los Puntos de Confianza?</h3>
+                <h3 className="text-lg font-semibold text-white">{t.whatAreTrustPoints}</h3>
                 <p className="text-sm text-white/80">
-                  Los puntos de confianza son una medida de tu reputación en la plataforma. 
-                  Puedes usarlos para apoyar a otros usuarios o aumentar tu elegibilidad para créditos.
+                  {t.trustPointsDesc}
                 </p>
               </div>
 
               <div className="space-y-2">
-                <h3 className="text-lg font-semibold text-white">¿Cómo obtener más puntos?</h3>
+                <h3 className="text-lg font-semibold text-white">{t.howToGetMore}</h3>
                 <ul className="text-sm text-white/80 space-y-1 list-disc list-inside">
-                  <li>Espera para reclamar tu bono diario</li>
-                  <li>Invita nuevos usuarios con tu código de invitación</li>
-                  <li>Recibe puntos de otros usuarios que te apoyen</li>
+                  <li>{t.waitForDaily}</li>
+                  <li>{t.inviteUsers}</li>
+                  <li>{t.receivePoints}</li>
                 </ul>
               </div>
 
               <div className="flex flex-col gap-2 pt-4">
                 <Button
                   onClick={() => setModalView("invite")}
-                  className="w-full"
+                  className="w-full bg-white text-black hover:bg-white/90 font-semibold"
                 >
-                  Ver Código de Invitación
+                  {t.viewInviteCode}
                 </Button>
                 <Button
                   onClick={() => setModalView("vouch")}
                   variant="outline"
-                  className="w-full border-white/20 text-white hover:bg-white/10"
+                  className="w-full border-2 border-white/30 bg-white/5 text-white hover:bg-white/20 hover:border-white/50 font-semibold"
                 >
-                  Apoyar a un Usuario
+                  {t.vouchForUser}
                 </Button>
               </div>
             </div>
@@ -356,9 +433,9 @@ export default function WalletPage() {
           {modalView === "invite" && (
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <h3 className="text-lg font-semibold text-white">Tu Código de Invitación</h3>
+                <h3 className="text-lg font-semibold text-white">{t.yourInviteCode}</h3>
                 <p className="text-sm text-white/80">
-                  Comparte este código con nuevos usuarios. Cuando se registren, ambos recibirán puntos adicionales.
+                  {t.inviteCodeDesc}
                 </p>
               </div>
 
@@ -369,22 +446,33 @@ export default function WalletPage() {
               </div>
 
               <Button
-                onClick={() => {
-                  navigator.clipboard.writeText(inviteCode)
-                  alert("Código copiado al portapapeles")
+                onClick={async () => {
+                  try {
+                    // Create social media ready message with invite code
+                    const inviteMessage = t.inviteMessage.replace("{code}", inviteCode)
+                    
+                    // Copy to clipboard
+                    await navigator.clipboard.writeText(inviteMessage)
+                    
+                    // Show success message
+                    alert(t.codeCopiedShare)
+                  } catch (err) {
+                    // Fallback: just copy the code if share message fails
+                    await navigator.clipboard.writeText(inviteCode)
+                    alert(t.codeCopied)
+                  }
                 }}
-                variant="outline"
-                className="w-full border-white/20 text-white hover:bg-white/10"
+                className="w-full bg-white text-black hover:bg-white/90 font-semibold"
               >
-                Copiar Código
+                {t.copyCode}
               </Button>
 
               <Button
                 onClick={() => setModalView("main")}
-                variant="ghost"
-                className="w-full text-white/60 hover:text-white hover:bg-white/5"
+                variant="outline"
+                className="w-full border-2 border-white/30 bg-white/5 text-white hover:bg-white/20 hover:border-white/50"
               >
-                Volver
+                {t.back}
               </Button>
             </div>
           )}
@@ -392,29 +480,29 @@ export default function WalletPage() {
           {modalView === "vouch" && (
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <h3 className="text-lg font-semibold text-white">Apoyar a un Usuario</h3>
+                <h3 className="text-lg font-semibold text-white">{t.vouchTitle}</h3>
                 <p className="text-sm text-white/80">
-                  Ingresa el nombre de usuario y envía puntos de confianza para apoyarlos.
+                  {t.vouchDesc}
                 </p>
               </div>
 
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="username" className="text-white">
-                    Nombre de Usuario
+                    {t.usernameLabel}
                   </Label>
                   <Input
                     id="username"
                     value={vouchUsername}
                     onChange={(e) => setVouchUsername(e.target.value)}
                     className="bg-black border-white/20 text-white"
-                    placeholder="Nombre de usuario"
+                    placeholder={t.usernamePlaceholder}
                   />
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="points" className="text-white">
-                    Puntos a Enviar
+                    {t.pointsToSend}
                   </Label>
                   <Input
                     id="points"
@@ -427,16 +515,16 @@ export default function WalletPage() {
                     placeholder="1"
                   />
                   <p className="text-xs text-white/60">
-                    Disponible: {trustPoints?.balance || 5} TRUST
+                    {t.available} {trustPoints?.balance || 5} TRUST
                   </p>
                 </div>
 
                 <Button
                   onClick={handleVouch}
                   disabled={vouchLoading || !vouchUsername.trim() || !vouchPoints}
-                  className="w-full"
+                  className="w-full bg-white text-black hover:bg-white/90 font-semibold disabled:bg-white/30 disabled:text-black/50"
                 >
-                  {vouchLoading ? "Enviando..." : "Enviar Puntos"}
+                  {vouchLoading ? t.sending : t.sendPoints}
                 </Button>
 
                 <Button
@@ -445,10 +533,10 @@ export default function WalletPage() {
                     setVouchUsername("")
                     setVouchPoints("1")
                   }}
-                  variant="ghost"
-                  className="w-full text-white/60 hover:text-white hover:bg-white/5"
+                  variant="outline"
+                  className="w-full border-2 border-white/30 bg-white/5 text-white hover:bg-white/20 hover:border-white/50"
                 >
-                  Cancelar
+                  {t.cancel}
                 </Button>
               </div>
             </div>
@@ -466,7 +554,7 @@ export default function WalletPage() {
           <button
             onClick={() => setIsProfileSheetOpen(false)}
             className="absolute top-4 left-4 z-10 p-2 rounded-full bg-white/10 border border-white/20 hover:bg-white/20 transition-colors"
-            aria-label="Cerrar perfil"
+            aria-label={t.closeProfile}
           >
             <ArrowLeft className="w-5 h-5 text-white" />
           </button>
