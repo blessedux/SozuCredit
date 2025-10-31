@@ -1,15 +1,15 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Wallet, Award, ArrowLeft, Globe, Camera } from "lucide-react"
+import { Wallet, Award, ArrowLeft, Globe } from "lucide-react"
 import { FallingPattern } from "@/components/ui/falling-pattern"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"
+import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 
 interface Vault {
   id: string
@@ -41,8 +41,9 @@ export default function WalletPage() {
   // Profile state
   const [username, setUsername] = useState("")
   const [walletAddress, setWalletAddress] = useState("")
+  const [walletNetwork, setWalletNetwork] = useState<"testnet" | "mainnet">("testnet")
   const [language, setLanguage] = useState<"es" | "en">("es")
-  const [profilePic, setProfilePic] = useState<string | null>(null)
+  const [profilePic, setProfilePic] = useState<string | null>("/default_pfp.png")
   const [walletCopied, setWalletCopied] = useState(false)
   
   const texts = {
@@ -56,6 +57,8 @@ export default function WalletPage() {
       walletAddressDesc: "Tu dirección privada de billetera",
       walletCopied: "Dirección copiada al portapapeles",
       clickToCopy: "Toca para copiar",
+      addy: "Addy",
+      fundYourAddress: "Fondea tu dirección para activar tu cuenta.",
       language: "Idioma",
       save: "Guardar",
       cancel: "Cancelar",
@@ -112,6 +115,8 @@ export default function WalletPage() {
       walletAddressDesc: "Your private wallet address",
       walletCopied: "Address copied to clipboard",
       clickToCopy: "Tap to copy",
+      addy: "Addy",
+      fundYourAddress: "Fund your address to activate your account.",
       language: "Language",
       save: "Save",
       cancel: "Cancel",
@@ -235,22 +240,183 @@ export default function WalletPage() {
           setInviteCode(code)
           
           // Load profile data
-          // TODO: Replace mock wallet generation with Turnkey wallet generation
-          // Integration plan:
-          // 1. Create API endpoint /api/wallet/generate using Turnkey SDK
-          // 2. Use Turnkey's CreatePrivateKeys function to generate wallet per user
-          // 3. Store wallet address in database (add wallet_address column to profiles or vaults table)
-          // 4. Fetch real wallet address from database instead of generating mock
-          // 5. Ensure wallet is generated during user registration in /api/auth/register/verify
-          // 
-          // Example Turnkey integration:
-          // - Use @turnkey/http and @turnkey/api-key-stamper packages
-          // - Create wallet using CreatePrivateKeys activity with curve SECP256K1
-          // - Extract Ethereum address from public key
-          // - Store wallet_id and address in database for user
-          const mockWalletAddress = "0x" + userId.replace(/-/g, "").substring(0, 40).padEnd(40, "0")
           setUsername(userId.substring(0, 8))
-          setWalletAddress(mockWalletAddress)
+          
+          // Fetch real Stellar wallet address from API
+          // Retry up to 5 times with delay to account for wallet creation during login
+          const fetchWalletAddress = async (retryCount = 0) => {
+            console.log(`[Wallet] Fetching wallet address for userId: ${userId} (attempt ${retryCount + 1})`)
+            try {
+              const walletAddressResponse = await fetch("/api/wallet/stellar/address", {
+                method: "GET",
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-user-id": userId, // Include userId for authentication in dev mode
+                },
+              })
+              
+              console.log(`[Wallet] Wallet address response status: ${walletAddressResponse.status}`)
+              
+              if (walletAddressResponse.ok) {
+                const walletData = await walletAddressResponse.json()
+                console.log("[Wallet] Wallet data received:", walletData)
+                if (walletData.publicKey) {
+                  console.log("[Wallet] ✅ Stellar wallet address loaded:", walletData.publicKey)
+                  setWalletAddress(walletData.publicKey)
+                  if (walletData.network) {
+                    setWalletNetwork(walletData.network)
+                  }
+                  return // Success, no need to retry
+                } else {
+                  console.warn("[Wallet] No public key in wallet response:", walletData)
+                  // If no public key but response is OK, try creating wallet
+                  if (retryCount < 5) {
+                    console.log(`[Wallet] Attempting to create wallet (attempt ${retryCount + 1}/5)...`)
+                    try {
+                      // Try to create wallet via API
+                      const createResponse = await fetch("/api/wallet/stellar/create", {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                          "x-user-id": userId,
+                        },
+                      })
+                      
+                      if (createResponse.ok) {
+                        const createData = await createResponse.json()
+                        if (createData.publicKey) {
+                          console.log("[Wallet] ✅ Wallet created and address loaded:", createData.publicKey)
+                          setWalletAddress(createData.publicKey)
+                          if (createData.network) {
+                            setWalletNetwork(createData.network)
+                          }
+                          return
+                        }
+                      }
+                    } catch (createError) {
+                      console.error("[Wallet] Error creating wallet:", createError)
+                    }
+                    
+                    // Retry after delay
+                    setTimeout(() => fetchWalletAddress(retryCount + 1), 2000)
+                  } else {
+                    setWalletAddress("") // Empty if wallet not created yet
+                  }
+                }
+              } else if (walletAddressResponse.status === 404) {
+                // Wallet not created yet - try creating it
+                console.log(`[Wallet] Wallet not found (404), attempting to create...`)
+                
+                if (retryCount < 5) {
+                  try {
+                    // Try to create wallet via API
+                    const createResponse = await fetch("/api/wallet/stellar/create", {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        "x-user-id": userId,
+                      },
+                    })
+                    
+                    console.log(`[Wallet] Create wallet response status: ${createResponse.status}`)
+                    
+                    if (createResponse.ok) {
+                      const createData = await createResponse.json()
+                      console.log("[Wallet] Create wallet data:", createData)
+                      if (createData.publicKey) {
+                        console.log("[Wallet] ✅ Wallet created and address loaded:", createData.publicKey)
+                        setWalletAddress(createData.publicKey)
+                        if (createData.network) {
+                          setWalletNetwork(createData.network)
+                        }
+                        return
+                      }
+                    } else {
+                      const errorData = await createResponse.json().catch(() => ({}))
+                      console.error("[Wallet] Failed to create wallet:", errorData)
+                    }
+                  } catch (createError) {
+                    console.error("[Wallet] Error creating wallet:", createError)
+                  }
+                  
+                  // Retry after delay
+                  console.log(`[Wallet] Retrying in 2 seconds (attempt ${retryCount + 1}/5)...`)
+                  setTimeout(() => fetchWalletAddress(retryCount + 1), 2000)
+                } else {
+                  console.log("[Wallet] Wallet not found after retries")
+                  setWalletAddress("") // Empty if wallet not created yet
+                }
+              } else if (walletAddressResponse.status === 500) {
+                // 500 error might be due to missing publicKey - try to recreate wallet
+                const errorData = await walletAddressResponse.json().catch(() => ({}))
+                console.error("[Wallet] Error fetching wallet address:", walletAddressResponse.status, errorData)
+                
+                // Check if error is about missing publicKey
+                if (errorData.error && errorData.error.includes("publicKey is missing")) {
+                  console.log("[Wallet] Wallet has no publicKey, attempting to recreate...")
+                  // Try to create/recreate wallet
+                  try {
+                    const createResponse = await fetch("/api/wallet/stellar/create", {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        "x-user-id": userId,
+                      },
+                    })
+
+                    console.log("[Wallet] Create wallet response status:", createResponse.status)
+                    
+                    if (createResponse.ok) {
+                      const createData = await createResponse.json()
+                      console.log("[Wallet] Create wallet response data:", createData)
+                      if (createData.publicKey) {
+                        console.log("[Wallet] ✅ Wallet recreated and address loaded:", createData.publicKey)
+                        setWalletAddress(createData.publicKey)
+                        if (createData.network) {
+                          setWalletNetwork(createData.network)
+                        }
+                        return // Success, no need to retry
+                      } else {
+                        console.warn("[Wallet] Wallet created but no publicKey in response:", createData)
+                      }
+                    } else {
+                      const createErrorData = await createResponse.json().catch(() => ({}))
+                      console.error("[Wallet] Failed to recreate wallet:", createResponse.status, createErrorData)
+                    }
+                  } catch (createError) {
+                    console.error("[Wallet] Error recreating wallet:", createError)
+                  }
+                }
+                
+                // Retry on error if we haven't exceeded limit
+                if (retryCount < 5) {
+                  setTimeout(() => fetchWalletAddress(retryCount + 1), 2000)
+                } else {
+                  setWalletAddress("") // Empty on error after retries
+                }
+              } else {
+                const errorData = await walletAddressResponse.json().catch(() => ({}))
+                console.error("[Wallet] Error fetching wallet address:", walletAddressResponse.status, errorData)
+                // Retry on error if we haven't exceeded limit
+                if (retryCount < 5) {
+                  setTimeout(() => fetchWalletAddress(retryCount + 1), 2000)
+                } else {
+                  setWalletAddress("") // Empty on error after retries
+                }
+              }
+            } catch (walletError) {
+              console.error("[Wallet] Exception fetching Stellar wallet address:", walletError)
+              // Retry on error if we haven't exceeded limit
+              if (retryCount < 5) {
+                setTimeout(() => fetchWalletAddress(retryCount + 1), 2000)
+              } else {
+                setWalletAddress("") // Empty on error after retries
+              }
+            }
+          }
+          
+          // Start fetching wallet address
+          fetchWalletAddress()
         } catch (err) {
           console.error("[Wallet] Error fetching data:", err)
           setError(err instanceof Error ? err.message : "Failed to load data")
@@ -390,15 +556,47 @@ export default function WalletPage() {
   const handleSaveProfile = async () => {
     // TODO: Save profile changes to backend
     console.log("Saving profile:", { username, language, profilePic })
-    setIsProfileSheetOpen(false)
   }
+
+  // Auto-save when profile sheet closes
+  useEffect(() => {
+    if (!isProfileSheetOpen) {
+      // Sheet just closed, save changes
+      // TODO: Save profile changes to backend
+      console.log("Auto-saving profile:", { username, language, profilePic })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isProfileSheetOpen])
 
   const handleLanguageChange = (lang: "es" | "en") => {
     setLanguage(lang)
     // TODO: Save language preference
   }
 
+  const handleProfilePictureChange = () => {
+    // Create a file input element
+    const input = document.createElement("input")
+    input.type = "file"
+    input.accept = "image/*"
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (file) {
+        // Create a preview URL for the selected image
+        const reader = new FileReader()
+        reader.onloadend = () => {
+          setProfilePic(reader.result as string)
+        }
+        reader.readAsDataURL(file)
+      }
+    }
+    input.click()
+  }
+
   const handleCopyWalletAddress = async () => {
+    if (!walletAddress) {
+      console.warn("Cannot copy: wallet address not available yet")
+      return
+    }
     try {
       await navigator.clipboard.writeText(walletAddress)
       setWalletCopied(true)
@@ -406,6 +604,22 @@ export default function WalletPage() {
     } catch (err) {
       console.error("Failed to copy wallet address:", err)
     }
+  }
+
+  const handleOpenStellarExpert = (e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent triggering copy when clicking icon
+    if (!walletAddress) {
+      console.warn("Cannot open Stellar Expert: wallet address not available yet")
+      return
+    }
+    
+    // Determine the Stellar Expert URL based on network
+    const stellarExpertUrl = walletNetwork === "mainnet"
+      ? `https://stellar.expert/explorer/mainnet/account/${walletAddress}`
+      : `https://stellar.expert/explorer/testnet/account/${walletAddress}`
+    
+    // Open Stellar Expert in a new tab
+    window.open(stellarExpertUrl, "_blank", "noopener,noreferrer")
   }
 
   if (isLoading) {
@@ -660,41 +874,26 @@ export default function WalletPage() {
             <ArrowLeft className="w-5 h-5 text-white" />
           </button>
 
-          <SheetHeader className="pt-12 pb-4">
-            <SheetTitle className="text-white text-2xl">{t.title}</SheetTitle>
-            <SheetDescription className="text-white/60">
-              {t.editProfile}
-            </SheetDescription>
-          </SheetHeader>
-
-          <div className="space-y-6 px-4 pb-8">
+          <div className="space-y-6 px-4 pt-12 pb-8">
             <Card className="border-white/20 bg-black">
-              <CardHeader>
-                <CardTitle className="text-white">{t.profilePicture}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
+              <CardContent className="space-y-6 pt-6">
                 {/* Profile Picture */}
-                <div className="flex items-center gap-6">
-                  <Avatar className="w-24 h-24 border-2 border-white/20">
-                    <AvatarImage src={profilePic || undefined} />
-                    <AvatarFallback className="bg-white/10 text-white text-2xl">
-                      {username.substring(0, 2).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <Button
-                    variant="outline"
-                    className="border-2 border-white/20 bg-transparent text-white hover:bg-white/10"
+                <div className="flex justify-center">
+                  <button
+                    onClick={handleProfilePictureChange}
+                    className="cursor-pointer hover:opacity-80 transition-opacity"
                   >
-                    <Camera className="w-4 h-4 mr-2" />
-                    {t.changePicture}
-                  </Button>
+                    <Avatar className="w-24 h-24 border-2 border-white/20">
+                      <AvatarImage src={profilePic || "/default_pfp.png"} />
+                      <AvatarFallback className="bg-white/10 text-white text-2xl">
+                        {username.substring(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                  </button>
                 </div>
 
                 {/* Username */}
                 <div className="space-y-2">
-                  <Label htmlFor="username" className="text-white">
-                    {t.username}
-                  </Label>
                   <Input
                     id="username"
                     value={username}
@@ -706,63 +905,51 @@ export default function WalletPage() {
 
                 {/* Wallet Address */}
                 <div className="space-y-2">
-                  <Label className="text-white flex items-center gap-2">
-                    <Wallet className="w-4 h-4" />
-                    {t.walletAddress}
-                  </Label>
                   <div 
                     onClick={handleCopyWalletAddress}
-                    className="p-4 bg-white/5 border border-white/10 rounded-lg cursor-pointer hover:bg-white/10 transition-colors"
+                    className="p-4 bg-white/5 border border-white/10 rounded-lg cursor-pointer hover:bg-white/10 transition-colors relative"
                   >
-                    <code className="text-sm text-white/80 font-mono break-all">
-                      {walletAddress}
+                    <code className="text-sm text-white/80 font-mono truncate block pr-20">
+                      {walletAddress 
+                        ? `${walletAddress.substring(0, 8)}...${walletAddress.substring(walletAddress.length - 8)}`
+                        : "Wallet address will be available after registration..."}
                     </code>
+                    <div 
+                      onClick={handleOpenStellarExpert}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1 text-white/60 hover:text-white cursor-pointer"
+                    >
+                      <Wallet className="w-3 h-3" />
+                      <span className="text-xs">{t.addy}</span>
+                    </div>
                   </div>
-                  <p className={`text-sm ${walletCopied ? "text-green-400" : "text-white/60"}`}>
-                    {walletCopied ? t.walletCopied : t.clickToCopy}
-                  </p>
+                  {walletAddress && (
+                    <p className="text-xs text-white/60 mt-2">
+                      {t.fundYourAddress}
+                    </p>
+                  )}
                 </div>
 
                 {/* Language Selection */}
                 <div className="space-y-2">
-                  <Label className="text-white flex items-center gap-2">
-                    <Globe className="w-4 h-4" />
-                    {t.language}
-                  </Label>
-                  <div className="flex gap-4">
+                  <div className="flex items-center justify-center gap-2 mb-2">
+                    <Globe className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="flex justify-center gap-4">
                     <Button
                       variant="outline"
                       onClick={() => handleLanguageChange("es")}
                       className={`border-2 bg-transparent ${language === "es" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
                     >
-                      {t.spanish}
+                      ES
                     </Button>
                     <Button
                       variant="outline"
                       onClick={() => handleLanguageChange("en")}
                       className={`border-2 bg-transparent ${language === "en" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
                     >
-                      {t.english}
+                      EN
                     </Button>
                   </div>
-                </div>
-
-                {/* Actions */}
-                <div className="flex gap-4 pt-4">
-                  <Button
-                    onClick={handleSaveProfile}
-                    variant="outline"
-                    className="flex-1 border-2 border-white bg-transparent text-white hover:bg-white/10"
-                  >
-                    {t.save}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsProfileSheetOpen(false)}
-                    className="flex-1 border-2 border-white/20 bg-transparent text-white hover:bg-white/10"
-                  >
-                    {t.cancel}
-                  </Button>
                 </div>
               </CardContent>
             </Card>

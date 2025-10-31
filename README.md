@@ -68,10 +68,12 @@ See [Local Development](#local-development) for detailed setup instructions.
 
 ### 2. **Stellar Smart Wallets**
 
-- 💼 Automatic wallet creation per user
+- 💼 Automatic wallet creation per user via Turnkey SDK
+- 🔐 Secure key management - private keys managed by Turnkey
 - 💵 USDC on Stellar network
-- 📊 Real-time balance tracking
+- 📊 Real-time balance tracking via Stellar Horizon API
 - 🔄 Seamless deposits and withdrawals
+- 🌐 Testnet and mainnet support
 
 ### 3. **High-Yield DeFi Vaults**
 
@@ -263,72 +265,34 @@ See `scripts/001_create_schema.sql` for full schema.
 
 ---
 
-## 🛠️ Local Development
+# Turnkey (for Passkeys and Stellar Wallet Management)
 
-### Prerequisites
+NEXT_PUBLIC_TURNKEY_API_BASE_URL=https://api.turnkey.com
+NEXT_PUBLIC_TURNKEY_ORG_ID=your_turnkey_organization_id
+NEXT_PUBLIC_TURNKEY_API_PUBLIC_KEY=your_turnkey_api_public_key
+NEXT_PUBLIC_TURNKEY_API_PRIVATE_KEY=your_turnkey_api_private_key
 
-- Node.js 18+
-- pnpm (or npm/yarn)
-- Supabase account (or local PostgreSQL)
+# Note: You need BOTH public and private keys from your API key pair
 
-### Setup
+# When creating an API key in Turnkey dashboard, save both keys securely
 
-```bash
-# 1. Clone repository
-git clone https://github.com/sozu-capital/sozu-credit.git
-cd sozu-credit
-
-# 2. Install dependencies
-pnpm install
-
-# 3. Copy environment variables
-cp .env.example .env.local
-
-# 4. Set required environment variables
-# See .env.example for full list
-
-# 5. Run database migrations
-# (If using Supabase, migrations run automatically)
-# Or run scripts in /scripts directory
-
-# 6. Start development server
-pnpm dev
-```
-
-### Environment Variables
-
-```env
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+# The private key is only shown once and cannot be retrieved later
 
 # Stellar
-STELLAR_NETWORK=testnet  # or 'mainnet'
-STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org
+
+STELLAR_NETWORK=testnet # or 'mainnet'
+STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org # Auto-set based on STELLAR_NETWORK if not provided
 
 # USDC Asset
+
 USDC_ASSET_CODE=USDC
 USDC_ISSUER=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
 
 # Vault Protocol
-VAULT_PROTOCOL=blend  # or 'stellar_amm'
+
+VAULT_PROTOCOL=blend # or 'stellar_amm'
 VAULT_MIN_DEPOSIT=10
-```
 
----
-
-## 🧪 Testing
-
-```bash
-# Run all tests
-pnpm test
-
-# Run tests in watch mode
-pnpm test:watch
-
-# Run E2E tests
-pnpm test:e2e
 ```
 
 ---
@@ -372,34 +336,6 @@ pnpm test:e2e
 
 ---
 
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
-
-### Development Guidelines
-
-- Use TypeScript for all new code
-- Follow existing code style (ESLint + Prettier)
-- Write tests for new features
-- Update documentation as needed
-
----
-
-## 📄 License
-
-- **Code**: Apache-2.0
-- **Smart Contracts**: MIT or Apache-2.0
-
----
-
-## 🙋 Support
-
-- **Documentation**: See `/docs` directory
-- **Issues**: [GitHub Issues](https://github.com/sozu-capital/sozu-credit/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/sozu-capital/sozu-credit/discussions)
-
----
-
 ## 🎯 Mission
 
 **Sozu Credit** believes that credit should be accessible to everyone, not just those with traditional credit scores. Through community vouching, education, and DeFi integration, we're building a more inclusive financial system where trust and reputation matter more than paperwork.
@@ -414,3 +350,4 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 - [Auth Flow Documentation](./AUTH_FLOW_FIX.md)
 - [Testing Guide](./TESTING_AUTH_FLOW.md)
 - [Mobile Optimization](./MOBILE_ANIMATION_OPTIMIZATION.md)
+```

@@ -3,6 +3,7 @@ import { challengeStore } from "@/lib/webauthn/config"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
+import { createStellarWallet, storeStellarWallet } from "@/lib/turnkey/stellar-wallet"
 
 export async function OPTIONS(request: NextRequest) {
   return handleOPTIONS(request)
@@ -291,6 +292,21 @@ export async function POST(request: NextRequest) {
         },
         { status: 500, headers: corsHeaders(request) }
       )
+    }
+
+    // Create Stellar wallet for user (non-blocking)
+    // Registration succeeds even if wallet creation fails
+    // Use service client since we don't have an authenticated Supabase session here yet
+    try {
+      console.log("[Register] Creating Stellar wallet for user:", authData.user.id)
+      const wallet = await createStellarWallet(authData.user.id)
+      await storeStellarWallet(authData.user.id, wallet.turnkeyWalletId, wallet.publicKey, true) // Use service client
+      console.log("[Register] Stellar wallet created successfully:", wallet.publicKey)
+    } catch (walletError) {
+      // Log error but don't fail registration
+      console.error("[Register] Error creating Stellar wallet:", walletError)
+      console.warn("[Register] Registration will proceed without wallet. Wallet can be created later via API.")
+      // Registration continues successfully
     }
 
     console.log("[Register] Registration successful for user:", authData.user.id)
