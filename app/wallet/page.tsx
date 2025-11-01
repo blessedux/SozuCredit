@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { Wallet, Award, ArrowLeft, Globe } from "lucide-react"
 import { FallingPattern } from "@/components/ui/falling-pattern"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
@@ -29,6 +29,7 @@ export default function WalletPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isBalanceVisible, setIsBalanceVisible] = useState(false)
+  const [xlmBalance, setXlmBalance] = useState<number | null>(null)
   const [isTrustModalOpen, setIsTrustModalOpen] = useState(false)
   const [isProfileSheetOpen, setIsProfileSheetOpen] = useState(false)
   const [modalView, setModalView] = useState<"main" | "invite" | "vouch">("main")
@@ -45,6 +46,13 @@ export default function WalletPage() {
   const [language, setLanguage] = useState<"es" | "en">("es")
   const [profilePic, setProfilePic] = useState<string | null>("/default_pfp.png")
   const [walletCopied, setWalletCopied] = useState(false)
+  
+  // Swipe gesture state
+  const touchStartX = useRef<number | null>(null)
+  const touchEndX = useRef<number | null>(null)
+  const touchStartY = useRef<number | null>(null)
+  const touchEndY = useRef<number | null>(null)
+  const minSwipeDistance = 30 // Minimum distance for a swipe (reduced for better sensitivity)
   
   const texts = {
     es: {
@@ -242,6 +250,30 @@ export default function WalletPage() {
           // Load profile data
           setUsername(userId.substring(0, 8))
           
+          // Function to fetch XLM balance from Stellar wallet
+          const fetchXLMBalance = async (publicKey: string) => {
+            try {
+              console.log("[Wallet] Fetching XLM balance for wallet:", publicKey)
+              const balanceResponse = await fetch("/api/wallet/stellar/balance", {
+                headers: {
+                  "x-user-id": userId,
+                },
+              })
+              
+              if (balanceResponse.ok) {
+                const balanceData = await balanceResponse.json()
+                console.log("[Wallet] XLM balance received:", balanceData)
+                if (balanceData.balance !== undefined) {
+                  setXlmBalance(balanceData.balance)
+                }
+              } else {
+                console.warn("[Wallet] Failed to fetch XLM balance:", balanceResponse.status)
+              }
+            } catch (error) {
+              console.error("[Wallet] Error fetching XLM balance:", error)
+            }
+          }
+          
           // Fetch real Stellar wallet address from API
           // Retry up to 5 times with delay to account for wallet creation during login
           const fetchWalletAddress = async (retryCount = 0) => {
@@ -266,6 +298,10 @@ export default function WalletPage() {
                   if (walletData.network) {
                     setWalletNetwork(walletData.network)
                   }
+                  
+                  // Fetch XLM balance for this wallet
+                  fetchXLMBalance(walletData.publicKey)
+                  
                   return // Success, no need to retry
                 } else {
                   console.warn("[Wallet] No public key in wallet response:", walletData)
@@ -290,6 +326,8 @@ export default function WalletPage() {
                           if (createData.network) {
                             setWalletNetwork(createData.network)
                           }
+                          // Fetch XLM balance for this wallet
+                          fetchXLMBalance(createData.publicKey)
                           return
                         }
                       }
@@ -329,6 +367,8 @@ export default function WalletPage() {
                         if (createData.network) {
                           setWalletNetwork(createData.network)
                         }
+                        // Fetch XLM balance for this wallet
+                        fetchXLMBalance(createData.publicKey)
                         return
                       }
                     } else {
@@ -375,6 +415,8 @@ export default function WalletPage() {
                         if (createData.network) {
                           setWalletNetwork(createData.network)
                         }
+                        // Fetch XLM balance for this wallet
+                        fetchXLMBalance(createData.publicKey)
                         return // Success, no need to retry
                       } else {
                         console.warn("[Wallet] Wallet created but no publicKey in response:", createData)
@@ -493,7 +535,10 @@ export default function WalletPage() {
     return () => clearInterval(apyInterval)
   }, [])
 
-  const balance = Number(vault?.balance || 0).toFixed(2)
+  // Use XLM balance from Stellar wallet, fallback to vault balance
+  const balance = xlmBalance !== null 
+    ? Number(xlmBalance).toFixed(2) 
+    : Number(vault?.balance || 0).toFixed(2)
   const maskedBalance = balance.replace(/\d/g, "*")
 
   const toggleBalanceVisibility = () => {
@@ -622,6 +667,113 @@ export default function WalletPage() {
     window.open(stellarExpertUrl, "_blank", "noopener,noreferrer")
   }
 
+  // Swipe gesture handlers for opening menu (swipe right to left on main content)
+  const onTouchStart = (e: React.TouchEvent) => {
+    // Only track if menu is closed
+    if (isProfileSheetOpen) return
+    
+    touchStartX.current = e.targetTouches[0].clientX
+    touchStartY.current = e.targetTouches[0].clientY
+    touchEndX.current = null
+    touchEndY.current = null
+  }
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (!touchStartX.current || isProfileSheetOpen) return
+    
+    touchEndX.current = e.targetTouches[0].clientX
+    touchEndY.current = e.targetTouches[0].clientY
+  }
+
+  const onTouchEnd = (e?: React.TouchEvent) => {
+    if (!touchStartX.current || !touchEndX.current || !touchStartY.current || isProfileSheetOpen) {
+      // Reset on any invalid state
+      touchStartX.current = null
+      touchEndX.current = null
+      touchStartY.current = null
+      touchEndY.current = null
+      return
+    }
+    
+    const distanceX = touchEndX.current - touchStartX.current
+    const absDistanceX = Math.abs(distanceX)
+    
+    // Calculate Y distance if available, otherwise assume no significant vertical movement
+    const absDistanceY = touchEndY.current && touchStartY.current 
+      ? Math.abs(touchEndY.current - touchStartY.current) 
+      : 0
+    
+    // Only trigger swipe if horizontal movement is significant and more than vertical
+    // Use 1.2x ratio to be more lenient with diagonal swipes
+    if (absDistanceX > minSwipeDistance && absDistanceX > absDistanceY * 1.2) {
+      if (distanceX < 0) {
+        // Swipe right to left - open menu
+        console.log("[Swipe] Opening menu - swipe right to left detected", { distanceX, absDistanceX, absDistanceY })
+        setIsProfileSheetOpen(true)
+      }
+    } else {
+      console.log("[Swipe] Swipe not detected", { distanceX, absDistanceX, absDistanceY, minSwipeDistance, ratio: absDistanceX / (absDistanceY || 1) })
+    }
+    
+    // Reset touch positions
+    touchStartX.current = null
+    touchEndX.current = null
+    touchStartY.current = null
+    touchEndY.current = null
+  }
+
+  // Swipe gesture handlers for closing menu (swipe left to right on sheet content)
+  const onSheetTouchStart = (e: React.TouchEvent) => {
+    // Only track if menu is open
+    if (!isProfileSheetOpen) return
+    
+    touchStartX.current = e.targetTouches[0].clientX
+    touchStartY.current = e.targetTouches[0].clientY
+    touchEndX.current = null
+    touchEndY.current = null
+  }
+
+  const onSheetTouchMove = (e: React.TouchEvent) => {
+    if (!touchStartX.current || !isProfileSheetOpen) return
+    
+    touchEndX.current = e.targetTouches[0].clientX
+    touchEndY.current = e.targetTouches[0].clientY
+  }
+
+  const onSheetTouchEnd = () => {
+    if (!touchStartX.current || !touchEndX.current || !touchStartY.current || !isProfileSheetOpen) {
+      // Reset on any invalid state
+      touchStartX.current = null
+      touchEndX.current = null
+      touchStartY.current = null
+      touchEndY.current = null
+      return
+    }
+    
+    const distanceX = touchEndX.current - touchStartX.current
+    const absDistanceX = Math.abs(distanceX)
+    
+    // Calculate Y distance if available
+    const absDistanceY = touchEndY.current && touchStartY.current 
+      ? Math.abs(touchEndY.current - touchStartY.current) 
+      : 0
+    
+    // Swipe left to right to close - horizontal movement should be significant
+    // Use 1.2x ratio to be more lenient with diagonal swipes
+    if (absDistanceX > minSwipeDistance && absDistanceX > absDistanceY * 1.2 && distanceX > 0) {
+      console.log("[Swipe] Closing menu - swipe left to right detected", { distanceX, absDistanceX, absDistanceY })
+      setIsProfileSheetOpen(false)
+    } else {
+      console.log("[Swipe] Close swipe not detected", { distanceX, absDistanceX, absDistanceY, minSwipeDistance })
+    }
+    
+    // Reset touch positions
+    touchStartX.current = null
+    touchEndX.current = null
+    touchStartY.current = null
+    touchEndY.current = null
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-black dark text-white">
@@ -640,7 +792,7 @@ export default function WalletPage() {
   }
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-black pb-8">
+    <div className="relative h-screen w-full overflow-hidden bg-black">
       {/* Falling Pattern Background */}
       <div className="absolute inset-0 z-0">
         <FallingPattern 
@@ -651,12 +803,18 @@ export default function WalletPage() {
       </div>
 
       {/* Content */}
-      <div className="relative z-10">
-        <div className="container mx-auto px-6 py-12">
+      <div 
+        className="relative z-10 h-full overflow-y-auto touch-pan-y"
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        style={{ touchAction: 'pan-y' }}
+      >
+        <div className="container mx-auto px-6 py-8 md:py-12">
           {/* Balance Display Box */}
           <div className="mb-8">
             <div className="border border-white/20 rounded-lg p-8 text-center">
-              <div className="text-sm text-white/60 mb-4">{t.totalBalance}</div>
+              <div className="text-sm text-white/60 mb-4">{t.totalBalance} (XLM)</div>
               <div 
                 className="text-6xl font-bold text-white cursor-pointer select-none flex items-center justify-center min-h-[4rem]"
                 onClick={toggleBalanceVisibility}
@@ -674,11 +832,11 @@ export default function WalletPage() {
         {/* Trust Points - Bottom Left */}
         <button
           onClick={() => setIsTrustModalOpen(true)}
-          className="fixed bottom-6 left-6 z-10"
+          className="fixed bottom-4 left-4 md:bottom-6 md:left-6 z-10"
         >
-          <div className="px-4 py-2 rounded-full flex items-center gap-2 transition-colors cursor-pointer">
-            <Award className="w-5 h-5 text-white" />
-            <span className="text-white font-semibold">
+          <div className="px-5 py-3 md:px-4 md:py-2 rounded-full flex items-center gap-2 md:gap-2 transition-colors cursor-pointer bg-white/10 hover:bg-white/20">
+            <Award className="w-6 h-6 md:w-5 md:h-5 text-white" />
+            <span className="text-white font-semibold text-base md:text-sm">
               {trustPoints?.balance || 5} TRUST
             </span>
           </div>
@@ -687,11 +845,11 @@ export default function WalletPage() {
         {/* Wallet Icon - Bottom Right */}
         <button
           onClick={() => setIsProfileSheetOpen(true)}
-          className="fixed bottom-6 right-6 z-10"
+          className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-10"
           aria-label={t.openProfile}
         >
-          <div className="w-14 h-14 rounded-full flex items-center justify-center transition-colors cursor-pointer">
-            <Wallet className="w-6 h-6 text-white" />
+          <div className="w-16 h-16 md:w-14 md:h-14 rounded-full flex items-center justify-center transition-colors cursor-pointer bg-white/10 hover:bg-white/20">
+            <Wallet className="w-7 h-7 md:w-6 md:h-6 text-white" />
           </div>
         </button>
       </div>
@@ -863,7 +1021,11 @@ export default function WalletPage() {
       <Sheet open={isProfileSheetOpen} onOpenChange={setIsProfileSheetOpen}>
         <SheetContent 
           side="right" 
-          className="bg-black border-white/20 text-white w-full sm:max-w-lg overflow-y-auto [&>button]:hidden"
+          className="bg-black border-white/20 text-white w-full sm:max-w-lg overflow-y-auto [&>button]:hidden touch-pan-y"
+          onTouchStart={onSheetTouchStart}
+          onTouchMove={onSheetTouchMove}
+          onTouchEnd={onSheetTouchEnd}
+          style={{ touchAction: 'pan-y' }}
         >
           {/* Back Button - Top Left */}
           <button

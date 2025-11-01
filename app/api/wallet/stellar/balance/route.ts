@@ -43,8 +43,8 @@ export async function GET(request: Request) {
       )
     }
 
-    // Query balance from Stellar network
-    const balance = await getWalletBalance(wallet.publicKey)
+    // Query XLM balance from Stellar network
+    const balance = await getWalletBalance(wallet.publicKey, "native")
 
     return NextResponse.json(
       {

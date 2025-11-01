@@ -58,16 +58,41 @@ export function FallingPattern({
 		return () => window.removeEventListener('resize', checkDevice);
 	}, [useVideoFallback, videoSrc]);
 
-	// Mobile-optimized: Reduced number of patterns
+	// Mobile-optimized: More columns for better coverage
 	const generateMobileBackgroundImage = () => {
 		const patterns = [
-			// Reduced pattern set for mobile (6 instead of 36)
+			// Column 1
 			`radial-gradient(3px 60px at 0px 150px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(3px 60px at 150px 150px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(1px 1px at 75px 75px, ${color} 100%, transparent 150%)`,
 			`radial-gradient(3px 60px at 0px 250px, ${color} 0%, ${color} 40%, transparent 100%)`,
+			`radial-gradient(1px 1px at 0px 75px, ${color} 100%, transparent 150%)`,
+			// Column 2
+			`radial-gradient(3px 60px at 50px 150px, ${color} 0%, ${color} 40%, transparent 100%)`,
+			`radial-gradient(3px 60px at 50px 250px, ${color} 0%, ${color} 40%, transparent 100%)`,
+			`radial-gradient(1px 1px at 50px 75px, ${color} 100%, transparent 150%)`,
+			// Column 3
+			`radial-gradient(3px 60px at 100px 150px, ${color} 0%, ${color} 40%, transparent 100%)`,
+			`radial-gradient(3px 60px at 100px 250px, ${color} 0%, ${color} 40%, transparent 100%)`,
+			`radial-gradient(1px 1px at 100px 75px, ${color} 100%, transparent 150%)`,
+			// Column 4
+			`radial-gradient(3px 60px at 150px 150px, ${color} 0%, ${color} 40%, transparent 100%)`,
 			`radial-gradient(3px 60px at 150px 250px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(1px 1px at 75px 125px, ${color} 100%, transparent 150%)`,
+			`radial-gradient(1px 1px at 150px 75px, ${color} 100%, transparent 150%)`,
+			// Column 5
+			`radial-gradient(3px 60px at 200px 150px, ${color} 0%, ${color} 40%, transparent 100%)`,
+			`radial-gradient(3px 60px at 200px 250px, ${color} 0%, ${color} 40%, transparent 100%)`,
+			`radial-gradient(1px 1px at 200px 75px, ${color} 100%, transparent 150%)`,
+			// Column 6
+			`radial-gradient(3px 60px at 250px 150px, ${color} 0%, ${color} 40%, transparent 100%)`,
+			`radial-gradient(3px 60px at 250px 250px, ${color} 0%, ${color} 40%, transparent 100%)`,
+			`radial-gradient(1px 1px at 250px 75px, ${color} 100%, transparent 150%)`,
+			// Column 7
+			`radial-gradient(3px 60px at 300px 150px, ${color} 0%, ${color} 40%, transparent 100%)`,
+			`radial-gradient(3px 60px at 300px 250px, ${color} 0%, ${color} 40%, transparent 100%)`,
+			`radial-gradient(1px 1px at 300px 75px, ${color} 100%, transparent 150%)`,
+			// Column 8
+			`radial-gradient(3px 60px at 350px 150px, ${color} 0%, ${color} 40%, transparent 100%)`,
+			`radial-gradient(3px 60px at 350px 250px, ${color} 0%, ${color} 40%, transparent 100%)`,
+			`radial-gradient(1px 1px at 350px 75px, ${color} 100%, transparent 150%)`,
 		];
 		return patterns.join(', ');
 	};
@@ -166,9 +191,9 @@ export function FallingPattern({
 		'300px 210px',
 	].join(', ');
 
-	// Mobile-optimized positions (shorter animation)
-	const mobileStartPositions = '0px 100px, 150px 100px, 75px 50px, 0px 200px, 150px 200px, 75px 100px';
-	const mobileEndPositions = '0px 3000px, 150px 3000px, 75px 2950px, 0px 3200px, 150px 3200px, 75px 3100px';
+	// Mobile-optimized positions (shorter animation) - 24 patterns (8 columns x 3 per column)
+	const mobileStartPositions = '0px 100px, 0px 200px, 0px 50px, 50px 100px, 50px 200px, 50px 50px, 100px 100px, 100px 200px, 100px 50px, 150px 100px, 150px 200px, 150px 50px, 200px 100px, 200px 200px, 200px 50px, 250px 100px, 250px 200px, 250px 50px, 300px 100px, 300px 200px, 300px 50px, 350px 100px, 350px 200px, 350px 50px';
+	const mobileEndPositions = '0px 3000px, 0px 3200px, 0px 2950px, 50px 3000px, 50px 3200px, 50px 2950px, 100px 3000px, 100px 3200px, 100px 2950px, 150px 3000px, 150px 3200px, 150px 2950px, 200px 3000px, 200px 3200px, 200px 2950px, 250px 3000px, 250px 3200px, 250px 2950px, 300px 3000px, 300px 3200px, 300px 2950px, 350px 3000px, 350px 3200px, 350px 2950px';
 	
 	// Desktop: Full positions
 	const startPositions =
@@ -208,7 +233,7 @@ export function FallingPattern({
 		? generateMobileBackgroundImage()
 		: generateBackgroundImage();
 	const finalBackgroundSize = useMobileOptimized
-		? '150px 300px, 150px 300px, 150px 300px, 150px 300px, 150px 300px, 150px 300px'
+		? '400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px'
 		: backgroundSizes;
 	const finalStartPositions = useMobileOptimized ? mobileStartPositions : startPositions;
 	const finalEndPositions = useMobileOptimized ? mobileEndPositions : endPositions;

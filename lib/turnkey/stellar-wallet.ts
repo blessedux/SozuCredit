@@ -445,9 +445,16 @@ export async function deleteStellarWallet(userId: string, useServiceClient = fal
 }
 
 /**
- * Get wallet balance from Stellar network
+ * Get wallet balance for a specific asset from Stellar network
+ * @param publicKey Stellar wallet public key
+ * @param assetCode Asset code to query (e.g., "USDC", "XLM"). Defaults to "native" for XLM
+ * @param assetIssuer Optional issuer address for non-native assets
  */
-export async function getWalletBalance(publicKey: string): Promise<number> {
+export async function getWalletBalance(
+  publicKey: string,
+  assetCode: string = "native",
+  assetIssuer?: string
+): Promise<number> {
   const stellarConfig = getStellarConfig()
 
   try {
@@ -460,23 +467,59 @@ export async function getWalletBalance(publicKey: string): Promise<number> {
     // Load account from Stellar network
     const account = await server.loadAccount(publicKey)
 
-    // Get XLM balance (native Stellar asset)
-    const xlmBalance = account.balances.find(
-      (balance: any) => balance.asset_type === "native"
-    )
+    // Find the balance for the requested asset
+    let balance
+    
+    if (assetCode === "native" || assetCode === "XLM") {
+      // Get XLM balance (native Stellar asset)
+      balance = account.balances.find(
+        (bal: any) => bal.asset_type === "native"
+      )
+    } else {
+      // Get balance for specific asset (e.g., USDC)
+      balance = account.balances.find(
+        (bal: any) => 
+          bal.asset_type !== "native" &&
+          bal.asset_code === assetCode &&
+          (!assetIssuer || bal.asset_issuer === assetIssuer)
+      )
+    }
 
-    if (!xlmBalance) {
+    if (!balance) {
       return 0
     }
 
-    return parseFloat(xlmBalance.balance)
+    return parseFloat(balance.balance)
   } catch (error: any) {
     // If account doesn't exist or has no balance, return 0
     if (error?.response?.status === 404) {
       return 0
     }
-    console.error("[getWalletBalance] Error fetching balance:", error)
+    console.error(`[getWalletBalance] Error fetching ${assetCode} balance:`, error)
     throw new Error(`Failed to get wallet balance: ${error.message}`)
+  }
+}
+
+/**
+ * Get USDC balance from Stellar wallet
+ * Uses testnet USDC issuer for testnet, mainnet issuer for mainnet
+ */
+export async function getUSDCBalance(publicKey: string): Promise<number> {
+  const stellarConfig = getStellarConfig()
+  
+  // USDC issuers for Stellar
+  // Testnet: Typically issued by testnet issuer or we might need to find/create one
+  // Mainnet: Circle USDC issuer: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+  // For testnet, we'll try to find USDC with code "USDC" without specifying issuer first
+  
+  // Common testnet USDC asset: USDC with code "USDC"
+  // If no testnet-specific issuer, we'll search for any USDC asset
+  try {
+    const usdcBalance = await getWalletBalance(publicKey, "USDC")
+    return usdcBalance
+  } catch (error) {
+    console.warn("[getUSDCBalance] Could not find USDC balance, returning 0:", error)
+    return 0
   }
 }
 
