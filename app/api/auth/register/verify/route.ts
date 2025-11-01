@@ -11,7 +11,7 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { username, credential, challenge } = await request.json()
+    const { username, credential, challenge, referralCode } = await request.json()
 
     // Try to verify challenge from store (for security)
     // If challenge store doesn't have it (e.g., in serverless environments), 
@@ -292,6 +292,61 @@ export async function POST(request: NextRequest) {
         },
         { status: 500, headers: corsHeaders(request) }
       )
+    }
+
+    // Process referral code if provided
+    if (referralCode) {
+      try {
+        console.log("[Register] Processing referral code:", referralCode)
+        
+        // Find the user who owns this referral code (by username or invite code)
+        const { data: referrerProfile } = await supabase
+          .from("profiles")
+          .select("id")
+          .or(`username.eq.${referralCode},id.eq.${referralCode}`)
+          .maybeSingle()
+        
+        if (referrerProfile && authData.user && referrerProfile.id !== authData.user.id) {
+          // Valid referral - award points to both users
+          console.log("[Register] Valid referral code found, awarding bonus points")
+          
+          // Award points to referrer (inviter) - use direct SQL update
+          const { data: referrerTrustPoints } = await supabase
+            .from("trust_points")
+            .select("balance")
+            .eq("user_id", referrerProfile.id)
+            .single()
+          
+          if (referrerTrustPoints) {
+            await supabase
+              .from("trust_points")
+              .update({ balance: referrerTrustPoints.balance + 5 })
+              .eq("user_id", referrerProfile.id)
+          }
+          
+          // Award points to new user (invited) - use direct SQL update
+          const { data: newUserTrustPoints } = await supabase
+            .from("trust_points")
+            .select("balance")
+            .eq("user_id", authData.user.id)
+            .single()
+          
+          if (newUserTrustPoints) {
+            await supabase
+              .from("trust_points")
+              .update({ balance: newUserTrustPoints.balance + 5 })
+              .eq("user_id", authData.user.id)
+          }
+          
+          console.log("[Register] Referral bonus points awarded successfully")
+        } else {
+          console.log("[Register] Referral code not found or invalid, skipping bonus")
+        }
+      } catch (refError) {
+        // Log error but don't fail registration
+        console.error("[Register] Error processing referral code:", refError)
+        console.warn("[Register] Registration will proceed without referral bonus")
+      }
     }
 
     // Create Stellar wallet for user (non-blocking)

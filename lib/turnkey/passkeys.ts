@@ -117,8 +117,9 @@ export async function generateAuthChallenge(username: string): Promise<PasskeyCh
 export async function verifyRegistration(
   username: string,
   credential: PasskeyCredential,
-  challenge?: string
-): Promise<{ success: boolean; userId?: string }> {
+  challenge?: string,
+  referralCode?: string | null
+): Promise<{ success: boolean; userId?: string; username?: string }> {
   try {
     // Extract public key from attestation object (simplified for now)
     // In production, you'd need to parse the CBOR attestation object
@@ -132,6 +133,7 @@ export async function verifyRegistration(
       body: JSON.stringify({
         username,
         challenge, // Pass challenge in case store doesn't have it
+        referralCode, // Pass referral code if present
         credential: {
           ...credential,
           response: {
@@ -168,7 +170,7 @@ export async function verifyRegistration(
 export async function verifyAuthentication(
   username: string,
   credential: PasskeyCredential
-): Promise<{ success: boolean; userId?: string }> {
+): Promise<{ success: boolean; userId?: string; username?: string }> {
   try {
     const response = await fetch("/api/auth/login/verify", {
       method: "POST",

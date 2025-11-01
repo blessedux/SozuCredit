@@ -11,14 +11,27 @@ import {
   verifyAuthentication
 } from "@/lib/turnkey/passkeys"
 import { createClient } from "@/lib/supabase/client"
-import { useRouter } from "next/navigation"
-import { useState, useRef } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { useState, useRef, useEffect } from "react"
 
 export default function AuthPage() {
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
   const redirectingRef = useRef(false)
+  const [referralCode, setReferralCode] = useState<string | null>(null)
+  
+  // Read referral code from URL query parameter
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const ref = searchParams?.get("ref") || new URLSearchParams(window.location.search).get("ref")
+      if (ref) {
+        setReferralCode(ref)
+        console.log("[Auth] Referral code found:", ref)
+      }
+    }
+  }, [searchParams])
 
   const handleAuth = async () => {
     if (redirectingRef.current) {
@@ -219,7 +232,8 @@ export default function AuthPage() {
 
           console.log("[Auth] Reg Step 4: Verifying registration...")
           // Pass the challenge to verifyRegistration in case the in-memory store doesn't have it
-          const regResult = await verifyRegistration("user", credential, challenge.challenge)
+          // Also pass referral code if present
+          const regResult = await verifyRegistration("user", credential, challenge.challenge, referralCode)
           console.log("[Auth] Reg Step 5: Verification result:", regResult)
           console.log("[Auth] Registration success:", regResult.success)
           console.log("[Auth] Registration userId:", regResult.userId)

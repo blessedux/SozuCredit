@@ -120,8 +120,8 @@ export default function WalletPage() {
       openProfile: "Abrir perfil",
       closeProfile: "Cerrar perfil",
       // Social share
-      inviteMessage: "¡Únete a Sozu Credit! Usa mi código de invitación: {code} y recibamos ambos puntos de confianza extra. 🚀",
-      codeCopiedShare: "Código copiado al portapapeles. ¡Listo para compartir!",
+      inviteMessage: "¡Únete a Sozu Credit! Usa mi enlace de invitación: {link} y recibamos ambos puntos de confianza extra. 🚀",
+      codeCopiedShare: "Mensaje copiado al portapapeles. ¡Listo para compartir!",
     },
     en: {
       // Profile
@@ -183,8 +183,8 @@ export default function WalletPage() {
       openProfile: "Open profile",
       closeProfile: "Close profile",
       // Social share
-      inviteMessage: "Join Sozu Credit! Use my invite code: {code} and let's both get extra trust points. 🚀",
-      codeCopiedShare: "Code copied to clipboard. Ready to share!",
+      inviteMessage: "Join Sozu Credit! Use my invite link: {link} and let's both get extra trust points. 🚀",
+      codeCopiedShare: "Message copied to clipboard. Ready to share!",
     },
   }
   
@@ -1088,8 +1088,12 @@ export default function WalletPage() {
               <Button
                 onClick={async () => {
                   try {
-                    // Create social media ready message with invite code
-                    const inviteMessage = t.inviteMessage.replace("{code}", inviteCode)
+                    // Create referral link with invite code
+                    const baseUrl = typeof window !== "undefined" ? window.location.origin : "https://sozucredit.com"
+                    const referralLink = `${baseUrl}/auth?ref=${inviteCode}`
+                    
+                    // Create social media ready message with referral link
+                    const inviteMessage = t.inviteMessage.replace("{link}", referralLink)
                     
                     // Copy to clipboard
                     await navigator.clipboard.writeText(inviteMessage)
