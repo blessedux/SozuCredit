@@ -247,8 +247,25 @@ export default function WalletPage() {
           const code = userId.substring(0, 8).toUpperCase()
           setInviteCode(code)
           
-          // Load profile data
-          setUsername(userId.substring(0, 8))
+          // Fetch profile data from API
+          const profileResponse = await fetch("/api/wallet/profile", {
+            headers: {
+              "x-user-id": userId,
+            },
+          })
+          
+          if (profileResponse.ok) {
+            const profileData = await profileResponse.json()
+            if (profileData.profile && profileData.profile.username) {
+              setUsername(profileData.profile.username)
+            } else {
+              // Fallback to user ID substring if no username found
+              setUsername(userId.substring(0, 8))
+            }
+          } else {
+            // Fallback to user ID substring if profile fetch fails
+            setUsername(userId.substring(0, 8))
+          }
           
           // Function to fetch XLM balance from Stellar wallet
           const fetchXLMBalance = async (publicKey: string) => {
@@ -605,10 +622,56 @@ export default function WalletPage() {
 
   // Auto-save when profile sheet closes
   useEffect(() => {
-    if (!isProfileSheetOpen) {
-      // Sheet just closed, save changes
-      // TODO: Save profile changes to backend
-      console.log("Auto-saving profile:", { username, language, profilePic })
+    if (!isProfileSheetOpen && username.trim()) {
+      // Sheet just closed, save username to backend
+      const saveUsername = async () => {
+        try {
+          const userId = sessionStorage.getItem("dev_username")
+          if (!userId) {
+            console.warn("[Profile] Cannot save: user ID not found")
+            return
+          }
+
+          const response = await fetch("/api/wallet/profile", {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              "x-user-id": userId,
+            },
+            body: JSON.stringify({
+              username: username.trim(),
+              display_name: username.trim(),
+            }),
+          })
+
+          if (!response.ok) {
+            const error = await response.json()
+            console.error("[Profile] Error saving username:", error)
+            // Show error message to user
+            if (error.error && error.error.includes("already taken")) {
+              alert(t.language === "es" 
+                ? "Este nombre de usuario ya está en uso" 
+                : "This username is already taken")
+              // Revert to previous username
+              const profileResponse = await fetch("/api/wallet/profile", {
+                headers: { "x-user-id": userId },
+              })
+              if (profileResponse.ok) {
+                const profileData = await profileResponse.json()
+                if (profileData.profile && profileData.profile.username) {
+                  setUsername(profileData.profile.username)
+                }
+              }
+            }
+          } else {
+            console.log("[Profile] Username saved successfully")
+          }
+        } catch (err) {
+          console.error("[Profile] Error saving username:", err)
+        }
+      }
+
+      saveUsername()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isProfileSheetOpen])
@@ -862,7 +925,7 @@ export default function WalletPage() {
           onClick={() => setIsTrustModalOpen(true)}
           className="fixed bottom-4 left-4 md:bottom-6 md:left-6 z-10"
         >
-          <div className="px-5 py-3 md:px-4 md:py-2 rounded-full flex items-center gap-2 md:gap-2 transition-colors cursor-pointer bg-white/10 hover:bg-white/20">
+          <div className="px-5 py-3 md:px-4 md:py-2 flex items-center gap-2 md:gap-2 transition-colors cursor-pointer">
             <Award className="w-6 h-6 md:w-5 md:h-5 text-white" />
             <span className="text-white font-semibold text-base md:text-sm">
               {trustPoints?.balance || 5} TRUST
@@ -876,7 +939,7 @@ export default function WalletPage() {
           className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-10"
           aria-label={t.openProfile}
         >
-          <div className="w-16 h-16 md:w-14 md:h-14 rounded-full flex items-center justify-center transition-colors cursor-pointer bg-white/10 hover:bg-white/20">
+          <div className="w-16 h-16 md:w-14 md:h-14 flex items-center justify-center transition-colors cursor-pointer">
             <Wallet className="w-7 h-7 md:w-6 md:h-6 text-white" />
           </div>
         </button>
