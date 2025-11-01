@@ -2,26 +2,12 @@
 
 import { FallingPattern } from '@/components/ui/falling-pattern'
 import { usePathname } from 'next/navigation'
-import { useEffect, useState } from 'react'
 
 export function SharedBackground() {
   const pathname = usePathname()
-  const [isVisible, setIsVisible] = useState(true)
-
-  // Keep background visible during route transitions
-  useEffect(() => {
-    setIsVisible(true)
-    
-    // Small delay to ensure smooth transition
-    const timer = setTimeout(() => {
-      // Background stays visible
-    }, 0)
-
-    return () => clearTimeout(timer)
-  }, [pathname])
 
   // Show background on pages that use it
-  const showBackground = pathname === '/wallet' || pathname === '/auth' || pathname === '/'
+  const showBackground = pathname === '/wallet' || pathname === '/auth' || pathname === '/' || pathname?.startsWith('/wallet') || pathname?.startsWith('/auth')
 
   if (!showBackground) {
     return null
@@ -29,13 +15,20 @@ export function SharedBackground() {
 
   return (
     <div 
-      className="fixed inset-0 z-0 pointer-events-none"
+      className="fixed inset-0 z-[0] pointer-events-none"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 0,
+      }}
     >
       <FallingPattern 
         className="h-full w-full" 
         backgroundColor="oklch(0 0 0)"
         color="oklch(1 0 0)"
-        key={pathname} // Re-key on route change to maintain animation
       />
     </div>
   )
