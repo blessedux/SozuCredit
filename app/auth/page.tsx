@@ -374,7 +374,7 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen w-full items-end justify-center overflow-hidden bg-black pb-8">
+    <div className="relative flex h-screen w-full items-center justify-center overflow-hidden bg-black">
       {/* Falling Pattern Background */}
       <div className="absolute inset-0 z-0">
         <FallingPattern 
@@ -384,7 +384,7 @@ export default function AuthPage() {
         />
       </div>
       
-      {/* Circular Button - positioned above background */}
+      {/* Circular Button - centered vertically and horizontally */}
       <div className={`relative z-10 transition-all duration-700 ${
         isAuthenticated 
           ? "scale-150 opacity-0" 

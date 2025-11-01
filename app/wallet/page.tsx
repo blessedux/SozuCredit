@@ -672,6 +672,9 @@ export default function WalletPage() {
     // Only track if menu is closed
     if (isProfileSheetOpen) return
     
+    // Only track if it's a single touch (not multi-touch)
+    if (e.targetTouches.length !== 1) return
+    
     touchStartX.current = e.targetTouches[0].clientX
     touchStartY.current = e.targetTouches[0].clientY
     touchEndX.current = null
@@ -679,10 +682,23 @@ export default function WalletPage() {
   }
 
   const onTouchMove = (e: React.TouchEvent) => {
-    if (!touchStartX.current || isProfileSheetOpen) return
+    if (!touchStartX.current || isProfileSheetOpen || e.targetTouches.length !== 1) return
     
     touchEndX.current = e.targetTouches[0].clientX
     touchEndY.current = e.targetTouches[0].clientY
+    
+    // Prevent default scrolling if horizontal swipe is detected
+    if (touchStartX.current && touchEndX.current) {
+      const distanceX = Math.abs(touchEndX.current - touchStartX.current)
+      const distanceY = touchEndY.current && touchStartY.current 
+        ? Math.abs(touchEndY.current - touchStartY.current) 
+        : 0
+      
+      // If horizontal movement is greater than vertical, prevent vertical scroll
+      if (distanceX > distanceY && distanceX > 10) {
+        e.preventDefault()
+      }
+    }
   }
 
   const onTouchEnd = (e?: React.TouchEvent) => {
@@ -711,8 +727,6 @@ export default function WalletPage() {
         console.log("[Swipe] Opening menu - swipe right to left detected", { distanceX, absDistanceX, absDistanceY })
         setIsProfileSheetOpen(true)
       }
-    } else {
-      console.log("[Swipe] Swipe not detected", { distanceX, absDistanceX, absDistanceY, minSwipeDistance, ratio: absDistanceX / (absDistanceY || 1) })
     }
     
     // Reset touch positions
@@ -727,6 +741,9 @@ export default function WalletPage() {
     // Only track if menu is open
     if (!isProfileSheetOpen) return
     
+    // Only track if it's a single touch (not multi-touch)
+    if (e.targetTouches.length !== 1) return
+    
     touchStartX.current = e.targetTouches[0].clientX
     touchStartY.current = e.targetTouches[0].clientY
     touchEndX.current = null
@@ -734,10 +751,23 @@ export default function WalletPage() {
   }
 
   const onSheetTouchMove = (e: React.TouchEvent) => {
-    if (!touchStartX.current || !isProfileSheetOpen) return
+    if (!touchStartX.current || !isProfileSheetOpen || e.targetTouches.length !== 1) return
     
     touchEndX.current = e.targetTouches[0].clientX
     touchEndY.current = e.targetTouches[0].clientY
+    
+    // Prevent default scrolling if horizontal swipe is detected
+    if (touchStartX.current && touchEndX.current) {
+      const distanceX = Math.abs(touchEndX.current - touchStartX.current)
+      const distanceY = touchEndY.current && touchStartY.current 
+        ? Math.abs(touchEndY.current - touchStartY.current) 
+        : 0
+      
+      // If horizontal movement is greater than vertical, prevent vertical scroll
+      if (distanceX > distanceY && distanceX > 10) {
+        e.preventDefault()
+      }
+    }
   }
 
   const onSheetTouchEnd = () => {
@@ -763,8 +793,6 @@ export default function WalletPage() {
     if (absDistanceX > minSwipeDistance && absDistanceX > absDistanceY * 1.2 && distanceX > 0) {
       console.log("[Swipe] Closing menu - swipe left to right detected", { distanceX, absDistanceX, absDistanceY })
       setIsProfileSheetOpen(false)
-    } else {
-      console.log("[Swipe] Close swipe not detected", { distanceX, absDistanceX, absDistanceY, minSwipeDistance })
     }
     
     // Reset touch positions
