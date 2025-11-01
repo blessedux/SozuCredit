@@ -12,9 +12,9 @@ import {
 } from "@/lib/turnkey/passkeys"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, Suspense } from "react"
 
-export default function AuthPage() {
+function AuthContent() {
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const router = useRouter()
@@ -441,5 +441,23 @@ export default function AuthPage() {
         />
       </div>
     </div>
+  )
+}
+
+export default function AuthPage() {
+  return (
+    <Suspense fallback={
+      <div className="relative flex h-screen w-full items-center justify-center overflow-hidden bg-black">
+        <div className="absolute inset-0 z-0">
+          <FallingPattern 
+            className="h-full w-full" 
+            backgroundColor="oklch(0 0 0)"
+            color="oklch(1 0 0)"
+          />
+        </div>
+      </div>
+    }>
+      <AuthContent />
+    </Suspense>
   )
 }
