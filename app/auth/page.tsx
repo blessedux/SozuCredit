@@ -35,11 +35,24 @@ export default function AuthPage() {
       let credential = null
       let authComplete = false
       
+      // Try to get stored username from localStorage first (available in both login and registration flows)
+      let usernameToUse = "user" // Default fallback
+      if (typeof window !== "undefined") {
+        const storedUsername = localStorage.getItem("sozu_username")
+        if (storedUsername) {
+          usernameToUse = storedUsername
+          console.log("[Auth] Using stored username:", usernameToUse)
+        } else {
+          console.log("[Auth] No stored username found, using default:", usernameToUse)
+        }
+      }
+      
       try {
         console.log("[Auth] Step 1: Attempting login...")
+        
         let challenge
         try {
-          challenge = await generateAuthChallenge("user")
+          challenge = await generateAuthChallenge(usernameToUse)
           console.log("[Auth] Step 2: Challenge generated, calling getPasskey...")
         } catch (challengeError) {
           // If challenge generation fails (user doesn't exist), skip login and go to registration
@@ -65,7 +78,7 @@ export default function AuthPage() {
         
         if (credential) {
           console.log("[Auth] Step 4: Verifying authentication...")
-          const authResult = await verifyAuthentication("user", credential)
+          const authResult = await verifyAuthentication(usernameToUse, credential)
           console.log("[Auth] Step 5: Verification result:", authResult)
           console.log("[Auth] Verification success:", authResult.success)
           console.log("[Auth] Verification userId:", authResult.userId)
@@ -94,10 +107,19 @@ export default function AuthPage() {
           if (typeof window !== "undefined") {
             console.log("[Auth] Step 6: Setting up authentication...")
             
+            // Store username in localStorage for future logins
+            // The API returns the actual username from the database
+            const actualUsername = (authResult as any).username || usernameToUse
+            if (actualUsername) {
+              localStorage.setItem("sozu_username", actualUsername)
+              console.log("[Auth] Saved username to localStorage:", actualUsername)
+            }
+            
             // Store in session storage FIRST (client-side auth check)
-            sessionStorage.setItem("dev_username", authResult.userId || "user")
+            sessionStorage.setItem("dev_username", authResult.userId || actualUsername)
             sessionStorage.setItem("dev_authenticated", "true")
             sessionStorage.setItem("passkey_registered", "true")
+            sessionStorage.setItem("dev_username_display", actualUsername) // Store for display
             
             // Verify sessionStorage was set
             const verifyAuth = sessionStorage.getItem("dev_authenticated")
@@ -217,10 +239,18 @@ export default function AuthPage() {
           if (typeof window !== "undefined") {
             console.log("[Auth] Reg Step 6: Setting up authentication...")
             
+            // Store username in localStorage for future logins
+            const registeredUsername = (regResult as any).username || usernameToUse || "user"
+            if (registeredUsername) {
+              localStorage.setItem("sozu_username", registeredUsername)
+              console.log("[Auth] Saved username to localStorage after registration:", registeredUsername)
+            }
+            
             // Store in session storage FIRST (client-side auth check)
-            sessionStorage.setItem("dev_username", regResult.userId || "user")
+            sessionStorage.setItem("dev_username", regResult.userId || registeredUsername)
             sessionStorage.setItem("dev_authenticated", "true")
             sessionStorage.setItem("passkey_registered", "true")
+            sessionStorage.setItem("dev_username_display", registeredUsername) // Store for display
             
             // Verify sessionStorage was set
             const verifyAuth = sessionStorage.getItem("dev_authenticated")

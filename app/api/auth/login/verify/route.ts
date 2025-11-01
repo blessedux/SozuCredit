@@ -27,21 +27,69 @@ export async function POST(request: NextRequest) {
 
     // Get user and passkey
     const supabase = await createClient()
-    const { data: profile } = await supabase.from("profiles").select("id").eq("username", username).single()
-
-    if (!profile) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404, headers: corsHeaders(request) }
-      )
-    }
-
-    const { data: passkey } = await supabase
+    
+    // First, try to find the passkey by credential_id to get the user
+    // This ensures we match the correct user even if username is wrong
+    const { data: passkeyByCredential, error: passkeyError } = await supabase
       .from("passkeys")
-      .select("*")
-      .eq("user_id", profile.id)
+      .select("*, profiles!inner(id, username)")
       .eq("credential_id", credential.id)
-      .single()
+      .maybeSingle()
+
+    let profile
+    let passkey
+
+    if (passkeyByCredential && passkeyByCredential.profiles) {
+      // Found passkey, use its associated user
+      profile = passkeyByCredential.profiles
+      passkey = {
+        id: passkeyByCredential.id,
+        user_id: passkeyByCredential.user_id,
+        credential_id: passkeyByCredential.credential_id,
+        public_key: passkeyByCredential.public_key,
+        counter: passkeyByCredential.counter,
+        transports: passkeyByCredential.transports,
+        created_at: passkeyByCredential.created_at,
+        last_used_at: passkeyByCredential.last_used_at,
+      }
+      
+      console.log("[Login] Found user by passkey credential_id:", profile.id, "username:", profile.username)
+    } else {
+      // Fallback: try to find user by username (original method)
+      const { data: profileByUsername } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("username", username)
+        .single()
+
+      if (!profileByUsername) {
+        console.error("[Login] User not found by username:", username)
+        return NextResponse.json(
+          { error: "User not found" },
+          { status: 404, headers: corsHeaders(request) }
+        )
+      }
+
+      profile = profileByUsername
+
+      // Try to find passkey for this user
+      const { data: passkeyByUser } = await supabase
+        .from("passkeys")
+        .select("*")
+        .eq("user_id", profile.id)
+        .eq("credential_id", credential.id)
+        .maybeSingle()
+
+      if (!passkeyByUser) {
+        console.error("[Login] Passkey not found for user:", profile.id, "credential_id:", credential.id)
+        return NextResponse.json(
+          { error: "Invalid passkey" },
+          { status: 401, headers: corsHeaders(request) }
+        )
+      }
+
+      passkey = passkeyByUser
+    }
 
     if (!passkey) {
       return NextResponse.json(
@@ -78,10 +126,12 @@ export async function POST(request: NextRequest) {
 
     // Return success - the client will use sessionStorage for authentication
     // The middleware will check sessionStorage on client side
+    // Also return username so client can store it for future logins
     return NextResponse.json(
       { 
         success: true, 
-        userId: profile.id
+        userId: profile.id,
+        username: profile.username || username // Return actual username from database
       },
       { headers: corsHeaders(request) }
     )

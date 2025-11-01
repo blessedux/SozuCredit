@@ -47,6 +47,11 @@ export default function WalletPage() {
   const [profilePic, setProfilePic] = useState<string | null>("/default_pfp.png")
   const [walletCopied, setWalletCopied] = useState(false)
   
+  // Currency state
+  const [currency, setCurrency] = useState<"XLM" | "USDC" | "MXN">("XLM")
+  const [xlmPriceUSD, setXlmPriceUSD] = useState<number | null>(null)
+  const [usdToMxnRate, setUsdToMxnRate] = useState<number | null>(null)
+  
   // Swipe gesture state
   const touchStartX = useRef<number | null>(null)
   const touchEndX = useRef<number | null>(null)
@@ -68,11 +73,16 @@ export default function WalletPage() {
       addy: "Addy",
       fundYourAddress: "Fondea tu dirección para activar tu cuenta.",
       language: "Idioma",
+      currency: "Moneda",
+      currencyDesc: "Selecciona cómo quieres ver tu balance",
       save: "Guardar",
       cancel: "Cancelar",
       english: "Inglés",
       spanish: "Español",
       changePicture: "Cambiar Foto",
+      xlm: "XLM",
+      usdc: "USDC (USD)",
+      mxn: "MXN (Pesos)",
       // Balance
       totalBalance: "Saldo Total",
       todayAPY: "APY de Hoy",
@@ -126,11 +136,16 @@ export default function WalletPage() {
       addy: "Addy",
       fundYourAddress: "Fund your address to activate your account.",
       language: "Language",
+      currency: "Currency",
+      currencyDesc: "Select how you want to view your balance",
       save: "Save",
       cancel: "Cancel",
       english: "English",
       spanish: "Spanish",
       changePicture: "Change Picture",
+      xlm: "XLM",
+      usdc: "USDC (USD)",
+      mxn: "MXN (Pesos)",
       // Balance
       totalBalance: "Total Balance",
       todayAPY: "Today's APY",
@@ -174,6 +189,50 @@ export default function WalletPage() {
   }
   
   const t = texts[language]
+
+  // Load currency preference from localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedCurrency = localStorage.getItem("sozu_currency") as "XLM" | "USDC" | "MXN" | null
+      if (savedCurrency && ["XLM", "USDC", "MXN"].includes(savedCurrency)) {
+        setCurrency(savedCurrency)
+      }
+    }
+  }, [])
+
+  // Fetch XLM price in USD and USD to MXN exchange rate
+  useEffect(() => {
+    const fetchPrices = async () => {
+      try {
+        // Fetch XLM price in USD (using CoinGecko API)
+        const xlmResponse = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=stellar&vs_currencies=usd")
+        if (xlmResponse.ok) {
+          const xlmData = await xlmResponse.json()
+          setXlmPriceUSD(xlmData.stellar?.usd || null)
+        }
+
+        // Fetch USD to MXN exchange rate (using exchangerate-api or similar)
+        // Using exchangerate-api.com free tier
+        const mxnResponse = await fetch("https://api.exchangerate-api.com/v4/latest/USD")
+        if (mxnResponse.ok) {
+          const mxnData = await mxnResponse.json()
+          setUsdToMxnRate(mxnData.rates?.MXN || null)
+        }
+      } catch (error) {
+        console.error("[Wallet] Error fetching prices:", error)
+        // Set fallback rates if API fails
+        setXlmPriceUSD(0.11) // Approximate XLM price in USD
+        setUsdToMxnRate(17.0) // Approximate USD to MXN rate
+      }
+    }
+
+    fetchPrices()
+    
+    // Refresh prices every 5 minutes
+    const priceInterval = setInterval(fetchPrices, 5 * 60 * 1000)
+    
+    return () => clearInterval(priceInterval)
+  }, [])
 
   useEffect(() => {
     // Client-side auth check and data fetch
@@ -531,11 +590,39 @@ export default function WalletPage() {
     return () => clearInterval(apyInterval)
   }, [])
 
-  // Use XLM balance from Stellar wallet, fallback to vault balance
-  const balance = xlmBalance !== null 
-    ? Number(xlmBalance).toFixed(2) 
-    : Number(vault?.balance || 0).toFixed(2)
+  // Convert balance based on selected currency
+  const getDisplayBalance = () => {
+    const xlmBalanceNum = xlmBalance !== null ? Number(xlmBalance) : Number(vault?.balance || 0)
+    
+    if (currency === "XLM") {
+      return xlmBalanceNum
+    } else if (currency === "USDC") {
+      // Convert XLM to USDC (USD value)
+      if (xlmPriceUSD) {
+        return xlmBalanceNum * xlmPriceUSD
+      }
+      return xlmBalanceNum * 0.11 // Fallback
+    } else if (currency === "MXN") {
+      // Convert XLM to MXN (via USD)
+      if (xlmPriceUSD && usdToMxnRate) {
+        return xlmBalanceNum * xlmPriceUSD * usdToMxnRate
+      }
+      return xlmBalanceNum * 0.11 * 17.0 // Fallback
+    }
+    return xlmBalanceNum
+  }
+
+  const displayBalance = getDisplayBalance()
+  const balance = displayBalance.toFixed(6) // 6 decimal places
   const maskedBalance = balance.replace(/\d/g, "*")
+  
+  // Get currency symbol for display
+  const getCurrencySymbol = () => {
+    if (currency === "XLM") return "XLM"
+    if (currency === "USDC") return "USDC"
+    if (currency === "MXN") return "MXN"
+    return "XLM"
+  }
 
   const toggleBalanceVisibility = () => {
     setIsBalanceVisible(!isBalanceVisible)
@@ -658,6 +745,14 @@ export default function WalletPage() {
   const handleLanguageChange = (lang: "es" | "en") => {
     setLanguage(lang)
     // TODO: Save language preference
+  }
+
+  const handleCurrencyChange = (curr: "XLM" | "USDC" | "MXN") => {
+    setCurrency(curr)
+    // Save currency preference to localStorage
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sozu_currency", curr)
+    }
   }
 
   const handleProfilePictureChange = () => {
@@ -884,7 +979,7 @@ export default function WalletPage() {
           {/* Balance Display Box */}
           <div className="mb-8">
             <div className="border border-white/20 rounded-lg p-8 text-center">
-              <div className="text-sm text-white/60 mb-4">{t.totalBalance} (XLM)</div>
+              <div className="text-sm text-white/60 mb-4">{t.totalBalance} ({getCurrencySymbol()})</div>
               <div 
                 className="text-6xl font-bold text-white cursor-pointer select-none flex items-center justify-center min-h-[4rem]"
                 onClick={toggleBalanceVisibility}
@@ -893,7 +988,11 @@ export default function WalletPage() {
               </div>
               {/* Real-time APY Display */}
               <div className="mt-2 text-xs text-white/50 font-normal">
-                {t.todayAPY}: <span className="font-medium">{currentAPY.toFixed(2)}%</span>
+                {t.todayAPY}: <span className="font-medium">{
+                  currency === "MXN" && usdToMxnRate
+                    ? (currentAPY * usdToMxnRate).toFixed(2)
+                    : currentAPY.toFixed(2)
+                }%</span>
               </div>
             </div>
           </div>
@@ -1165,6 +1264,7 @@ export default function WalletPage() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-center gap-2 mb-2">
                     <Globe className="w-4 h-4 text-white" />
+                    <span className="text-sm text-white/80">{t.language}</span>
                   </div>
                   <div className="flex justify-center gap-4">
                     <Button
@@ -1180,6 +1280,38 @@ export default function WalletPage() {
                       className={`border-2 bg-transparent ${language === "en" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
                     >
                       EN
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Currency Selection */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-center gap-2 mb-2">
+                    <Wallet className="w-4 h-4 text-white" />
+                    <span className="text-sm text-white/80">{t.currency}</span>
+                  </div>
+                  <p className="text-xs text-white/60 text-center mb-2">{t.currencyDesc}</p>
+                  <div className="flex flex-col justify-center gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => handleCurrencyChange("XLM")}
+                      className={`border-2 bg-transparent w-full ${currency === "XLM" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
+                    >
+                      {t.xlm}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleCurrencyChange("USDC")}
+                      className={`border-2 bg-transparent w-full ${currency === "USDC" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
+                    >
+                      {t.usdc}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleCurrencyChange("MXN")}
+                      className={`border-2 bg-transparent w-full ${currency === "MXN" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
+                    >
+                      {t.mxn}
                     </Button>
                   </div>
                 </div>

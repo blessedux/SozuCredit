@@ -151,7 +151,11 @@ export async function verifyRegistration(
     }
 
     const data = await response.json()
-    return { success: data.success, userId: data.userId }
+    return { 
+      success: data.success, 
+      userId: data.userId,
+      username: data.username 
+    }
   } catch (error) {
     console.error("Error verifying registration:", error)
     throw error
@@ -183,7 +187,11 @@ export async function verifyAuthentication(
     }
 
     const data = await response.json()
-    return { success: data.success, userId: data.userId }
+    return { 
+      success: data.success, 
+      userId: data.userId,
+      username: data.username 
+    }
   } catch (error) {
     console.error("Error verifying authentication:", error)
     throw error

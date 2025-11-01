@@ -311,8 +311,19 @@ export async function POST(request: NextRequest) {
 
     console.log("[Register] Registration successful for user:", authData.user.id)
 
+    // Get the username from the profile
+    const { data: registeredProfile } = await supabase
+      .from("profiles")
+      .select("username")
+      .eq("id", authData.user.id)
+      .single()
+
     return NextResponse.json(
-      { success: true, userId: authData.user.id },
+      { 
+        success: true, 
+        userId: authData.user.id,
+        username: registeredProfile?.username || username 
+      },
       { headers: corsHeaders(request) }
     )
   } catch (error) {
