@@ -2,7 +2,7 @@
   "name": "SozuCredit",
   "short_name": "SozuCredit",
   "description": "Community-powered micro-credit for entrepreneurs",
-  "start_url": "/",
+  "start_url": "/auth",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",

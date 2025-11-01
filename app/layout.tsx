@@ -50,8 +50,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
-      <body className={`${inter.className} antialiased`}>
+    <html lang="en" className="bg-black" style={{ backgroundColor: '#000000' }}>
+      <body className={`${inter.className} antialiased bg-black`} style={{ backgroundColor: '#000000' }}>
         <SharedBackground />
         {children}
         <Analytics />
