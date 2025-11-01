@@ -48,9 +48,9 @@ export default function WalletPage() {
   const [walletCopied, setWalletCopied] = useState(false)
   
   // Currency state
-  const [currency, setCurrency] = useState<"XLM" | "USDC" | "MXN">("XLM")
+  const [currency, setCurrency] = useState<"XLM" | "USD" | "ARS">("XLM")
   const [xlmPriceUSD, setXlmPriceUSD] = useState<number | null>(null)
-  const [usdToMxnRate, setUsdToMxnRate] = useState<number | null>(null)
+  const [usdToArsRate, setUsdToArsRate] = useState<number | null>(null)
   
   // Swipe gesture state
   const touchStartX = useRef<number | null>(null)
@@ -81,8 +81,8 @@ export default function WalletPage() {
       spanish: "Español",
       changePicture: "Cambiar Foto",
       xlm: "XLM",
-      usdc: "USDC (USD)",
-      mxn: "MXN (Pesos)",
+      usd: "USD",
+      ars: "ARS (Pesos Argentinos)",
       // Balance
       totalBalance: "Saldo Total",
       todayAPY: "APY de Hoy",
@@ -144,8 +144,8 @@ export default function WalletPage() {
       spanish: "Spanish",
       changePicture: "Change Picture",
       xlm: "XLM",
-      usdc: "USDC (USD)",
-      mxn: "MXN (Pesos)",
+      usd: "USD",
+      ars: "ARS (Argentine Pesos)",
       // Balance
       totalBalance: "Total Balance",
       todayAPY: "Today's APY",
@@ -193,14 +193,14 @@ export default function WalletPage() {
   // Load currency preference from localStorage
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const savedCurrency = localStorage.getItem("sozu_currency") as "XLM" | "USDC" | "MXN" | null
-      if (savedCurrency && ["XLM", "USDC", "MXN"].includes(savedCurrency)) {
+      const savedCurrency = localStorage.getItem("sozu_currency") as "XLM" | "USD" | "ARS" | null
+      if (savedCurrency && ["XLM", "USD", "ARS"].includes(savedCurrency)) {
         setCurrency(savedCurrency)
       }
     }
   }, [])
 
-  // Fetch XLM price in USD and USD to MXN exchange rate
+  // Fetch XLM price in USD and USD to ARS exchange rate
   useEffect(() => {
     const fetchPrices = async () => {
       try {
@@ -211,18 +211,17 @@ export default function WalletPage() {
           setXlmPriceUSD(xlmData.stellar?.usd || null)
         }
 
-        // Fetch USD to MXN exchange rate (using exchangerate-api or similar)
-        // Using exchangerate-api.com free tier
-        const mxnResponse = await fetch("https://api.exchangerate-api.com/v4/latest/USD")
-        if (mxnResponse.ok) {
-          const mxnData = await mxnResponse.json()
-          setUsdToMxnRate(mxnData.rates?.MXN || null)
+        // Fetch USD to ARS exchange rate (using exchangerate-api)
+        const arsResponse = await fetch("https://api.exchangerate-api.com/v4/latest/USD")
+        if (arsResponse.ok) {
+          const arsData = await arsResponse.json()
+          setUsdToArsRate(arsData.rates?.ARS || null)
         }
       } catch (error) {
         console.error("[Wallet] Error fetching prices:", error)
         // Set fallback rates if API fails
         setXlmPriceUSD(0.11) // Approximate XLM price in USD
-        setUsdToMxnRate(17.0) // Approximate USD to MXN rate
+        setUsdToArsRate(900.0) // Approximate USD to ARS rate
       }
     }
 
@@ -527,66 +526,35 @@ export default function WalletPage() {
     }
   }, [])
 
-  // Real-time APY updates with smooth, gradual transitions
+  // Fetch real APY from DeFindex strategy
   useEffect(() => {
-    // Initialize with a random starting point in the range
-    const minAPY = 14.5
-    const maxAPY = 21.5
-    const range = maxAPY - minAPY
-    const startAPY = minAPY + (Math.random() * range)
-    setCurrentAPY(startAPY)
-
-    // Use a ref-like pattern to track current and target values
-    let currentValue = startAPY
-    let targetAPY = startAPY
-    let updateCount = 0
-    let targetChangeCounter = 0
-
-    // Calculate how many updates we need for a 10-minute period
-    const updatesPerMinute = 30 // Every 2 seconds = 30 updates per minute
-    const updatesIn10Minutes = updatesPerMinute * 10 // 300 updates
-
-    const apyInterval = setInterval(() => {
-      updateCount++
-      targetChangeCounter++
-
-      // Choose a new target every 20-30 updates (40-60 seconds)
-      // This ensures gradual direction changes with smooth transitions
-      if (targetChangeCounter >= (20 + Math.floor(Math.random() * 11))) {
-        // Pick a new target APY in the range
-        // Ensure the new target is different enough to create visible movement
-        const newTarget = minAPY + (Math.random() * range)
-        // Only change if it's different enough (at least 0.5% difference)
-        if (Math.abs(newTarget - targetAPY) > 0.5) {
-          targetAPY = newTarget
+    const fetchRealAPY = async () => {
+      try {
+        const response = await fetch("/api/wallet/defindex/apy")
+        if (response.ok) {
+          const data = await response.json()
+          if (data.success && data.apy) {
+            setCurrentAPY(data.apy)
+            console.log("[Wallet] Fetched real DeFindex APY:", data.apy)
+          }
+        } else {
+          console.warn("[Wallet] Failed to fetch DeFindex APY, using fallback")
+          // Fallback to a reasonable default if API fails
+          setCurrentAPY(15.5)
         }
-        targetChangeCounter = 0
+      } catch (error) {
+        console.error("[Wallet] Error fetching DeFindex APY:", error)
+        // Fallback to a reasonable default if fetch fails
+        setCurrentAPY(15.5)
       }
-
-      // Smooth interpolation towards target (0.03 = very gradual, takes ~33 steps to reach target)
-      // This ensures subtle, smooth transitions
-      const smoothnessFactor = 0.03
-      const difference = targetAPY - currentValue
-      const increment = difference * smoothnessFactor
-
-      // Update current value smoothly
-      currentValue = currentValue + increment
-
-      // Clamp to range to ensure it never goes outside bounds
-      currentValue = Math.max(minAPY, Math.min(maxAPY, currentValue))
-
-      // Update state with 2 decimal places
-      setCurrentAPY(Math.round(currentValue * 100) / 100)
-
-      // Reset after 10 minutes to start a new cycle
-      if (updateCount >= updatesIn10Minutes) {
-        updateCount = 0
-        // Start fresh with a new random value in range
-        currentValue = minAPY + (Math.random() * range)
-        targetAPY = currentValue
-      }
-    }, 2000) // Update every 2 seconds
-
+    }
+    
+    // Fetch APY immediately
+    fetchRealAPY()
+    
+    // Refresh APY every 5 minutes (APY doesn't change that frequently)
+    const apyInterval = setInterval(fetchRealAPY, 5 * 60 * 1000)
+    
     return () => clearInterval(apyInterval)
   }, [])
 
@@ -596,18 +564,18 @@ export default function WalletPage() {
     
     if (currency === "XLM") {
       return xlmBalanceNum
-    } else if (currency === "USDC") {
-      // Convert XLM to USDC (USD value)
+    } else if (currency === "USD") {
+      // Convert XLM to USD
       if (xlmPriceUSD) {
         return xlmBalanceNum * xlmPriceUSD
       }
       return xlmBalanceNum * 0.11 // Fallback
-    } else if (currency === "MXN") {
-      // Convert XLM to MXN (via USD)
-      if (xlmPriceUSD && usdToMxnRate) {
-        return xlmBalanceNum * xlmPriceUSD * usdToMxnRate
+    } else if (currency === "ARS") {
+      // Convert XLM to ARS (via USD)
+      if (xlmPriceUSD && usdToArsRate) {
+        return xlmBalanceNum * xlmPriceUSD * usdToArsRate
       }
-      return xlmBalanceNum * 0.11 * 17.0 // Fallback
+      return xlmBalanceNum * 0.11 * 900.0 // Fallback
     }
     return xlmBalanceNum
   }
@@ -619,8 +587,8 @@ export default function WalletPage() {
   // Get currency symbol for display
   const getCurrencySymbol = () => {
     if (currency === "XLM") return "XLM"
-    if (currency === "USDC") return "USDC"
-    if (currency === "MXN") return "MXN"
+    if (currency === "USD") return "USD"
+    if (currency === "ARS") return "ARS"
     return "XLM"
   }
 
@@ -747,7 +715,7 @@ export default function WalletPage() {
     // TODO: Save language preference
   }
 
-  const handleCurrencyChange = (curr: "XLM" | "USDC" | "MXN") => {
+  const handleCurrencyChange = (curr: "XLM" | "USD" | "ARS") => {
     setCurrency(curr)
     // Save currency preference to localStorage
     if (typeof window !== "undefined") {
@@ -989,8 +957,8 @@ export default function WalletPage() {
               {/* Real-time APY Display */}
               <div className="mt-2 text-xs text-white/50 font-normal">
                 {t.todayAPY}: <span className="font-medium">{
-                  currency === "MXN" && usdToMxnRate
-                    ? (currentAPY * usdToMxnRate).toFixed(2)
+                  currency === "ARS" && usdToArsRate
+                    ? (currentAPY * usdToArsRate).toFixed(2)
                     : currentAPY.toFixed(2)
                 }%</span>
               </div>
@@ -1262,9 +1230,8 @@ export default function WalletPage() {
 
                 {/* Language Selection */}
                 <div className="space-y-2">
-                  <div className="flex items-center justify-center gap-2 mb-2">
+                  <div className="flex items-center justify-center mb-2">
                     <Globe className="w-4 h-4 text-white" />
-                    <span className="text-sm text-white/80">{t.language}</span>
                   </div>
                   <div className="flex justify-center gap-4">
                     <Button
@@ -1286,11 +1253,6 @@ export default function WalletPage() {
 
                 {/* Currency Selection */}
                 <div className="space-y-2">
-                  <div className="flex items-center justify-center gap-2 mb-2">
-                    <Wallet className="w-4 h-4 text-white" />
-                    <span className="text-sm text-white/80">{t.currency}</span>
-                  </div>
-                  <p className="text-xs text-white/60 text-center mb-2">{t.currencyDesc}</p>
                   <div className="flex flex-col justify-center gap-2">
                     <Button
                       variant="outline"
@@ -1301,17 +1263,17 @@ export default function WalletPage() {
                     </Button>
                     <Button
                       variant="outline"
-                      onClick={() => handleCurrencyChange("USDC")}
-                      className={`border-2 bg-transparent w-full ${currency === "USDC" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
+                      onClick={() => handleCurrencyChange("USD")}
+                      className={`border-2 bg-transparent w-full ${currency === "USD" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
                     >
-                      {t.usdc}
+                      {t.usd}
                     </Button>
                     <Button
                       variant="outline"
-                      onClick={() => handleCurrencyChange("MXN")}
-                      className={`border-2 bg-transparent w-full ${currency === "MXN" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
+                      onClick={() => handleCurrencyChange("ARS")}
+                      className={`border-2 bg-transparent w-full ${currency === "ARS" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
                     >
-                      {t.mxn}
+                      {t.ars}
                     </Button>
                   </div>
                 </div>
