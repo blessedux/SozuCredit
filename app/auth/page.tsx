@@ -1,7 +1,6 @@
 "use client"
 
 import { FingerScanButton } from "@/components/ui/finger-scan-button"
-import { FallingPattern } from "@/components/ui/falling-pattern"
 import { 
   generateRegistrationChallenge, 
   generateAuthChallenge,
@@ -375,15 +374,6 @@ export default function AuthPage() {
 
   return (
     <div className="relative flex h-screen w-full items-center justify-center overflow-hidden bg-black">
-      {/* Falling Pattern Background */}
-      <div className="absolute inset-0 z-0">
-        <FallingPattern 
-          className="h-full w-full" 
-          backgroundColor="oklch(0 0 0)"
-          color="oklch(1 0 0)"
-        />
-      </div>
-      
       {/* Circular Button - centered vertically and horizontally */}
       <div className={`relative z-10 transition-all duration-700 ${
         isAuthenticated 

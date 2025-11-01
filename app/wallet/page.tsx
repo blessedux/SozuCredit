@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useRef } from "react"
 import { Wallet, Award, ArrowLeft, Globe } from "lucide-react"
-import { FallingPattern } from "@/components/ui/falling-pattern"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
@@ -884,15 +883,6 @@ export default function WalletPage() {
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-black">
-      {/* Falling Pattern Background */}
-      <div className="absolute inset-0 z-0">
-        <FallingPattern 
-          className="h-full w-full" 
-          backgroundColor="oklch(0 0 0)"
-          color="oklch(1 0 0)"
-        />
-      </div>
-
       {/* Content */}
       <div 
         className="relative z-10 h-full overflow-y-auto touch-pan-y"
