@@ -37,8 +37,8 @@ export async function POST(request: Request) {
     const existingWallet = await getStellarWallet(userId, !user)
     if (existingWallet) {
       // Check if wallet has a valid publicKey
-      if (existingWallet.publicKey) {
-        console.log("[Stellar Wallet API] Wallet already exists:", existingWallet.publicKey)
+      if (existingWallet.publicKey && existingWallet.publicKey.trim().length > 0) {
+        console.log("[Stellar Wallet API] Wallet already exists for user, returning existing wallet:", existingWallet.publicKey.substring(0, 10) + "...")
         return NextResponse.json(
           {
             walletId: existingWallet.turnkeyWalletId,
@@ -48,9 +48,20 @@ export async function POST(request: Request) {
           { headers: corsHeaders(request as any) }
         )
       } else {
-        // Wallet exists but has no publicKey - delete it and recreate
-        console.log("[Stellar Wallet API] Wallet exists but has no publicKey, deleting and recreating...")
-        await deleteStellarWallet(userId, !user)
+        // Wallet exists but has no publicKey - this shouldn't happen, but handle it
+        console.warn("[Stellar Wallet API] Wallet exists but has no publicKey, this should not happen. Attempting to update...")
+        // Try to get the wallet from Turnkey and update it
+        // For now, just log an error - the wallet should not be in this state
+        console.error("[Stellar Wallet API] Cannot fix wallet without publicKey automatically. Manual intervention required.")
+        return NextResponse.json(
+          {
+            error: "Wallet exists but is in an invalid state. Please contact support.",
+            walletId: existingWallet.turnkeyWalletId,
+            publicKey: null,
+            network: existingWallet.network,
+          },
+          { status: 500, headers: corsHeaders(request as any) }
+        )
       }
     }
 

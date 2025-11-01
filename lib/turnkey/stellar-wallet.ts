@@ -359,28 +359,34 @@ export async function storeStellarWallet(
     network: stellarConfig.network,
   })
 
+  // Use upsert to ensure one wallet per user (handles both create and update)
+  // If wallet exists for this user, update it; otherwise, create new one
   const { data, error } = await supabase
     .from("stellar_wallets")
-    .insert({
+    .upsert({
       user_id: userId,
       turnkey_wallet_id: turnkeyWalletId,
       public_key: publicKey,
       network: stellarConfig.network,
+      updated_at: new Date().toISOString(),
+    }, {
+      onConflict: "user_id",
+      ignoreDuplicates: false, // Update existing wallet
     })
     .select()
     .single()
 
   if (error) {
-    console.error("[storeStellarWallet] Insert error:", error)
+    console.error("[storeStellarWallet] Upsert error:", error)
     throw new Error(`Failed to store wallet: ${error.message}`)
   }
 
   if (!data) {
-    console.error("[storeStellarWallet] No data returned from insert")
+    console.error("[storeStellarWallet] No data returned from upsert")
     throw new Error("Failed to store wallet: No data returned")
   }
 
-  console.log("[storeStellarWallet] Wallet inserted successfully:", {
+  console.log("[storeStellarWallet] Wallet stored successfully:", {
     id: data.id,
     turnkeyWalletId: data.turnkey_wallet_id,
     publicKey: data.public_key ? `${data.public_key.substring(0, 10)}...` : null,

@@ -359,12 +359,13 @@ export default function WalletPage() {
                   }
                 }
               } else if (walletAddressResponse.status === 404) {
-                // Wallet not created yet - try creating it
+                // Wallet not found - try creating it once
                 console.log(`[Wallet] Wallet not found (404), attempting to create...`)
                 
-                if (retryCount < 5) {
+                if (retryCount === 0) {
+                  // Only try to create wallet once on first attempt
                   try {
-                    // Try to create wallet via API
+                    // Try to create wallet via API (which will check for existing wallet first)
                     const createResponse = await fetch("/api/wallet/stellar/create", {
                       method: "POST",
                       headers: {
@@ -379,7 +380,7 @@ export default function WalletPage() {
                       const createData = await createResponse.json()
                       console.log("[Wallet] Create wallet data:", createData)
                       if (createData.publicKey) {
-                        console.log("[Wallet] ✅ Wallet created and address loaded:", createData.publicKey)
+                        console.log("[Wallet] ✅ Wallet created/retrieved and address loaded:", createData.publicKey)
                         setWalletAddress(createData.publicKey)
                         if (createData.network) {
                           setWalletNetwork(createData.network)
@@ -391,66 +392,44 @@ export default function WalletPage() {
                     } else {
                       const errorData = await createResponse.json().catch(() => ({}))
                       console.error("[Wallet] Failed to create wallet:", errorData)
+                      // If creation fails, retry fetching address in case it was created by another process
+                      if (retryCount < 3) {
+                        setTimeout(() => fetchWalletAddress(retryCount + 1), 2000)
+                        return
+                      }
                     }
                   } catch (createError) {
                     console.error("[Wallet] Error creating wallet:", createError)
+                    // Retry fetching address
+                    if (retryCount < 3) {
+                      setTimeout(() => fetchWalletAddress(retryCount + 1), 2000)
+                      return
+                    }
                   }
-                  
-                  // Retry after delay
-                  console.log(`[Wallet] Retrying in 2 seconds (attempt ${retryCount + 1}/5)...`)
-                  setTimeout(() => fetchWalletAddress(retryCount + 1), 2000)
                 } else {
+                  // On retries, just try fetching the address again (might have been created)
+                  if (retryCount < 3) {
+                    console.log(`[Wallet] Retrying address fetch (attempt ${retryCount + 1}/3)...`)
+                    setTimeout(() => fetchWalletAddress(retryCount + 1), 2000)
+                    return
+                  }
+                }
+                
+                if (retryCount >= 3) {
                   console.log("[Wallet] Wallet not found after retries")
                   setWalletAddress("") // Empty if wallet not created yet
                 }
               } else if (walletAddressResponse.status === 500) {
-                // 500 error might be due to missing publicKey - try to recreate wallet
+                // 500 error - log and retry a few times, but don't recreate wallet
                 const errorData = await walletAddressResponse.json().catch(() => ({}))
                 console.error("[Wallet] Error fetching wallet address:", walletAddressResponse.status, errorData)
                 
-                // Check if error is about missing publicKey
-                if (errorData.error && errorData.error.includes("publicKey is missing")) {
-                  console.log("[Wallet] Wallet has no publicKey, attempting to recreate...")
-                  // Try to create/recreate wallet
-                  try {
-                    const createResponse = await fetch("/api/wallet/stellar/create", {
-                      method: "POST",
-                      headers: {
-                        "Content-Type": "application/json",
-                        "x-user-id": userId,
-                      },
-                    })
-
-                    console.log("[Wallet] Create wallet response status:", createResponse.status)
-                    
-                    if (createResponse.ok) {
-                      const createData = await createResponse.json()
-                      console.log("[Wallet] Create wallet response data:", createData)
-                      if (createData.publicKey) {
-                        console.log("[Wallet] ✅ Wallet recreated and address loaded:", createData.publicKey)
-                        setWalletAddress(createData.publicKey)
-                        if (createData.network) {
-                          setWalletNetwork(createData.network)
-                        }
-                        // Fetch XLM balance for this wallet
-                        fetchXLMBalance(createData.publicKey)
-                        return // Success, no need to retry
-                      } else {
-                        console.warn("[Wallet] Wallet created but no publicKey in response:", createData)
-                      }
-                    } else {
-                      const createErrorData = await createResponse.json().catch(() => ({}))
-                      console.error("[Wallet] Failed to recreate wallet:", createResponse.status, createErrorData)
-                    }
-                  } catch (createError) {
-                    console.error("[Wallet] Error recreating wallet:", createError)
-                  }
-                }
-                
-                // Retry on error if we haven't exceeded limit
-                if (retryCount < 5) {
+                // Retry on error if we haven't exceeded limit (might be temporary server issue)
+                if (retryCount < 3) {
+                  console.log(`[Wallet] Retrying after error (attempt ${retryCount + 1}/3)...`)
                   setTimeout(() => fetchWalletAddress(retryCount + 1), 2000)
                 } else {
+                  console.error("[Wallet] Failed to fetch wallet address after retries")
                   setWalletAddress("") // Empty on error after retries
                 }
               } else {
