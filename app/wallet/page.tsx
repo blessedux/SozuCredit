@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Card, CardContent } from "@/components/ui/card"
+import { SlidingNumber } from "@/components/ui/sliding-number"
 
 interface Vault {
   id: string
@@ -28,7 +29,7 @@ export default function WalletPage() {
   const [trustPoints, setTrustPoints] = useState<TrustPoints | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [isBalanceVisible, setIsBalanceVisible] = useState(false)
+  const [isBalanceVisible, setIsBalanceVisible] = useState(true)
   const [xlmBalance, setXlmBalance] = useState<number | null>(null)
   const [isTrustModalOpen, setIsTrustModalOpen] = useState(false)
   const [isProfileSheetOpen, setIsProfileSheetOpen] = useState(false)
@@ -48,9 +49,10 @@ export default function WalletPage() {
   const [walletCopied, setWalletCopied] = useState(false)
   
   // Currency state
-  const [currency, setCurrency] = useState<"XLM" | "USD" | "ARS">("XLM")
+  const [currency, setCurrency] = useState<"XLM" | "USD" | "ARS">("ARS")
   const [xlmPriceUSD, setXlmPriceUSD] = useState<number | null>(null)
   const [usdToArsRate, setUsdToArsRate] = useState<number | null>(null)
+  const [animatedBalance, setAnimatedBalance] = useState<number>(0)
   
   // Swipe gesture state
   const touchStartX = useRef<number | null>(null)
@@ -559,7 +561,7 @@ export default function WalletPage() {
   }, [])
 
   // Convert balance based on selected currency
-  const getDisplayBalance = () => {
+  const getBaseBalance = () => {
     const xlmBalanceNum = xlmBalance !== null ? Number(xlmBalance) : Number(vault?.balance || 0)
     
     if (currency === "XLM") {
@@ -580,8 +582,47 @@ export default function WalletPage() {
     return xlmBalanceNum
   }
 
-  const displayBalance = getDisplayBalance()
-  const balance = displayBalance.toFixed(6) // 6 decimal places
+  const baseBalance = getBaseBalance()
+
+  // Use refs to track values for smooth animation
+  const animatedBalanceRef = useRef(0)
+  const baseBalanceRef = useRef(0)
+  
+  // Animate balance growth based on APY
+  useEffect(() => {
+    // Calculate APY growth per second
+    const apyPerSecond = currentAPY / 100 / 365 / 24 / 60 / 60 // Convert APY to per-second rate
+    
+    // Check if base balance changed significantly (new funds received or currency changed)
+    const baseChanged = Math.abs(baseBalance - baseBalanceRef.current) / (baseBalanceRef.current || 1) > 0.001
+    
+    if (baseChanged || animatedBalanceRef.current === 0) {
+      // Reset to new base balance if it changed significantly or is initializing
+      animatedBalanceRef.current = baseBalance
+      baseBalanceRef.current = baseBalance
+      setAnimatedBalance(baseBalance)
+    }
+    
+    // Update balance every 100ms for smooth animation
+    const interval = setInterval(() => {
+      // Check if base balance changed during interval
+      if (Math.abs(baseBalance - baseBalanceRef.current) / (baseBalanceRef.current || 1) > 0.001) {
+        // Base changed significantly, reset to it
+        animatedBalanceRef.current = baseBalance
+        baseBalanceRef.current = baseBalance
+      }
+      
+      // Calculate growth for this interval (100ms = 0.1 seconds)
+      const growthPerInterval = animatedBalanceRef.current * apyPerSecond * 0.1
+      animatedBalanceRef.current += growthPerInterval
+      setAnimatedBalance(animatedBalanceRef.current)
+    }, 100)
+    
+    return () => clearInterval(interval)
+  }, [baseBalance, currentAPY])
+
+  // Format balance to 4 decimals
+  const balance = animatedBalance.toFixed(4)
   const maskedBalance = balance.replace(/\d/g, "*")
   
   // Get currency symbol for display
@@ -589,7 +630,7 @@ export default function WalletPage() {
     if (currency === "XLM") return "XLM"
     if (currency === "USD") return "USD"
     if (currency === "ARS") return "ARS"
-    return "XLM"
+    return "ARS"
   }
 
   const toggleBalanceVisibility = () => {
@@ -722,6 +763,7 @@ export default function WalletPage() {
       localStorage.setItem("sozu_currency", curr)
     }
   }
+
 
   const handleProfilePictureChange = () => {
     // Create a file input element
@@ -952,7 +994,11 @@ export default function WalletPage() {
                 className="text-6xl font-bold text-white cursor-pointer select-none flex items-center justify-center min-h-[4rem]"
                 onClick={toggleBalanceVisibility}
               >
-                {isBalanceVisible ? balance : maskedBalance}
+                {isBalanceVisible ? (
+                  <SlidingNumber value={animatedBalance} />
+                ) : (
+                  <span className="tabular-nums">{maskedBalance}</span>
+                )}
               </div>
               {/* Real-time APY Display */}
               <div className="mt-2 text-xs text-white/50 font-normal">
@@ -1230,8 +1276,9 @@ export default function WalletPage() {
 
                 {/* Language Selection */}
                 <div className="space-y-2">
-                  <div className="flex items-center justify-center mb-2">
+                  <div className="flex items-center justify-center gap-2 mb-2">
                     <Globe className="w-4 h-4 text-white" />
+                    <span className="text-sm text-white/80">{t.language}</span>
                   </div>
                   <div className="flex justify-center gap-4">
                     <Button
@@ -1253,6 +1300,11 @@ export default function WalletPage() {
 
                 {/* Currency Selection */}
                 <div className="space-y-2">
+                  <div className="flex items-center justify-center gap-2 mb-2">
+                    <Wallet className="w-4 h-4 text-white" />
+                    <span className="text-sm text-white/80">{t.currency}</span>
+                  </div>
+                  <p className="text-xs text-white/60 text-center mb-2">{t.currencyDesc}</p>
                   <div className="flex flex-col justify-center gap-2">
                     <Button
                       variant="outline"
