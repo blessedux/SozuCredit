@@ -11,18 +11,53 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { username } = await request.json()
+    const { username, userId } = await request.json()
 
-    if (!username || typeof username !== "string") {
+    // Accept either username or userId (userId is preferred since it never changes)
+    if (!username && !userId) {
       return NextResponse.json(
-        { error: "Username is required" },
+        { error: "Username or userId is required" },
         { status: 400, headers: corsHeaders(request) }
       )
     }
 
     // Verify user exists
     const supabase = await createClient()
-    const { data: profile } = await supabase.from("profiles").select("id").eq("username", username).single()
+    let profile
+    
+    if (userId) {
+      // Use userId if provided (preferred method - more reliable)
+      const { data: profileById } = await supabase
+        .from("profiles")
+        .select("id, username")
+        .eq("id", userId)
+        .single()
+      
+      if (!profileById) {
+        return NextResponse.json(
+          { error: "User not found" },
+          { status: 404, headers: corsHeaders(request) }
+        )
+      }
+      profile = profileById
+      console.log("[Login Challenge] Found user by userId:", userId, "username:", profile.username)
+    } else if (username) {
+      // Fallback to username lookup (for backward compatibility)
+      const { data: profileByUsername } = await supabase
+        .from("profiles")
+        .select("id, username")
+        .eq("username", username)
+        .single()
+      
+      if (!profileByUsername) {
+        return NextResponse.json(
+          { error: "User not found" },
+          { status: 404, headers: corsHeaders(request) }
+        )
+      }
+      profile = profileByUsername
+      console.log("[Login Challenge] Found user by username:", username, "userId:", profile.id)
+    }
 
     if (!profile) {
       return NextResponse.json(
@@ -47,11 +82,23 @@ export async function POST(request: NextRequest) {
     // Generate challenge
     const challenge = generateChallenge()
 
-    // Store challenge temporarily
-    challengeStore.set(username, {
+    // Store challenge temporarily using userId (preferred) or username (fallback)
+    // Using userId as key ensures challenges work even if username changes
+    // Store under both userId and username keys for backward compatibility
+    const challengeKey = userId || profile.id || username
+    
+    challengeStore.set(challengeKey, {
       challenge,
       timestamp: Date.now(),
     })
+    
+    // Also store under username key if different from userId (for backward compatibility)
+    if (username && username !== challengeKey) {
+      challengeStore.set(username, {
+        challenge,
+        timestamp: Date.now(),
+      })
+    }
 
     // Return WebAuthn authentication options with CORS headers
     return NextResponse.json(

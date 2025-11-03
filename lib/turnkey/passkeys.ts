@@ -72,15 +72,17 @@ export async function generateRegistrationChallenge(username: string): Promise<P
 
 /**
  * Generate passkey authentication challenge via API
+ * Accepts either username or userId (userId is preferred since it never changes)
  */
-export async function generateAuthChallenge(username: string): Promise<PasskeyChallenge> {
+export async function generateAuthChallenge(username?: string, userId?: string): Promise<PasskeyChallenge> {
   try {
+    // Prefer userId over username for lookup (userId never changes)
     const response = await fetch("/api/auth/login/challenge", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ username }),
+      body: JSON.stringify({ username, userId }),
     })
 
     if (!response.ok) {
@@ -168,8 +170,9 @@ export async function verifyRegistration(
  * Verify passkey authentication via API
  */
 export async function verifyAuthentication(
-  username: string,
-  credential: PasskeyCredential
+  usernameOrUserId: string,
+  credential: PasskeyCredential,
+  isUserId: boolean = false
 ): Promise<{ success: boolean; userId?: string; username?: string }> {
   try {
     const response = await fetch("/api/auth/login/verify", {
@@ -178,7 +181,7 @@ export async function verifyAuthentication(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        username,
+        [isUserId ? 'userId' : 'username']: usernameOrUserId,
         credential,
       }),
     })

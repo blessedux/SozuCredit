@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import { createClient as createServiceClient } from "@supabase/supabase-js"
 import { challengeStore } from "@/lib/webauthn/config"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
@@ -65,13 +66,95 @@ export async function POST(request: NextRequest) {
       )
     }
     
+    // FIRST: Check if a user with this username already exists
+    console.log("[Register] Checking if username already exists:", username)
+    const { data: usernameCheck } = await supabase
+      .from("profiles")
+      .select("id, username")
+      .eq("username", username)
+      .single()
+    
+    if (usernameCheck) {
+      console.log("[Register] Username already exists:", usernameCheck.id)
+      
+      // Check if this user already has passkeys
+      const { data: existingPasskeys } = await supabase
+        .from("passkeys")
+        .select("id, credential_id")
+        .eq("user_id", usernameCheck.id)
+      
+      if (existingPasskeys && existingPasskeys.length > 0) {
+        console.log("[Register] User already has passkeys, this should be a login not registration")
+        return NextResponse.json(
+          { 
+            error: "User already exists with this username and has passkeys. Please try logging in instead.",
+            userId: usernameCheck.id,
+            username: usernameCheck.username
+          },
+          { status: 400, headers: corsHeaders(request) }
+        )
+      }
+      
+      // User exists but has no passkeys - add the passkey to existing user
+      console.log("[Register] User exists but has no passkeys, adding passkey to existing user")
+      // Note: Since profiles.id references auth.users(id), if profile exists, auth user exists
+      
+      // Use service client to bypass RLS since we're not authenticated as this user
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+      
+      let serviceSupabase = supabase
+      if (supabaseServiceKey && supabaseUrl) {
+        console.log("[Register] Using service client to bypass RLS for passkey insertion")
+        serviceSupabase = createServiceClient(supabaseUrl, supabaseServiceKey) as any
+      } else {
+        console.warn("[Register] Service client not available, this may fail due to RLS")
+      }
+      
+      // Store passkey for existing user
+      const publicKey = credential.response.publicKey || credential.response.attestationObject || credential.id
+      
+      const { error: passkeyError } = await serviceSupabase.from("passkeys").insert({
+        user_id: usernameCheck.id,
+        credential_id: credential.id,
+        public_key: publicKey,
+        counter: 0,
+        transports: credential.response.transports || [],
+      })
+      
+      if (passkeyError) {
+        console.error("[Register] Error storing passkey for existing user:", passkeyError)
+        return NextResponse.json(
+          { 
+            error: "Failed to store passkey", 
+            details: passkeyError.message 
+          },
+          { status: 500, headers: corsHeaders(request) }
+        )
+      }
+      
+      // Process referral code if provided (only for new registrations, skip for existing users)
+      // Skip referral processing since this is an existing user adding a passkey
+      
+      return NextResponse.json(
+        { 
+          success: true, 
+          userId: usernameCheck.id,
+          username: usernameCheck.username,
+          message: "Passkey added to existing account"
+        },
+        { headers: corsHeaders(request) }
+      )
+    }
+    
+    // Username doesn't exist - proceed with creating new user
     // Use a valid email format - Supabase requires proper email format with valid TLD
     // Generate a unique email using UUID to ensure uniqueness and pass validation
     // Using test.com domain which is a real domain (not reserved like example.com)
     const uuid = crypto.randomUUID()
     const randomEmail = `passkey-${uuid}@test.com`
 
-    console.log("[Register] Attempting to create user with email:", randomEmail)
+    console.log("[Register] Username is available, creating new user with email:", randomEmail)
     console.log("[Register] Supabase URL:", process.env.NEXT_PUBLIC_SUPABASE_URL ? "Set" : "Missing")
     
     // The trigger handle_new_user() tries to create profile with email column,

@@ -14,7 +14,14 @@ import useMeasure from 'react-use-measure';
 
 const TRANSITION = {
   type: 'spring' as const,
-  stiffness: 280,
+  stiffness: 140, // Reduced from 280 to half speed
+  damping: 18,
+  mass: 0.3,
+};
+
+const DECIMAL_TRANSITION = {
+  type: 'spring' as const,
+  stiffness: 70, // Half of 140 for decimal digits - slower animation
   damping: 18,
   mass: 0.3,
 };
@@ -22,18 +29,21 @@ const TRANSITION = {
 function Digit({ value, place, isDecimal = false }: { value: number; place: number; isDecimal?: boolean }) {
   const valueRoundedToPlace = Math.floor(value / place) % 10;
   const initial = motionValue(valueRoundedToPlace);
-  const animatedValue = useSpring(initial, TRANSITION);
+  const transition = isDecimal ? DECIMAL_TRANSITION : TRANSITION;
+  const animatedValue = useSpring(initial, transition);
 
   useEffect(() => {
     animatedValue.set(valueRoundedToPlace);
   }, [animatedValue, valueRoundedToPlace]);
 
   return (
-    <div className={`relative inline-block w-[1ch] overflow-x-visible overflow-y-clip leading-none tabular-nums ${isDecimal ? 'text-[0.5em]' : ''}`}>
+    <div className={`relative inline-block w-[1ch] overflow-hidden leading-none tabular-nums ${isDecimal ? 'text-[0.5em]' : ''}`}>
       <div className='invisible'>0</div>
-      {Array.from({ length: 10 }, (_, i) => (
-        <Number key={i} mv={animatedValue} number={i} isDecimal={isDecimal} />
-      ))}
+      <div className={`absolute inset-0 overflow-hidden ${isDecimal ? 'flex items-end' : ''}`}>
+        {Array.from({ length: 10 }, (_, i) => (
+          <Number key={i} mv={animatedValue} number={i} isDecimal={isDecimal} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -53,6 +63,13 @@ function Number({ mv, number, isDecimal = false }: { mv: MotionValue<number>; nu
       memo -= 10 * bounds.height;
     }
 
+    // For decimal digits that are bottom-aligned, ensure we don't show numbers above
+    // Adjust the position to account for bottom alignment
+    if (isDecimal) {
+      // No adjustment needed - the items-end alignment handles it
+      // But ensure we clip properly by keeping the same calculation
+    }
+
     return memo;
   });
 
@@ -65,12 +82,14 @@ function Number({ mv, number, isDecimal = false }: { mv: MotionValue<number>; nu
     );
   }
 
+  const transition = isDecimal ? DECIMAL_TRANSITION : TRANSITION;
+
   return (
     <motion.span
       style={{ y }}
       layoutId={`${uniqueId}-${number}`}
-      className={`absolute inset-0 flex items-center justify-center ${isDecimal ? 'text-[0.5em]' : ''}`}
-      transition={TRANSITION}
+      className={`absolute inset-0 flex ${isDecimal ? 'items-end justify-center' : 'items-center justify-center'} ${isDecimal ? 'text-[0.5em]' : ''}`}
+      transition={transition}
       ref={ref}
     >
       {number}
@@ -106,7 +125,7 @@ export function SlidingNumber({
   );
 
   return (
-    <div className='flex items-center'>
+    <div className='flex items-baseline'>
       {value < 0 && '-'}
       {integerDigits.map((_, index) => (
         <Digit
@@ -117,7 +136,7 @@ export function SlidingNumber({
       ))}
       {formattedDecimal && (
         <>
-          <span className='text-[0.5em]'>{decimalSeparator}</span>
+          <span className='text-[0.5em] align-bottom leading-none' style={{ lineHeight: '1' }}>{decimalSeparator}</span>
           {formattedDecimal.split('').map((_, index) => (
             <Digit
               key={`decimal-${index}`}

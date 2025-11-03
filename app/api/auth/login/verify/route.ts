@@ -11,31 +11,44 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { username, credential } = await request.json()
+    const { username, userId, credential } = await request.json()
 
-    // Verify challenge exists
-    const storedChallenge = challengeStore.get(username)
-    if (!storedChallenge) {
-      return NextResponse.json(
-        { error: "Challenge not found or expired" },
-        { status: 400, headers: corsHeaders(request) }
-      )
-    }
-
-    // Clean up challenge
-    challengeStore.delete(username)
-
-    // Get user and passkey
-    const supabase = await createClient()
-    
     // First, try to find the passkey by credential_id to get the user
-    // This ensures we match the correct user even if username is wrong
+    // This ensures we match the correct user even if username/userId is wrong
+    const supabase = await createClient()
     const { data: passkeyByCredential, error: passkeyError } = await supabase
       .from("passkeys")
       .select("*, profiles!inner(id, username)")
       .eq("credential_id", credential.id)
       .maybeSingle()
 
+    // Determine which user this credential belongs to
+    const credentialUserId = passkeyByCredential?.profiles?.id || userId
+
+    // Verify challenge exists - try userId first (if we have it), then username
+    let storedChallenge = credentialUserId ? challengeStore.get(credentialUserId) : null
+    if (!storedChallenge && username) {
+      storedChallenge = challengeStore.get(username)
+    }
+    // Also try with profile id from passkey if available
+    if (!storedChallenge && passkeyByCredential?.user_id) {
+      storedChallenge = challengeStore.get(passkeyByCredential.user_id)
+    }
+    
+    if (!storedChallenge) {
+      console.warn("[Login Verify] Challenge not found, tried:", { username, userId, credentialUserId, passkeyUserId: passkeyByCredential?.user_id })
+      return NextResponse.json(
+        { error: "Challenge not found or expired" },
+        { status: 400, headers: corsHeaders(request) }
+      )
+    }
+
+    // Clean up challenge using all possible keys
+    if (credentialUserId) challengeStore.delete(credentialUserId)
+    if (username) challengeStore.delete(username)
+    if (passkeyByCredential?.user_id) challengeStore.delete(passkeyByCredential.user_id)
+
+    // Get user and passkey (we already have passkeyByCredential from above)
     let profile
     let passkey
 

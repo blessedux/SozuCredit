@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState, useRef } from "react"
-import { Wallet, Award, ArrowLeft, Globe } from "lucide-react"
+import { Wallet, Award, ArrowLeft, Globe, LogOut } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { FallingPattern } from "@/components/ui/falling-pattern"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
@@ -25,6 +26,7 @@ interface TrustPoints {
 }
 
 export default function WalletPage() {
+  const router = useRouter()
   const [vault, setVault] = useState<Vault | null>(null)
   const [trustPoints, setTrustPoints] = useState<TrustPoints | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -124,6 +126,9 @@ export default function WalletPage() {
       // Social share
       inviteMessage: "¡Únete a Sozu Credit! Usa mi enlace de invitación: {link} y recibamos ambos puntos de confianza extra. 🚀",
       codeCopiedShare: "Mensaje copiado al portapapeles. ¡Listo para compartir!",
+      // Logout
+      logout: "Cerrar Sesión",
+      logoutConfirm: "¿Estás seguro de que quieres cerrar sesión?",
     },
     en: {
       // Profile
@@ -187,6 +192,9 @@ export default function WalletPage() {
       // Social share
       inviteMessage: "Join Sozu Credit! Use my invite link: {link} and let's both get extra trust points. 🚀",
       codeCopiedShare: "Message copied to clipboard. Ready to share!",
+      // Logout
+      logout: "Log Out",
+      logoutConfirm: "Are you sure you want to log out?",
     },
   }
   
@@ -588,8 +596,17 @@ export default function WalletPage() {
   const animatedBalanceRef = useRef(0)
   const baseBalanceRef = useRef(0)
   
-  // Animate balance growth based on APY
+  // Animate balance growth based on APY (only for USD and ARS, keep XLM stable)
   useEffect(() => {
+    // For XLM, keep it stable (no animation)
+    if (currency === "XLM") {
+      setAnimatedBalance(baseBalance)
+      animatedBalanceRef.current = baseBalance
+      baseBalanceRef.current = baseBalance
+      return
+    }
+    
+    // For USD and ARS, apply animation
     // Calculate APY growth per second
     const apyPerSecond = currentAPY / 100 / 365 / 24 / 60 / 60 // Convert APY to per-second rate
     
@@ -619,7 +636,7 @@ export default function WalletPage() {
     }, 100)
     
     return () => clearInterval(interval)
-  }, [baseBalance, currentAPY])
+  }, [baseBalance, currentAPY, currency])
 
   // Format balance to 4 decimals
   const balance = animatedBalance.toFixed(4)
@@ -812,6 +829,49 @@ export default function WalletPage() {
     
     // Open Stellar Expert in a new tab
     window.open(stellarExpertUrl, "_blank", "noopener,noreferrer")
+  }
+
+  const handleLogout = async () => {
+    // Confirm logout
+    if (!confirm(t.logoutConfirm)) {
+      return
+    }
+
+    try {
+      // Clear all session data
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem("dev_authenticated")
+        sessionStorage.removeItem("dev_username")
+        sessionStorage.removeItem("passkey_registered")
+        sessionStorage.removeItem("dev_username_display")
+        
+        // Optionally clear username from localStorage (or keep it for future logins)
+        // localStorage.removeItem("sozu_username")
+      }
+
+      // Try to sign out from Supabase
+      try {
+        const response = await fetch("/auth/signout", {
+          method: "POST",
+        })
+        if (response.ok) {
+          console.log("[Logout] Supabase session cleared")
+        }
+      } catch (supabaseError) {
+        console.warn("[Logout] Error clearing Supabase session:", supabaseError)
+        // Continue with logout even if Supabase signout fails
+      }
+
+      // Close the profile sheet
+      setIsProfileSheetOpen(false)
+
+      // Redirect to auth page
+      router.push("/auth")
+    } catch (error) {
+      console.error("[Logout] Error during logout:", error)
+      // Still redirect to auth page even if there's an error
+      router.push("/auth")
+    }
   }
 
   // Swipe gesture handlers for opening menu (swipe right to left on main content)
@@ -1335,6 +1395,17 @@ export default function WalletPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Logout Button - Bottom Right */}
+            <div className="flex justify-end mt-6 pb-8">
+              <button
+                onClick={handleLogout}
+                className="text-white/60 hover:text-white transition-colors p-2"
+                aria-label={t.logout}
+              >
+                <LogOut className="w-5 h-5" />
+              </button>
+            </div>
           </div>
         </SheetContent>
       </Sheet>
