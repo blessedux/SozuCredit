@@ -219,6 +219,15 @@ export function FallingPattern({
 					playsInline
 					className="absolute inset-0 w-full h-full object-cover"
 					style={{ backgroundColor }}
+					onError={(e) => {
+						console.error('[FallingPattern] Video error:', e);
+					}}
+					onLoadStart={() => {
+						console.log('[FallingPattern] Video loading started');
+					}}
+					onCanPlay={() => {
+						console.log('[FallingPattern] Video can play');
+					}}
 				>
 					<source src={videoSrc} type={videoType} />
 				</video>
