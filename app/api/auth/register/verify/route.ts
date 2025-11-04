@@ -357,8 +357,29 @@ export async function POST(request: NextRequest) {
     // In production, you'd parse the CBOR attestation object to extract just the public key
     const publicKey = credential.response.publicKey || credential.response.attestationObject || credential.id
     
+    // Use service client to bypass RLS since we don't have an authenticated session yet
+    // The user was just created but we don't have auth.uid() available
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    
+    if (!supabaseServiceKey || !supabaseUrl) {
+      const missing = []
+      if (!supabaseUrl) missing.push("NEXT_PUBLIC_SUPABASE_URL")
+      if (!supabaseServiceKey) missing.push("SUPABASE_SERVICE_ROLE_KEY")
+      console.error("[Register] Missing environment variables for service client:", missing.join(", "))
+      return NextResponse.json(
+        { 
+          error: "Server configuration error", 
+          details: `Missing environment variables: ${missing.join(", ")}. Please configure SUPABASE_SERVICE_ROLE_KEY in Vercel.`
+        },
+        { status: 500, headers: corsHeaders(request) }
+      )
+    }
+    
+    const serviceClient = createServiceClient(supabaseUrl, supabaseServiceKey)
+    
     console.log("[Register] Storing passkey for user:", authData.user.id)
-    const { error: passkeyError } = await supabase.from("passkeys").insert({
+    const { error: passkeyError } = await serviceClient.from("passkeys").insert({
       user_id: authData.user.id,
       credential_id: credential.id,
       public_key: publicKey,
@@ -368,10 +389,18 @@ export async function POST(request: NextRequest) {
 
     if (passkeyError) {
       console.error("[Register] Error storing passkey:", passkeyError)
+      console.error("[Register] Passkey error details:", {
+        code: passkeyError.code,
+        message: passkeyError.message,
+        details: passkeyError.details,
+        hint: passkeyError.hint,
+      })
       return NextResponse.json(
         { 
           error: "Failed to store passkey", 
-          details: passkeyError.message 
+          details: passkeyError.message,
+          code: passkeyError.code,
+          hint: passkeyError.hint,
         },
         { status: 500, headers: corsHeaders(request) }
       )
