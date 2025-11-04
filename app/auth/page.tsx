@@ -107,19 +107,29 @@ export default function AuthPage() {
           if (typeof window !== "undefined") {
             console.log("[Auth] Step 6: Setting up authentication...")
             
-            // Store username in localStorage for future logins
-            // The API returns the actual username from the database
-            const actualUsername = (authResult as any).username || usernameToUse
-            if (actualUsername) {
-              localStorage.setItem("sozu_username", actualUsername)
-              console.log("[Auth] Saved username to localStorage:", actualUsername)
-            }
-            
-            // Store in session storage FIRST (client-side auth check)
-            sessionStorage.setItem("dev_username", authResult.userId || actualUsername)
-            sessionStorage.setItem("dev_authenticated", "true")
-            sessionStorage.setItem("passkey_registered", "true")
-            sessionStorage.setItem("dev_username_display", actualUsername) // Store for display
+          // Store username in localStorage for future logins
+          // The API returns the actual username from the database
+          const actualUsername = (authResult as any).username || usernameToUse
+          if (actualUsername) {
+            localStorage.setItem("sozu_username", actualUsername)
+            console.log("[Auth] Saved username to localStorage:", actualUsername)
+          }
+          
+          // CRITICAL: Always use userId from API response, never fall back to username
+          // Using username as fallback causes wallet lookup issues
+          if (!authResult.userId) {
+            console.error("[Auth] ERROR: No userId returned from login API!")
+            throw new Error("Login succeeded but no userId was returned. Cannot continue.")
+          }
+          
+          // Store in session storage FIRST (client-side auth check)
+          // Use userId (UUID) not username - this is critical for wallet consistency
+          sessionStorage.setItem("dev_username", authResult.userId)
+          sessionStorage.setItem("dev_authenticated", "true")
+          sessionStorage.setItem("passkey_registered", "true")
+          sessionStorage.setItem("dev_username_display", actualUsername) // Store for display
+          
+          console.log("[Auth] Stored userId in sessionStorage:", authResult.userId, "Username:", actualUsername)
             
             // Verify sessionStorage was set
             const verifyAuth = sessionStorage.getItem("dev_authenticated")
@@ -246,11 +256,21 @@ export default function AuthPage() {
               console.log("[Auth] Saved username to localStorage after registration:", registeredUsername)
             }
             
+            // CRITICAL: Always use userId from API response, never fall back to username
+            // Using username as fallback causes wallet lookup issues
+            if (!regResult.userId) {
+              console.error("[Auth] ERROR: No userId returned from registration API!")
+              throw new Error("Registration succeeded but no userId was returned. Cannot continue.")
+            }
+            
             // Store in session storage FIRST (client-side auth check)
-            sessionStorage.setItem("dev_username", regResult.userId || registeredUsername)
+            // Use userId (UUID) not username - this is critical for wallet consistency
+            sessionStorage.setItem("dev_username", regResult.userId)
             sessionStorage.setItem("dev_authenticated", "true")
             sessionStorage.setItem("passkey_registered", "true")
             sessionStorage.setItem("dev_username_display", registeredUsername) // Store for display
+            
+            console.log("[Auth] Stored userId in sessionStorage after registration:", regResult.userId, "Username:", registeredUsername)
             
             // Verify sessionStorage was set
             const verifyAuth = sessionStorage.getItem("dev_authenticated")
@@ -294,8 +314,13 @@ export default function AuthPage() {
               
               // Force a synchronous write to sessionStorage
               // This ensures it's definitely set before we navigate
+              // CRITICAL: Use userId (UUID), never fallback to username
+              if (!regResult.userId) {
+                console.error("[Auth] CRITICAL: No userId available for sessionStorage!")
+                return // Don't redirect if we don't have a userId
+              }
               sessionStorage.setItem("dev_authenticated", "true")
-              sessionStorage.setItem("dev_username", regResult.userId || "user")
+              sessionStorage.setItem("dev_username", regResult.userId)
               sessionStorage.setItem("passkey_registered", "true")
               sessionStorage.setItem("redirect_to_wallet", "true")
               

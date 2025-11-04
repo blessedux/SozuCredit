@@ -105,18 +105,24 @@ export async function POST(request: NextRequest) {
     // This ensures users have a wallet immediately upon login
     // Use service client since we don't have an authenticated Supabase session here
     try {
+      console.log("[Login] Checking for existing wallet for userId:", profile.id)
       const existingWallet = await getStellarWallet(profile.id, true) // Use service client
       if (!existingWallet) {
-        console.log("[Login] No Stellar wallet found, creating one for user:", profile.id)
+        console.log("[Login] No Stellar wallet found for userId:", profile.id, "- creating new wallet")
         const wallet = await createStellarWallet(profile.id)
-        await storeStellarWallet(profile.id, wallet.turnkeyWalletId, wallet.publicKey, true) // Use service client
-        console.log("[Login] Stellar wallet created successfully:", wallet.publicKey)
+        console.log("[Login] Created wallet with Turnkey, storing in database...")
+        const storedWallet = await storeStellarWallet(profile.id, wallet.turnkeyWalletId, wallet.publicKey, true) // Use service client
+        console.log("[Login] ✅ Stellar wallet created and stored successfully:", {
+          userId: profile.id,
+          publicKey: storedWallet.publicKey ? `${storedWallet.publicKey.substring(0, 10)}...` : "NULL",
+          turnkeyWalletId: storedWallet.turnkeyWalletId,
+        })
       } else {
-        console.log("[Login] Stellar wallet already exists for user:", profile.id)
+        console.log("[Login] ✅ Stellar wallet already exists for userId:", profile.id, "publicKey:", existingWallet.publicKey ? `${existingWallet.publicKey.substring(0, 10)}...` : "NULL")
       }
     } catch (walletError) {
       // Log error but don't fail login - wallet can be created later
-      console.error("[Login] Error creating Stellar wallet:", walletError)
+      console.error("[Login] ❌ Error with wallet for userId:", profile.id, "Error:", walletError)
       console.warn("[Login] Login will proceed without wallet. Wallet can be created later via API.")
     }
 
