@@ -1034,6 +1034,8 @@ export default function WalletPage() {
           className="h-full w-full" 
           backgroundColor="oklch(0 0 0)"
           color="oklch(1 0 0)"
+          useVideoFallback={true}
+          videoSrc="https://res.cloudinary.com/dezm9avsj/video/upload/v1762265486/pixelflow_bg_720_xj7b1e.mp4"
         />
       </div>
 

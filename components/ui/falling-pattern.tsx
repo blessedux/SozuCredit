@@ -203,6 +203,13 @@ export function FallingPattern({
 
 	// Video fallback for mobile
 	if (shouldUseVideo && videoSrc) {
+		// Detect video format from URL extension
+		const videoType = videoSrc.endsWith('.webm') 
+			? 'video/webm' 
+			: videoSrc.endsWith('.mp4') 
+				? 'video/mp4' 
+				: 'video/mp4'; // Default to mp4
+		
 		return (
 			<div className={cn('relative h-full w-full', className)}>
 				<video
@@ -213,7 +220,7 @@ export function FallingPattern({
 					className="absolute inset-0 w-full h-full object-cover"
 					style={{ backgroundColor }}
 				>
-					<source src={videoSrc} type="video/webm" />
+					<source src={videoSrc} type={videoType} />
 				</video>
 				<div
 					className="absolute inset-0 z-10 dark:brightness-[0.98]"
