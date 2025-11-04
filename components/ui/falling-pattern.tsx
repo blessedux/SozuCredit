@@ -33,8 +33,15 @@ export function FallingPattern({
 	useVideoFallback = false,
 	videoSrc,
 }: FallingPatternProps) {
-	const [isMobile, setIsMobile] = useState(false);
-	const [shouldUseVideo, setShouldUseVideo] = useState(false);
+	// Detect mobile immediately on render (client-side only)
+	const isMobileDevice = typeof window !== 'undefined' && (
+		/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+		window.innerWidth < 768
+	);
+	
+	const [isMobile, setIsMobile] = useState(isMobileDevice);
+	const [shouldUseVideo, setShouldUseVideo] = useState(isMobileDevice && useVideoFallback && !!videoSrc);
+	const [videoError, setVideoError] = useState(false);
 	const prefersReducedMotion = useReducedMotion();
 
 	// Detect mobile device and performance capabilities
@@ -42,14 +49,22 @@ export function FallingPattern({
 		const checkDevice = () => {
 			if (typeof window === 'undefined') return;
 			
-			const isMobileDevice = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+			const detectedMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
 				(window.innerWidth < 768); // Mobile breakpoint
 			
-			setIsMobile(isMobileDevice);
+			setIsMobile(detectedMobile);
 			
 			// Use video fallback on mobile if enabled and video src provided
-			if (isMobileDevice && useVideoFallback && videoSrc) {
+			// On mobile, we ONLY want video (or black fallback), never animated pattern
+			if (detectedMobile && useVideoFallback && videoSrc) {
+				console.log('[FallingPattern] Mobile detected, enabling video background');
 				setShouldUseVideo(true);
+			} else if (detectedMobile && useVideoFallback) {
+				console.log('[FallingPattern] Mobile detected but no video src provided');
+				// On mobile without video, show black background only
+				setShouldUseVideo(false);
+			} else {
+				setShouldUseVideo(false);
 			}
 		};
 
@@ -201,50 +216,62 @@ export function FallingPattern({
 	const endPositions =
 		'0px 6800px, 3px 6800px, 151.5px 6917.5px, 25px 13632px, 28px 13632px, 176.5px 13758px, 50px 5416px, 53px 5416px, 201.5px 5491px, 75px 17175px, 78px 17175px, 226.5px 17301.5px, 100px 5119px, 103px 5119px, 251.5px 5221px, 125px 8428px, 128px 8428px, 276.5px 8495px, 150px 9876px, 153px 9876px, 301.5px 9965.5px, 175px 13391px, 178px 13391px, 326.5px 13540.5px, 200px 14741px, 203px 14741px, 351.5px 14848.5px, 225px 18770px, 228px 18770px, 376.5px 18910.5px, 250px 5082px, 253px 5082px, 401.5px 5161px, 275px 6375px, 278px 6375px, 426.5px 6480px';
 
-	// Video fallback for mobile
-	if (shouldUseVideo && videoSrc) {
-		// Detect video format from URL extension
-		const videoType = videoSrc.endsWith('.webm') 
-			? 'video/webm' 
-			: videoSrc.endsWith('.mp4') 
-				? 'video/mp4' 
-				: 'video/mp4'; // Default to mp4
+	// Mobile: ONLY video background (or black fallback), never animated pattern
+	if (isMobile && useVideoFallback) {
+		// If video should be used and src is provided, show video
+		if (shouldUseVideo && videoSrc && !videoError) {
+			// Detect video format from URL extension
+			const videoType = videoSrc.endsWith('.webm') 
+				? 'video/webm' 
+				: videoSrc.endsWith('.mp4') 
+					? 'video/mp4' 
+					: 'video/mp4'; // Default to mp4
+			
+			return (
+				<div className={cn('relative h-full w-full', className)}>
+					<video
+						autoPlay
+						loop
+						muted
+						playsInline
+						className="absolute inset-0 w-full h-full object-cover"
+						style={{ backgroundColor }}
+						onError={(e) => {
+							console.error('[FallingPattern] Video error:', e);
+							setVideoError(true);
+						}}
+						onLoadStart={() => {
+							console.log('[FallingPattern] Video loading started');
+						}}
+						onCanPlay={() => {
+							console.log('[FallingPattern] Video can play');
+						}}
+					>
+						<source src={videoSrc} type={videoType} />
+					</video>
+					{/* Black overlay with minimal blur for video */}
+					<div
+						className="absolute inset-0 z-10"
+						style={{
+							backgroundColor: 'rgba(0, 0, 0, 0.1)', // Subtle darkening
+							backdropFilter: 'blur(0.5em)',
+						}}
+					/>
+				</div>
+			);
+		}
 		
+		// Mobile fallback: Black background only (no animated pattern)
 		return (
-			<div className={cn('relative h-full w-full', className)}>
-				<video
-					autoPlay
-					loop
-					muted
-					playsInline
-					className="absolute inset-0 w-full h-full object-cover"
-					style={{ backgroundColor }}
-					onError={(e) => {
-						console.error('[FallingPattern] Video error:', e);
-					}}
-					onLoadStart={() => {
-						console.log('[FallingPattern] Video loading started');
-					}}
-					onCanPlay={() => {
-						console.log('[FallingPattern] Video can play');
-					}}
-				>
-					<source src={videoSrc} type={videoType} />
-				</video>
-				<div
-					className="absolute inset-0 z-10 dark:brightness-[0.98]"
-					style={{
-						backdropFilter: `blur(${isMobile ? '0.5em' : blurIntensity})`,
-						backgroundImage: `radial-gradient(circle at 50% 50%, transparent 0, transparent 2px, ${backgroundColor} 2px)`,
-						backgroundSize: `${8 * density}px ${8 * density}px`,
-					}}
-				/>
-			</div>
+			<div 
+				className={cn('relative h-full w-full', className)}
+				style={{ backgroundColor }}
+			/>
 		);
 	}
 
-	// Use reduced motion or mobile-optimized version
-	const useMobileOptimized = isMobile || prefersReducedMotion;
+	// Desktop: ONLY animated pattern (never video)
+	const useMobileOptimized = prefersReducedMotion;
 	const finalBackgroundImage = useMobileOptimized 
 		? generateMobileBackgroundImage()
 		: generateBackgroundImage();
