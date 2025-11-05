@@ -5,10 +5,12 @@
  */
 
 import { getDeFindexConfig, validateDeFindexConfig } from "./config"
-import { Contract, Address, nativeToScVal, scValToNative, xdr, TransactionBuilder, Account, BASE_FEE, Networks } from "@stellar/stellar-sdk"
+import { Contract, Address, nativeToScVal, scValToNative, xdr, TransactionBuilder, Account, BASE_FEE, Networks, Keypair, Horizon } from "@stellar/stellar-sdk"
 import { getUSDCBalance } from "@/lib/turnkey/stellar-wallet"
+import { getStellarConfig } from "@/lib/turnkey/config"
 import * as rpc from "@stellar/stellar-sdk/rpc"
 import { Api } from "@stellar/stellar-sdk/rpc"
+import { signSorobanTransaction, submitSorobanTransaction } from "@/lib/turnkey/soroban-signing"
 
 export interface VaultBalance {
   walletBalance: number // Balance in wallet
@@ -28,7 +30,7 @@ export interface StrategyInfo {
 /**
  * Get Soroban RPC client for contract interactions
  */
-function getSorobanRpc(): rpc.Server {
+export function getSorobanRpc(): rpc.Server {
   const config = getDeFindexConfig()
   
   return new rpc.Server(config.rpcUrl, {
@@ -119,66 +121,103 @@ export async function getVaultBalance(
 
 /**
  * Deposit assets into DeFindex strategy
- * Implements the deposit flow from DeFindex strategy interface
+ * Implements the deposit flow with real transaction signing and submission
  */
 export async function depositToStrategy(
   userWalletAddress: string,
   amount: number,
+  userId?: string,
   strategyAddress?: string
-): Promise<{ success: boolean; shares: number; balance: number }> {
+): Promise<{ success: boolean; shares: number; balance: number; transactionHash?: string }> {
   const config = getDeFindexConfig()
   
   if (!validateDeFindexConfig(config)) {
     throw new Error("DeFindex configuration is invalid")
   }
   
+  if (!userId) {
+    throw new Error("User ID is required for transaction signing")
+  }
+  
   try {
-    const rpc = getSorobanRpc()
+    const sorobanRpc = getSorobanRpc()
     const strategyAddr = strategyAddress || config.defindexStrategyAddress
     const contract = getStrategyContract(strategyAddr)
     
-    // Call the deposit function on the strategy contract
+    // Get user's account information from Horizon API
+    // Horizon API is needed to get the account sequence number for transaction building
+    console.log("[DeFindex] Getting account information for:", userWalletAddress)
+    const stellarConfig = getStellarConfig()
+    const horizonServer = new Horizon.Server(
+      stellarConfig.horizonUrl,
+      { allowHttp: stellarConfig.network === "testnet" }
+    )
+    
+    const accountResponse = await horizonServer.loadAccount(userWalletAddress)
+    
+    if (!accountResponse) {
+      throw new Error("Account not found on network")
+    }
+    
+    // Create account object with sequence number
+    const account = new Account(userWalletAddress, accountResponse.sequenceNumber())
+    
+    // Prepare contract call parameters
     const userAddress = addressToScVal(userWalletAddress)
     const amountScVal = amountToScVal(amount)
     
-    // Build a transaction with the deposit operation
-    // Note: For simulation, we need a basic transaction structure
-    // In production, this would use the actual user's account
-    const tempAccount = new Account("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF", "0")
-    const transaction = new TransactionBuilder(tempAccount, {
+    // Build transaction with deposit operation
+    const networkPassphrase = config.network === "testnet" 
+      ? Networks.TESTNET 
+      : Networks.PUBLIC
+    
+    const transaction = new TransactionBuilder(account, {
       fee: BASE_FEE,
-      networkPassphrase: config.network === "testnet" 
-        ? Networks.TESTNET 
-        : Networks.PUBLIC
+      networkPassphrase,
     })
       .addOperation(contract.call("deposit", userAddress, amountScVal))
       .setTimeout(30)
       .build()
     
-    // Simulate the transaction to get the result
-    const simulateResult = await rpc.simulateTransaction(transaction)
+    // Simulate transaction first to check if it will succeed
+    console.log("[DeFindex] Simulating deposit transaction...")
+    const simulateResult = await sorobanRpc.simulateTransaction(transaction)
     
     if (Api.isSimulationError(simulateResult)) {
-      throw new Error(`Deposit simulation failed: ${(simulateResult as Api.SimulateTransactionErrorResponse).error}`)
+      const error = (simulateResult as Api.SimulateTransactionErrorResponse).error
+      console.error("[DeFindex] Deposit simulation failed:", error)
+      throw new Error(`Deposit simulation failed: ${error}`)
     }
     
-    // Get shares from simulation result (only available on success)
     if (!Api.isSimulationSuccess(simulateResult) || !simulateResult.result) {
       throw new Error("Deposit simulation did not return a result")
     }
     
+    // Get expected shares from simulation
     const sharesScVal = (simulateResult as Api.SimulateTransactionSuccessResponse).result!.retval
     const shares = scValToAmount(sharesScVal)
     
-    // Note: Actual transaction building and signing would be done by the caller
-    // This function returns the expected result based on simulation
-    
-    console.log("[DeFindex] Deposit simulated successfully:", {
+    console.log("[DeFindex] Deposit simulation successful:", {
       userWalletAddress,
       amount,
-      shares,
+      expectedShares: shares,
       strategyAddress: strategyAddr,
     })
+    
+    // Sign transaction with Turnkey
+    console.log("[DeFindex] Signing transaction with Turnkey...")
+    const signedTransaction = await signSorobanTransaction(userId, transaction)
+    
+    // Submit transaction to network
+    console.log("[DeFindex] Submitting transaction to Soroban network...")
+    const submitResult = await submitSorobanTransaction(signedTransaction, config.network)
+    
+    if (!submitResult.success) {
+      throw new Error(`Transaction submission failed with status: ${submitResult.status}`)
+    }
+    
+    console.log("[DeFindex] ✅ Deposit transaction successful!")
+    console.log("[DeFindex] Transaction hash:", submitResult.transactionHash)
     
     // Get updated balance after deposit
     const strategyInfo = await getStrategyInfo(strategyAddr)
@@ -188,6 +227,7 @@ export async function depositToStrategy(
       success: true,
       shares,
       balance: updatedBalance,
+      transactionHash: submitResult.transactionHash,
     }
   } catch (error) {
     console.error("[DeFindex] Error depositing to strategy:", error)

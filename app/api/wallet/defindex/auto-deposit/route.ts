@@ -1,12 +1,13 @@
 /**
- * DeFindex Deposit API
- * Deposits assets into DeFindex strategy
+ * Auto-Deposit API
+ * Monitors wallet balance and automatically deposits funds into DeFindex strategy
+ * This endpoint can be called by a background job or webhook
  */
 
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { depositToStrategy } from "@/lib/defindex/vault"
 import { getStellarWallet } from "@/lib/turnkey/stellar-wallet"
+import { monitorBalanceAndAutoDeposit } from "@/lib/defindex/auto-deposit"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
 
 export async function OPTIONS(request: NextRequest) {
@@ -26,18 +27,8 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    // Parse request body
-    const { amount } = await request.json()
-    
-    if (!amount || amount <= 0) {
-      return NextResponse.json(
-        { error: "Invalid amount" },
-        { status: 400, headers: corsHeaders(request) }
-      )
-    }
-    
     // Get user's Stellar wallet
-    const wallet = await getStellarWallet(user.id, true) // Use service client
+    const wallet = await getStellarWallet(user.id, true)
     
     if (!wallet) {
       return NextResponse.json(
@@ -46,31 +37,36 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    // Deposit to DeFindex strategy
-    const result = await depositToStrategy(wallet.publicKey, amount, user.id)
+    // Parse optional config from request body
+    const body = await request.json().catch(() => ({}))
+    const config = body.config || {}
     
-    if (!result.success) {
-      return NextResponse.json(
-        { error: "Deposit failed" },
-        { status: 500, headers: corsHeaders(request) }
-      )
-    }
+    // Monitor balance and trigger auto-deposit
+    // Note: In production, you should use a database to track previous balances
+    // For now, using an in-memory store (not ideal for production)
+    const previousBalanceStore = new Map<string, number>()
+    
+    const result = await monitorBalanceAndAutoDeposit(
+      user.id,
+      previousBalanceStore,
+      config
+    )
     
     return NextResponse.json(
       {
         success: true,
-        shares: result.shares,
-        balance: result.balance,
+        triggered: result.triggered,
+        depositAmount: result.depositAmount,
         transactionHash: result.transactionHash,
       },
       { headers: corsHeaders(request) }
     )
   } catch (error) {
-    console.error("[DeFindex Deposit API] Error:", error)
+    console.error("[Auto-Deposit API] Error:", error)
     
     return NextResponse.json(
       {
-        error: "Failed to deposit to DeFindex",
+        error: "Failed to check and trigger auto-deposit",
         details: error instanceof Error ? error.message : String(error),
       },
       { status: 500, headers: corsHeaders(request) }
