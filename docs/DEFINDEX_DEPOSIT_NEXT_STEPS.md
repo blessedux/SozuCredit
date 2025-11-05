@@ -11,11 +11,25 @@
 - DeFindex API endpoints created (`/api/wallet/defindex/deposit`, `/api/wallet/defindex/balance`, `/api/wallet/defindex/apy`)
 - Basic contract interaction functions implemented (simulation mode)
 
+## Architecture Overview
+
+**Key Design Principles:**
+
+1. **Auto-Deposit First**: The primary purpose of the wallet is to automatically deposit funds into the DeFindex blend strategy
+2. **Withdraw Only for Offramp**: Withdrawals from the strategy only occur when users want to offramp funds to MercadoPago
+3. **Peanut Protocol for Offramp**: Use [Peanut Protocol SDK](https://github.com/peanutprotocol/peanut-sdk) for secure offramp withdrawals to MercadoPago accounts
+
 ## Next Steps to Enable Real Deposits
 
-### Phase 1: Complete Soroban Contract Integration (Priority: High)
+### Phase 1: Complete Soroban Contract Integration for Auto-Deposit (Priority: High)
 
-**Goal:** Implement actual contract calls to DeFindex strategy contracts
+**Goal:** Implement automatic deposit functionality that deposits funds into DeFindex strategy as soon as they arrive in the wallet
+
+#### Key Requirements:
+
+- **Automatic**: Deposits happen automatically when funds are received
+- **No User Interaction**: Users don't need to manually trigger deposits
+- **Seamless**: Funds flow from wallet → DeFindex strategy automatically
 
 #### Tasks:
 
@@ -32,24 +46,35 @@
    - [ ] Add transaction submission to Stellar network
    - [ ] Handle transaction confirmation and error cases
 
-3. **Complete Deposit Function**
+3. **Complete Auto-Deposit Function**
+
    - [ ] Build actual deposit transaction with proper parameters
    - [ ] Sign transaction with user's wallet (via Turnkey)
    - [ ] Submit transaction to Soroban RPC
    - [ ] Wait for transaction confirmation
    - [ ] Update database with deposit record
+   - [ ] **Critical**: Implement automatic triggering when funds are received
+
+4. **Fund Detection & Auto-Deposit Trigger**
+   - [ ] Monitor wallet balance changes (polling or webhook)
+   - [ ] Detect when USDC balance increases
+   - [ ] Automatically trigger deposit to DeFindex strategy
+   - [ ] Handle edge cases (minimum deposit amounts, network fees, etc.)
+   - [ ] Implement retry logic for failed deposits
 
 **Files to Modify:**
 
-- `lib/defindex/vault.ts` - Complete `depositToStrategy()` function
+- `lib/defindex/vault.ts` - Complete `depositToStrategy()` function with auto-trigger
 - `lib/turnkey/stellar-wallet.ts` - Add transaction signing capability
 - `app/api/wallet/defindex/deposit/route.ts` - Add transaction submission logic
+- `app/api/wallet/stellar/balance/route.ts` - Add balance change detection and auto-deposit trigger
 
 **Dependencies:**
 
 - Soroban RPC endpoint configured
 - DeFindex strategy contract address
 - User wallet signing capability (Turnkey)
+- Balance monitoring system (polling or webhook)
 
 ---
 
