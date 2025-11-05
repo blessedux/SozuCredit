@@ -73,22 +73,25 @@ export async function generateRegistrationChallenge(username: string): Promise<P
 /**
  * Generate passkey authentication challenge via API
  */
-export async function generateAuthChallenge(username: string): Promise<PasskeyChallenge> {
+export async function generateAuthChallenge(username?: string): Promise<PasskeyChallenge> {
   try {
+    // Send username only if provided, otherwise send empty object for discovery mode
     const response = await fetch("/api/auth/login/challenge", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ username }),
+      body: JSON.stringify(username ? { username } : {}),
     })
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: "Failed to generate authentication challenge" }))
       // Check if it's a "not found" error - this is expected for new users
-      if (response.status === 404) {
+      // But only if we provided a username
+      if (response.status === 404 && username) {
         throw new Error(error.error || "User not found")
       }
+      // For discovery mode or other errors, throw generic error
       throw new Error(error.error || "Failed to generate authentication challenge")
     }
 
@@ -118,7 +121,7 @@ export async function verifyRegistration(
   username: string,
   credential: PasskeyCredential,
   challenge?: string
-): Promise<{ success: boolean; userId?: string }> {
+): Promise<{ success: boolean; userId?: string; username?: string }> {
   try {
     // Extract public key from attestation object (simplified for now)
     // In production, you'd need to parse the CBOR attestation object
@@ -167,8 +170,9 @@ export async function verifyRegistration(
  */
 export async function verifyAuthentication(
   username: string,
-  credential: PasskeyCredential
-): Promise<{ success: boolean; userId?: string }> {
+  credential: PasskeyCredential,
+  challenge?: string
+): Promise<{ success: boolean; userId?: string; username?: string }> {
   try {
     const response = await fetch("/api/auth/login/verify", {
       method: "POST",
@@ -178,6 +182,7 @@ export async function verifyAuthentication(
       body: JSON.stringify({
         username,
         credential,
+        challenge, // Pass challenge in case store doesn't have it (serverless)
       }),
     })
 
@@ -245,18 +250,28 @@ export async function createPasskey(challenge: PasskeyChallenge): Promise<Passke
 
     const response = credential.response as AuthenticatorAttestationResponse
 
-      // userHandle is typically not available in registration response
-      // It will be available during authentication
-      return {
-        id: credential.id,
-        rawId: arrayBufferToBase64URL(credential.rawId),
-        type: credential.type,
-        response: {
-          clientDataJSON: arrayBufferToBase64URL(response.clientDataJSON),
-          attestationObject: arrayBufferToBase64URL(response.attestationObject),
-          userHandle: null,
-        },
-      }
+    // Log credential ID details for debugging
+    console.log("[createPasskey] Credential ID from browser:", {
+      id: credential.id,
+      length: credential.id.length,
+      first_20: credential.id.substring(0, 20),
+      last_20: credential.id.substring(credential.id.length - 20),
+      type: typeof credential.id,
+      rawId_length: credential.rawId.byteLength
+    })
+
+    // userHandle is typically not available in registration response
+    // It will be available during authentication
+    return {
+      id: credential.id,
+      rawId: arrayBufferToBase64URL(credential.rawId),
+      type: credential.type,
+      response: {
+        clientDataJSON: arrayBufferToBase64URL(response.clientDataJSON),
+        attestationObject: arrayBufferToBase64URL(response.attestationObject),
+        userHandle: null,
+      },
+    }
   } catch (error) {
     console.error("Error creating passkey:", error)
     
@@ -309,6 +324,16 @@ export async function getPasskey(challenge: PasskeyChallenge): Promise<PasskeyCr
     }
 
     const response = credential.response as AuthenticatorAssertionResponse
+
+    // Log credential ID details for debugging
+    console.log("[getPasskey] Credential ID from browser:", {
+      id: credential.id,
+      length: credential.id.length,
+      first_20: credential.id.substring(0, 20),
+      last_20: credential.id.substring(credential.id.length - 20),
+      type: typeof credential.id,
+      rawId_length: credential.rawId.byteLength
+    })
 
     return {
       id: credential.id,

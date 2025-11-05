@@ -297,13 +297,21 @@ export async function POST(request: NextRequest) {
     const serviceClient = createServiceClient(supabaseUrl, supabaseServiceKey)
     
     console.log("[Register] Storing passkey for user:", authData.user.id)
-    const { error: passkeyError } = await serviceClient.from("passkeys").insert({
+    console.log("[Register] Credential ID being stored:", {
+      id: credential.id,
+      length: credential.id.length,
+      first_20: credential.id.substring(0, 20),
+      last_20: credential.id.substring(credential.id.length - 20),
+      type: typeof credential.id
+    })
+    
+    const { error: passkeyError, data: insertedPasskey } = await serviceClient.from("passkeys").insert({
       user_id: authData.user.id,
       credential_id: credential.id,
       public_key: publicKey,
       counter: 0,
       transports: credential.response.transports || [],
-    })
+    }).select().single()
 
     if (passkeyError) {
       console.error("[Register] Error storing passkey:", passkeyError)
@@ -323,6 +331,31 @@ export async function POST(request: NextRequest) {
         { status: 500, headers: corsHeaders(request) }
       )
     }
+    
+    // Verify the passkey was stored correctly
+    if (insertedPasskey) {
+      console.log("[Register] ✅ Passkey stored successfully:", {
+        passkey_id: insertedPasskey.id,
+        credential_id: insertedPasskey.credential_id,
+        credential_id_length: insertedPasskey.credential_id?.length || 0,
+        user_id: insertedPasskey.user_id,
+        stored_first_20: insertedPasskey.credential_id?.substring(0, 20) || "NULL",
+        stored_last_20: insertedPasskey.credential_id?.substring((insertedPasskey.credential_id?.length || 0) - 20) || "NULL"
+      })
+      
+      // Verify we can retrieve it immediately
+      const { data: verifyPasskey } = await serviceClient
+        .from("passkeys")
+        .select("credential_id")
+        .eq("credential_id", credential.id)
+        .maybeSingle()
+      
+      if (verifyPasskey) {
+        console.log("[Register] ✅ Verified: Can retrieve passkey immediately after storage")
+      } else {
+        console.error("[Register] ❌ WARNING: Cannot retrieve passkey immediately after storage!")
+      }
+    }
 
     // Create Stellar wallet for user (non-blocking)
     // Registration succeeds even if wallet creation fails
@@ -332,7 +365,7 @@ export async function POST(request: NextRequest) {
       const existingWallet = await getStellarWallet(authData.user.id, true) // Use service client
       if (!existingWallet) {
         console.log("[Register] No Stellar wallet found for userId:", authData.user.id, "- creating new wallet")
-        const wallet = await createStellarWallet(authData.user.id)
+      const wallet = await createStellarWallet(authData.user.id)
         console.log("[Register] Created wallet with Turnkey, storing in database...")
         const storedWallet = await storeStellarWallet(authData.user.id, wallet.turnkeyWalletId, wallet.publicKey, true) // Use service client
         console.log("[Register] ✅ Stellar wallet created and stored successfully:", {

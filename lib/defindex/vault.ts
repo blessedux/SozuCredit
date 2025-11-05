@@ -489,9 +489,9 @@ async function getUserStrategyShares(
     
     if (Api.isSimulationError(sharesResult)) {
       console.warn("[DeFindex] Error querying user shares:", (sharesResult as Api.SimulateTransactionErrorResponse).error)
-      return 0
-    }
-    
+  return 0
+}
+
     if (!Api.isSimulationSuccess(sharesResult) || !sharesResult.result) {
       return 0
     }

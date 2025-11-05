@@ -270,30 +270,26 @@ export async function getStellarWallet(userId: string, useServiceClient = false)
     }
   }
 
-  console.log("[getStellarWallet] Querying wallet for userId:", userId)
+  console.log("[getStellarWallet] Querying wallet for userId:", userId, "userId type:", typeof userId, "userId length:", userId?.length)
   
   const { data, error } = await supabase
     .from("stellar_wallets")
     .select("*")
     .eq("user_id", userId)
-    .single()
+    .maybeSingle() // Use maybeSingle instead of single to avoid errors when no row found
 
   if (error) {
-    if (error.code === "PGRST116") {
-      // No rows returned
-      console.log("[getStellarWallet] No wallet found for userId:", userId)
+    console.error("[getStellarWallet] Error querying wallet for userId:", userId, "Error:", error)
+    // Don't throw - just return null if there's an error
       return null
-    }
-    console.error("[getStellarWallet] Error querying wallet:", error)
-    throw new Error(`Failed to get wallet: ${error.message}`)
   }
 
   if (!data) {
-    console.log("[getStellarWallet] No data returned for userId:", userId)
+    console.log("[getStellarWallet] No wallet found for userId:", userId)
     return null
   }
   
-  console.log("[getStellarWallet] Wallet found for userId:", userId, "publicKey:", data.public_key ? `${data.public_key.substring(0, 10)}...` : "NULL")
+  console.log("[getStellarWallet] ✅ Wallet found for userId:", userId, "publicKey:", data.public_key ? `${data.public_key.substring(0, 10)}...` : "NULL", "wallet_id:", data.id)
 
   // Map database column names to TypeScript property names
   return {

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useRef } from "react"
-import { Wallet, Award, ArrowLeft, Globe } from "lucide-react"
+import { Wallet, Award, ArrowLeft, Globe, LogOut } from "lucide-react"
 import { FallingPattern } from "@/components/ui/falling-pattern"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
@@ -31,6 +31,7 @@ export default function WalletPage() {
   const [error, setError] = useState<string | null>(null)
   const [isBalanceVisible, setIsBalanceVisible] = useState(true)
   const [xlmBalance, setXlmBalance] = useState<number | null>(null)
+  const [isBalanceLoading, setIsBalanceLoading] = useState(true)
   const [isTrustModalOpen, setIsTrustModalOpen] = useState(false)
   const [isProfileSheetOpen, setIsProfileSheetOpen] = useState(false)
   const [modalView, setModalView] = useState<"main" | "invite" | "vouch">("main")
@@ -121,6 +122,8 @@ export default function WalletPage() {
       // Profile button
       openProfile: "Abrir perfil",
       closeProfile: "Cerrar perfil",
+      logout: "Cerrar Sesión",
+      logoutConfirm: "¿Estás seguro de que quieres cerrar sesión?",
       // Social share
       inviteMessage: "¡Únete a Sozu Credit! Usa mi código de invitación: {code} y recibamos ambos puntos de confianza extra. 🚀",
       codeCopiedShare: "Código copiado al portapapeles. ¡Listo para compartir!",
@@ -184,6 +187,8 @@ export default function WalletPage() {
       // Profile button
       openProfile: "Open profile",
       closeProfile: "Close profile",
+      logout: "Log Out",
+      logoutConfirm: "Are you sure you want to log out?",
       // Social share
       inviteMessage: "Join Sozu Credit! Use my invite code: {code} and let's both get extra trust points. 🚀",
       codeCopiedShare: "Code copied to clipboard. Ready to share!",
@@ -330,6 +335,7 @@ export default function WalletPage() {
           // Function to fetch XLM balance from Stellar wallet
           const fetchXLMBalance = async (publicKey: string) => {
             try {
+              setIsBalanceLoading(true)
               console.log("[Wallet] Fetching XLM balance for wallet:", publicKey)
               const balanceResponse = await fetch("/api/wallet/stellar/balance", {
                 headers: {
@@ -342,12 +348,15 @@ export default function WalletPage() {
                 console.log("[Wallet] XLM balance received:", balanceData)
                 if (balanceData.balance !== undefined) {
                   setXlmBalance(balanceData.balance)
+                  setIsBalanceLoading(false)
                 }
               } else {
                 console.warn("[Wallet] Failed to fetch XLM balance:", balanceResponse.status)
+                setIsBalanceLoading(false)
               }
             } catch (error) {
               console.error("[Wallet] Error fetching XLM balance:", error)
+              setIsBalanceLoading(false)
             }
           }
           
@@ -553,10 +562,10 @@ export default function WalletPage() {
     
     // Fetch APY immediately
     fetchRealAPY()
-    
+
     // Refresh APY every 5 minutes (APY doesn't change that frequently)
     const apyInterval = setInterval(fetchRealAPY, 5 * 60 * 1000)
-    
+
     return () => clearInterval(apyInterval)
   }, [])
 
@@ -595,6 +604,11 @@ export default function WalletPage() {
     
     // Check if base balance changed significantly (new funds received or currency changed)
     const baseChanged = Math.abs(baseBalance - baseBalanceRef.current) / (baseBalanceRef.current || 1) > 0.001
+    
+    // If we have a balance (even if it's 0) and we're still loading, mark as loaded
+    if (xlmBalance !== null && isBalanceLoading) {
+      setIsBalanceLoading(false)
+    }
     
     if (baseChanged || animatedBalanceRef.current === 0) {
       // Reset to new base balance if it changed significantly or is initializing
@@ -782,6 +796,20 @@ export default function WalletPage() {
       }
     }
     input.click()
+  }
+
+  const handleLogout = () => {
+    if (window.confirm(t.logoutConfirm)) {
+      // Clear all session storage
+      sessionStorage.clear()
+      localStorage.removeItem("sozu_username")
+      
+      // Close profile sheet
+      setIsProfileSheetOpen(false)
+      
+      // Redirect to auth page
+      window.location.href = "/auth"
+    }
   }
 
   const handleCopyWalletAddress = async () => {
@@ -994,7 +1022,9 @@ export default function WalletPage() {
                 className="text-6xl font-bold text-white cursor-pointer select-none flex items-center justify-center min-h-[4rem]"
                 onClick={toggleBalanceVisibility}
               >
-                {isBalanceVisible ? (
+                {isBalanceLoading && xlmBalance === null ? (
+                  <span className="tabular-nums">----</span>
+                ) : isBalanceVisible ? (
                   <SlidingNumber value={animatedBalance} />
                 ) : (
                   <span className="tabular-nums">{maskedBalance}</span>
@@ -1331,6 +1361,17 @@ export default function WalletPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Logout Button */}
+            <div className="relative">
+              <button
+                onClick={handleLogout}
+                className="absolute right-0 flex items-center gap-1 text-white/60 hover:text-white cursor-pointer"
+                aria-label={t.logout}
+              >
+                <LogOut className="w-5 h-5" />
+              </button>
+            </div>
           </div>
         </SheetContent>
       </Sheet>

@@ -17,6 +17,7 @@ import { useState, useRef } from "react"
 export default function AuthPage() {
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [registrationUsername, setRegistrationUsername] = useState("")
   const router = useRouter()
   const redirectingRef = useRef(false)
 
@@ -36,14 +37,14 @@ export default function AuthPage() {
       let authComplete = false
       
       // Try to get stored username from localStorage first (available in both login and registration flows)
-      let usernameToUse = "user" // Default fallback
+      let usernameToUse: string | null = null
       if (typeof window !== "undefined") {
         const storedUsername = localStorage.getItem("sozu_username")
-        if (storedUsername) {
+        if (storedUsername && storedUsername !== "user") {
           usernameToUse = storedUsername
           console.log("[Auth] Using stored username:", usernameToUse)
         } else {
-          console.log("[Auth] No stored username found, using default:", usernameToUse)
+          console.log("[Auth] No stored username found or username is 'user', using discovery mode")
         }
       }
       
@@ -52,12 +53,23 @@ export default function AuthPage() {
         
         let challenge
         try {
-          challenge = await generateAuthChallenge(usernameToUse)
+          // Use discovery mode if no username or username is "user"
+          // Discovery mode allows passkey selection without requiring username
+          const challengeUsername = usernameToUse || ""
+          console.log("[Auth] Generating challenge with username:", challengeUsername || "(discovery mode)")
+          challenge = await generateAuthChallenge(challengeUsername)
           console.log("[Auth] Step 2: Challenge generated, calling getPasskey...")
         } catch (challengeError) {
           // If challenge generation fails (user doesn't exist), skip login and go to registration
           console.log("[Auth] Login challenge failed (user may not exist), will try registration:", challengeError)
-          throw challengeError // Re-throw to trigger registration flow
+          // Only fall back to registration if we had a valid username and it failed
+          if (usernameToUse && usernameToUse !== "user") {
+            throw challengeError // Re-throw to trigger registration flow
+          }
+          // If no username or username is "user", try discovery mode
+          console.log("[Auth] Retrying with discovery mode (no username)...")
+          challenge = await generateAuthChallenge("")
+          console.log("[Auth] Step 2: Discovery mode challenge generated, calling getPasskey...")
         }
         
         try {
@@ -78,7 +90,11 @@ export default function AuthPage() {
         
         if (credential) {
           console.log("[Auth] Step 4: Verifying authentication...")
-          const authResult = await verifyAuthentication(usernameToUse, credential)
+          // Username is optional - verify will find user by credential_id
+          // Use empty string for discovery mode to ensure challenge lookup works
+          // Pass challenge from the challenge response to handle serverless environments
+          const verifyUsername = usernameToUse && usernameToUse !== "user" ? usernameToUse : ""
+          const authResult = await verifyAuthentication(verifyUsername, credential, challenge?.challenge)
           console.log("[Auth] Step 5: Verification result:", authResult)
           console.log("[Auth] Verification success:", authResult.success)
           console.log("[Auth] Verification userId:", authResult.userId)
@@ -107,13 +123,13 @@ export default function AuthPage() {
           if (typeof window !== "undefined") {
             console.log("[Auth] Step 6: Setting up authentication...")
             
-          // Store username in localStorage for future logins
-          // The API returns the actual username from the database
-          const actualUsername = (authResult as any).username || usernameToUse
-          if (actualUsername) {
-            localStorage.setItem("sozu_username", actualUsername)
-            console.log("[Auth] Saved username to localStorage:", actualUsername)
-          }
+            // Store username in localStorage for future logins
+            // The API returns the actual username from the database
+            const actualUsername = (authResult as any).username || usernameToUse
+            if (actualUsername) {
+              localStorage.setItem("sozu_username", actualUsername)
+              console.log("[Auth] Saved username to localStorage:", actualUsername)
+            }
           
           // CRITICAL: Always use userId from API response, never fall back to username
           // Using username as fallback causes wallet lookup issues
@@ -121,13 +137,13 @@ export default function AuthPage() {
             console.error("[Auth] ERROR: No userId returned from login API!")
             throw new Error("Login succeeded but no userId was returned. Cannot continue.")
           }
-          
-          // Store in session storage FIRST (client-side auth check)
+            
+            // Store in session storage FIRST (client-side auth check)
           // Use userId (UUID) not username - this is critical for wallet consistency
           sessionStorage.setItem("dev_username", authResult.userId)
-          sessionStorage.setItem("dev_authenticated", "true")
-          sessionStorage.setItem("passkey_registered", "true")
-          sessionStorage.setItem("dev_username_display", actualUsername) // Store for display
+            sessionStorage.setItem("dev_authenticated", "true")
+            sessionStorage.setItem("passkey_registered", "true")
+            sessionStorage.setItem("dev_username_display", actualUsername) // Store for display
           
           console.log("[Auth] Stored userId in sessionStorage:", authResult.userId, "Username:", actualUsername)
             
@@ -190,21 +206,62 @@ export default function AuthPage() {
           }
         }
       } catch (loginError) {
-        // If login fails, try registration
-        console.log("[Auth] Login failed, attempting registration...")
-        console.log("[Auth] Login error:", loginError)
-        
-        // Check if error is "User not found" or "No passkeys found" - this is expected for first-time users
+        // Check the error to determine if we should try registration
         const errorMessage = loginError instanceof Error ? loginError.message : String(loginError)
+        
+        // Don't try registration if:
+        // 1. Challenge errors (should retry login, not register)
+        // 2. Passkey not found errors (user already has passkey)
+        // 3. Authentication errors (user exists but verification failed)
+        const shouldNotRegister = 
+          errorMessage.includes("Challenge not found") ||
+          errorMessage.includes("Challenge not found or expired") ||
+          errorMessage.includes("Passkey not found") ||
+          errorMessage.includes("Invalid passkey") ||
+          errorMessage.includes("Authentication failed") ||
+          errorMessage.includes("Failed to verify authentication")
+        
+        if (shouldNotRegister) {
+          console.error("[Auth] Login failed with error that suggests user already exists:", errorMessage)
+          console.error("[Auth] Not attempting registration - user likely has existing passkey")
+          setIsAuthenticating(false)
+          // Show user-friendly error
+          alert("Login failed. Please try again or contact support if the problem persists.")
+          return
+        }
+        
+        // Only try registration if it's a "user not found" type error
         if (errorMessage.includes("User not found") || errorMessage.includes("No passkeys found")) {
           console.log("[Auth] User doesn't exist yet, proceeding with registration...")
         } else {
           console.warn("[Auth] Unexpected login error:", loginError)
+          console.warn("[Auth] Attempting registration as fallback...")
+        }
+        
+        // Prompt for username if not already set
+        let usernameToRegister = registrationUsername || "user"
+        if (!registrationUsername) {
+          // Prompt user for username
+          const userInput = prompt("Please enter a username (3-30 characters, letters, numbers, and underscores only):", "user")
+          if (userInput === null) {
+            // User cancelled
+            setIsAuthenticating(false)
+            return
+          }
+          const trimmedInput = userInput.trim()
+          if (trimmedInput.length >= 3 && trimmedInput.length <= 30 && /^[a-zA-Z0-9_]+$/.test(trimmedInput)) {
+            usernameToRegister = trimmedInput
+            setRegistrationUsername(trimmedInput)
+          } else {
+            alert("Invalid username. Must be 3-30 characters and contain only letters, numbers, and underscores.")
+            setIsAuthenticating(false)
+            return
+          }
         }
         
         try {
-          console.log("[Auth] Reg Step 1: Generating registration challenge...")
-          const challenge = await generateRegistrationChallenge("user")
+          console.log("[Auth] Reg Step 1: Generating registration challenge with username:", usernameToRegister)
+          const challenge = await generateRegistrationChallenge(usernameToRegister)
           console.log("[Auth] Reg Step 2: Challenge generated, calling createPasskey...")
           
           try {
@@ -229,7 +286,7 @@ export default function AuthPage() {
 
           console.log("[Auth] Reg Step 4: Verifying registration...")
           // Pass the challenge to verifyRegistration in case the in-memory store doesn't have it
-          const regResult = await verifyRegistration("user", credential, challenge.challenge)
+          const regResult = await verifyRegistration(usernameToRegister, credential, challenge.challenge)
           console.log("[Auth] Reg Step 5: Verification result:", regResult)
           console.log("[Auth] Registration success:", regResult.success)
           console.log("[Auth] Registration userId:", regResult.userId)
