@@ -262,9 +262,18 @@ DEFINDEX_STRATEGY_ADDRESS=<contract_address>
 TESTNET_USDC_CONTRACT_ADDRESS=<usdc_contract_address>
 MAINNET_USDC_CONTRACT_ADDRESS=<usdc_contract_address>
 
-# Turnkey Configuration (if needed for signing)
+# Turnkey Configuration (for transaction signing)
 TURNKEY_API_KEY=<api_key>
 TURNKEY_API_URL=<api_url>
+
+# Peanut Protocol Configuration (for offramp)
+PEANUT_PROTOCOL_API_URL=<api_url>
+PEANUT_PROTOCOL_API_KEY=<api_key>
+
+# MercadoPago Configuration (for offramp)
+MERCADOPAGO_ACCESS_TOKEN=<access_token>
+MERCADOPAGO_PUBLIC_KEY=<public_key>
+MERCADOPAGO_API_URL=https://api.mercadopago.com
 ```
 
 ---
@@ -333,6 +342,8 @@ TURNKEY_API_URL=<api_url>
 - [Soroban Documentation](https://soroban.stellar.org/docs)
 - [Stellar SDK Documentation](https://stellar.github.io/js-stellar-sdk/)
 - [Turnkey Documentation](https://docs.turnkey.com)
+- [Peanut Protocol SDK](https://github.com/peanutprotocol/peanut-sdk) - For secure offramp withdrawals
+- [MercadoPago API Documentation](https://www.mercadopago.com/developers/en/docs)
 
 ---
 
