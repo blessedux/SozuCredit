@@ -11,65 +11,15 @@ import {
   verifyAuthentication
 } from "@/lib/turnkey/passkeys"
 import { createClient } from "@/lib/supabase/client"
-import { useRouter, useSearchParams } from "next/navigation"
-import { useState, useRef, useEffect, Suspense } from "react"
+import { useRouter } from "next/navigation"
+import { useState, useRef } from "react"
 
-function AuthContent() {
+export default function AuthPage() {
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [registrationUsername, setRegistrationUsername] = useState("")
   const router = useRouter()
-  const searchParams = useSearchParams()
   const redirectingRef = useRef(false)
-  const [referralCode, setReferralCode] = useState<string | null>(null)
-  const hasCheckedSessionRef = useRef(false)
-  
-  // Check if user is already authenticated on page load
-  useEffect(() => {
-    if (hasCheckedSessionRef.current || typeof window === "undefined") return
-    
-    hasCheckedSessionRef.current = true
-    
-    const checkExistingSession = async () => {
-      // Check sessionStorage first
-      const sessionAuth = sessionStorage.getItem("dev_authenticated") === "true"
-      
-      if (sessionAuth) {
-        console.log("[Auth] User already authenticated via sessionStorage, redirecting to wallet")
-        router.push("/wallet")
-        return
-      }
-      
-      // Check Supabase session as well
-      try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        
-        if (user) {
-          console.log("[Auth] User already authenticated via Supabase, redirecting to wallet")
-          // Set sessionStorage for consistency
-          sessionStorage.setItem("dev_authenticated", "true")
-          sessionStorage.setItem("dev_username", user.id)
-          router.push("/wallet")
-          return
-        }
-      } catch (error) {
-        console.log("[Auth] No Supabase session found, proceeding with auth flow")
-      }
-    }
-    
-    checkExistingSession()
-  }, [router])
-  
-  // Read referral code from URL query parameter
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const ref = searchParams?.get("ref") || new URLSearchParams(window.location.search).get("ref")
-      if (ref) {
-        setReferralCode(ref)
-        console.log("[Auth] Referral code found:", ref)
-      }
-    }
-  }, [searchParams])
 
   const handleAuth = async () => {
     if (redirectingRef.current) {
@@ -86,215 +36,232 @@ function AuthContent() {
       let credential = null
       let authComplete = false
       
-      // Try to get stored userId or username from localStorage
-      // userId is preferred since it never changes (even if username changes)
-      let userIdToUse = null
-      let usernameToUse = null
+      // Try to get stored username from localStorage first (available in both login and registration flows)
+      let usernameToUse: string | null = null
       if (typeof window !== "undefined") {
-        const storedUserId = localStorage.getItem("sozu_user_id")
         const storedUsername = localStorage.getItem("sozu_username")
-        
-        if (storedUserId) {
-          userIdToUse = storedUserId
-          console.log("[Auth] Using stored userId:", userIdToUse)
-        } else if (storedUsername) {
+        if (storedUsername && storedUsername !== "user") {
           usernameToUse = storedUsername
-          console.log("[Auth] Using stored username (fallback):", usernameToUse)
+          console.log("[Auth] Using stored username:", usernameToUse)
         } else {
-          console.log("[Auth] No stored userId or username found")
+          console.log("[Auth] No stored username found or username is 'user', using discovery mode")
         }
       }
       
-      // Only try login if we have a stored userId or username (user has registered before)
-      if (userIdToUse || usernameToUse) {
-        try {
-          console.log("[Auth] Step 1: Attempting login with", userIdToUse ? "userId" : "username", "...")
-          
-          let challenge
-          try {
-            // Prefer userId over username (userId never changes)
-            challenge = await generateAuthChallenge(usernameToUse || undefined, userIdToUse || undefined)
-            console.log("[Auth] Step 2: Challenge generated, calling getPasskey to use existing device passkey...")
-          } catch (challengeError) {
-            // If challenge generation fails (user doesn't exist or no passkeys in DB), 
-            // This means the user might need to re-register
-            const errorMessage = challengeError instanceof Error ? challengeError.message : String(challengeError)
-            if (errorMessage.includes("User not found") || errorMessage.includes("No passkeys found")) {
-              console.log("[Auth] User or passkeys not found in database, will need to register")
-              // Clear stored credentials since they're invalid
-              localStorage.removeItem("sozu_user_id")
-              localStorage.removeItem("sozu_username")
-              userIdToUse = null
-              usernameToUse = null
-            } else {
-              throw challengeError
-            }
-          }
-          
-          // If we got a challenge, try to use existing passkey from device
-          if (challenge) {
-            try {
-              credential = await getPasskey(challenge)
-              console.log("[Auth] Step 3: getPasskey result:", credential ? "Got existing credential from device" : "No credential")
-            } catch (passkeyError) {
-              // Check if user cancelled the passkey prompt
-              if (passkeyError instanceof DOMException && (
-                passkeyError.name === "NotAllowedError" || 
-                passkeyError.name === "AbortError"
-              )) {
-                console.log("[Auth] User cancelled passkey authentication")
-                setIsAuthenticating(false)
-                return // Return early, user can try again
-              }
-              
-              // If no passkey found on device, we need to register
-              const errorMessage = passkeyError instanceof Error ? passkeyError.message : String(passkeyError)
-              if (errorMessage.includes("No passkey found") || errorMessage.includes("not found")) {
-                console.log("[Auth] No passkey found on device, will need to register")
-                credential = null // Clear credential so we go to registration
-              } else {
-                throw passkeyError // Re-throw other errors
-              }
-            }
-          }
+      try {
+        console.log("[Auth] Step 1: Attempting login...")
         
-          // If we got a credential, verify it (login successful)
-          if (credential) {
-            console.log("[Auth] Step 4: Verifying authentication with existing passkey...")
-            // Use userId if available (more reliable), otherwise use username
-            const authResult = await verifyAuthentication(
-              userIdToUse || usernameToUse!,
-              credential,
-              !!userIdToUse // isUserId flag
-            )
-            console.log("[Auth] Step 5: Verification result:", authResult)
-            console.log("[Auth] Verification success:", authResult.success)
-            console.log("[Auth] Verification userId:", authResult.userId)
-            
-            // Check if authResult exists and is successful
-            if (!authResult) {
-              console.error("[Auth] Authentication failed - no result returned")
-              throw new Error("Authentication returned no result")
-            }
-            
-            if (!authResult.success) {
-              console.error("[Auth] Authentication failed - result:", authResult)
-              console.error("[Auth] Auth result success value:", authResult.success)
-              throw new Error(`Authentication failed: ${JSON.stringify(authResult)}`)
-            }
-
-            console.log("[Auth] Login successful with existing passkey:", authResult)
-
-            // Set authenticated state to trigger animation ONLY after successful verification
-            setIsAuthenticated(true)
+        let challenge
+        try {
+          // Use discovery mode if no username or username is "user"
+          // Discovery mode allows passkey selection without requiring username
+          const challengeUsername = usernameToUse || ""
+          console.log("[Auth] Generating challenge with username:", challengeUsername || "(discovery mode)")
+          challenge = await generateAuthChallenge(challengeUsername)
+          console.log("[Auth] Step 2: Challenge generated, calling getPasskey...")
+        } catch (challengeError) {
+          // If challenge generation fails (user doesn't exist), skip login and go to registration
+          console.log("[Auth] Login challenge failed (user may not exist), will try registration:", challengeError)
+          // Only fall back to registration if we had a valid username and it failed
+          if (usernameToUse && usernameToUse !== "user") {
+            throw challengeError // Re-throw to trigger registration flow
+          }
+          // If no username or username is "user", try discovery mode
+          console.log("[Auth] Retrying with discovery mode (no username)...")
+          challenge = await generateAuthChallenge("")
+          console.log("[Auth] Step 2: Discovery mode challenge generated, calling getPasskey...")
+        }
+        
+        try {
+          credential = await getPasskey(challenge)
+          console.log("[Auth] Step 3: getPasskey result:", credential ? "Got credential" : "No credential")
+        } catch (passkeyError) {
+          // Check if user cancelled the passkey prompt
+          if (passkeyError instanceof DOMException && (
+            passkeyError.name === "NotAllowedError" || 
+            passkeyError.name === "AbortError"
+          )) {
+            console.log("[Auth] User cancelled passkey authentication")
             setIsAuthenticating(false)
+            return // Return early, user can try again
+          }
+          throw passkeyError // Re-throw other errors
+        }
+        
+        if (credential) {
+          console.log("[Auth] Step 4: Verifying authentication...")
+          // Username is optional - verify will find user by credential_id
+          // Use empty string for discovery mode to ensure challenge lookup works
+          // Pass challenge from the challenge response to handle serverless environments
+          const verifyUsername = usernameToUse && usernameToUse !== "user" ? usernameToUse : ""
+          const authResult = await verifyAuthentication(verifyUsername, credential, challenge?.challenge)
+          console.log("[Auth] Step 5: Verification result:", authResult)
+          console.log("[Auth] Verification success:", authResult.success)
+          console.log("[Auth] Verification userId:", authResult.userId)
+          
+          // Check if authResult exists and is successful
+          if (!authResult) {
+            console.error("[Auth] Authentication failed - no result returned")
+            throw new Error("Authentication returned no result")
+          }
+          
+          if (!authResult.success) {
+            console.error("[Auth] Authentication failed - result:", authResult)
+            console.error("[Auth] Auth result success value:", authResult.success)
+            throw new Error(`Authentication failed: ${JSON.stringify(authResult)}`)
+          }
 
-            // Create Supabase session for the user
-            // Since we can't use password, we'll use sessionStorage for now
-            // In production, you'd use Admin API to generate a proper session
-            if (typeof window !== "undefined") {
-              console.log("[Auth] Step 6: Setting up authentication...")
+          console.log("[Auth] Login successful:", authResult)
+
+          // Set authenticated state to trigger animation ONLY after successful verification
+          setIsAuthenticated(true)
+          setIsAuthenticating(false)
+
+          // Create Supabase session for the user
+          // Since we can't use password, we'll use sessionStorage for now
+          // In production, you'd use Admin API to generate a proper session
+          if (typeof window !== "undefined") {
+            console.log("[Auth] Step 6: Setting up authentication...")
+            
+            // Store username in localStorage for future logins
+            // The API returns the actual username from the database
+            const actualUsername = (authResult as any).username || usernameToUse
+            if (actualUsername) {
+              localStorage.setItem("sozu_username", actualUsername)
+              console.log("[Auth] Saved username to localStorage:", actualUsername)
+            }
+          
+          // CRITICAL: Always use userId from API response, never fall back to username
+          // Using username as fallback causes wallet lookup issues
+          if (!authResult.userId) {
+            console.error("[Auth] ERROR: No userId returned from login API!")
+            throw new Error("Login succeeded but no userId was returned. Cannot continue.")
+          }
+            
+            // Store in session storage FIRST (client-side auth check)
+          // Use userId (UUID) not username - this is critical for wallet consistency
+          sessionStorage.setItem("dev_username", authResult.userId)
+            sessionStorage.setItem("dev_authenticated", "true")
+            sessionStorage.setItem("passkey_registered", "true")
+            sessionStorage.setItem("dev_username_display", actualUsername) // Store for display
+          
+          console.log("[Auth] Stored userId in sessionStorage:", authResult.userId, "Username:", actualUsername)
+            
+            // Verify sessionStorage was set
+            const verifyAuth = sessionStorage.getItem("dev_authenticated")
+            console.log("[Auth] SessionStorage verified:", verifyAuth === "true")
+            
+            // Try to refresh the session if user exists
+            try {
+              const supabase = createClient()
+              const { data: { user } } = await supabase.auth.getUser()
               
-              // Store userId and username in localStorage for future logins
-              // userId is preferred since it never changes, even if username changes
-              const actualUserId = authResult.userId
-              const actualUsername = (authResult as any).username || usernameToUse
-              
-              if (actualUserId) {
-                localStorage.setItem("sozu_user_id", actualUserId)
-                console.log("[Auth] Saved userId to localStorage:", actualUserId)
+              if (!user) {
+                console.log("[Auth] No Supabase session, using sessionStorage fallback")
+                // Session will be checked via sessionStorage in middleware
+              } else {
+                console.log("[Auth] Supabase session exists")
               }
-              
-              if (actualUsername) {
-                localStorage.setItem("sozu_username", actualUsername)
-                console.log("[Auth] Saved username to localStorage:", actualUsername)
-              }
-              
-              // Store in session storage FIRST (client-side auth check)
-              sessionStorage.setItem("dev_username", authResult.userId || actualUsername)
-              sessionStorage.setItem("dev_authenticated", "true")
-              sessionStorage.setItem("passkey_registered", "true")
-              sessionStorage.setItem("dev_username_display", actualUsername) // Store for display
-              
-              // Verify sessionStorage was set
-              const verifyAuth = sessionStorage.getItem("dev_authenticated")
-              console.log("[Auth] SessionStorage verified:", verifyAuth === "true")
-              
-              // Try to refresh the session if user exists
-              try {
-                const supabase = createClient()
-                const { data: { user } } = await supabase.auth.getUser()
-                
-                if (!user) {
-                  console.log("[Auth] No Supabase session, using sessionStorage fallback")
-                  // Session will be checked via sessionStorage in middleware
-                } else {
-                  console.log("[Auth] Supabase session exists")
-                }
-              } catch (supabaseError) {
-                console.warn("[Auth] Error checking Supabase session (using sessionStorage fallback):", supabaseError)
-                // Continue with sessionStorage fallback
-              }
-              
-              // Force immediate redirect - set flags first
-              authComplete = true
-              redirectingRef.current = true
-              
-              console.log("[Auth] Step 7: Redirecting to wallet...")
-              console.log("[Auth] SessionStorage items:", {
-                dev_authenticated: sessionStorage.getItem("dev_authenticated"),
-                dev_username: sessionStorage.getItem("dev_username"),
-                passkey_registered: sessionStorage.getItem("passkey_registered"),
+            } catch (supabaseError) {
+              console.warn("[Auth] Error checking Supabase session (using sessionStorage fallback):", supabaseError)
+              // Continue with sessionStorage fallback
+            }
+            
+            // Force immediate redirect - set flags first
+            authComplete = true
+            redirectingRef.current = true
+            
+            console.log("[Auth] Step 7: Redirecting to wallet...")
+            console.log("[Auth] SessionStorage items:", {
+              dev_authenticated: sessionStorage.getItem("dev_authenticated"),
+              dev_username: sessionStorage.getItem("dev_username"),
+              passkey_registered: sessionStorage.getItem("passkey_registered"),
+            })
+            
+            // Wait for animation to play, then redirect
+            setTimeout(() => {
+              // Ensure sessionStorage is committed, then redirect using Next.js router
+              // This prevents full page refresh and preserves console logs
+              console.log("[Auth] About to redirect - final check:", {
+                pathname: window.location.pathname,
+                sessionAuth: sessionStorage.getItem("dev_authenticated"),
+                redirectingRef: redirectingRef.current
               })
               
-              // Wait for animation to play, then redirect
-              setTimeout(() => {
-                // Ensure sessionStorage is committed, then redirect using Next.js router
-                // This prevents full page refresh and preserves console logs
-                console.log("[Auth] About to redirect - final check:", {
-                  pathname: window.location.pathname,
-                  sessionAuth: sessionStorage.getItem("dev_authenticated"),
-                  redirectingRef: redirectingRef.current
-                })
-                
-                console.log("[Auth] Executing redirect via Next.js router to /wallet")
-                router.push("/wallet")
-                
-                // Give router a moment to navigate, but if it doesn't work, force it
-                setTimeout(() => {
-                  if (window.location.pathname === "/auth" || window.location.pathname === "/auth/") {
-                    console.warn("[Auth] Router.push didn't navigate after 300ms, forcing with window.location.href")
-                    window.location.href = "/wallet"
-                  } else {
-                    console.log("[Auth] Successfully navigated to:", window.location.pathname)
-                  }
-                }, 300)
-              }, 800) // Wait 800ms for animation
+              console.log("[Auth] Executing redirect via Next.js router to /wallet")
+              router.push("/wallet")
               
-              return
-            }
-          } else {
-            // No credential from device, will proceed to registration
-            console.log("[Auth] No existing passkey found on device, will proceed to registration")
+              // Give router a moment to navigate, but if it doesn't work, force it
+              setTimeout(() => {
+                if (window.location.pathname === "/auth" || window.location.pathname === "/auth/") {
+                  console.warn("[Auth] Router.push didn't navigate after 300ms, forcing with window.location.href")
+                  window.location.href = "/wallet"
+                } else {
+                  console.log("[Auth] Successfully navigated to:", window.location.pathname)
+                }
+              }, 300)
+            }, 800) // Wait 800ms for animation
+            
+            return
           }
-        } catch (loginError) {
-          // If login fails for any reason other than "no username", re-throw
-          const errorMessage = loginError instanceof Error ? loginError.message : String(loginError)
-          if (!errorMessage.includes("User not found") && !errorMessage.includes("No passkeys found")) {
-            console.warn("[Auth] Unexpected login error:", loginError)
-            throw loginError
-          }
-          // Otherwise, proceed to registration (user will be created)
         }
-      }
-      
-      // If we reach here, we need to register (either no userId/username stored, or login failed)
-      if ((!userIdToUse && !usernameToUse) || !credential) {
+      } catch (loginError) {
+        // Check the error to determine if we should try registration
+        const errorMessage = loginError instanceof Error ? loginError.message : String(loginError)
+        
+        // Don't try registration if:
+        // 1. Challenge errors (should retry login, not register)
+        // 2. Passkey not found errors (user already has passkey)
+        // 3. Authentication errors (user exists but verification failed)
+        const shouldNotRegister = 
+          errorMessage.includes("Challenge not found") ||
+          errorMessage.includes("Challenge not found or expired") ||
+          errorMessage.includes("Passkey not found") ||
+          errorMessage.includes("Invalid passkey") ||
+          errorMessage.includes("Authentication failed") ||
+          errorMessage.includes("Failed to verify authentication")
+        
+        if (shouldNotRegister) {
+          console.error("[Auth] Login failed with error that suggests user already exists:", errorMessage)
+          console.error("[Auth] Not attempting registration - user likely has existing passkey")
+          setIsAuthenticating(false)
+          // Show user-friendly error
+          alert("Login failed. Please try again or contact support if the problem persists.")
+          return
+        }
+        
+        // Only try registration if it's a "user not found" type error
+        if (errorMessage.includes("User not found") || errorMessage.includes("No passkeys found")) {
+          console.log("[Auth] User doesn't exist yet, proceeding with registration...")
+        } else {
+          console.warn("[Auth] Unexpected login error:", loginError)
+          console.warn("[Auth] Attempting registration as fallback...")
+        }
+        
+        // Prompt for username if not already set
+        let usernameToRegister = registrationUsername || "user"
+        if (!registrationUsername) {
+          // Prompt user for username
+          const userInput = prompt("Please enter a username (3-30 characters, letters, numbers, and underscores only):", "user")
+          if (userInput === null) {
+            // User cancelled
+            setIsAuthenticating(false)
+            return
+          }
+          const trimmedInput = userInput.trim()
+          if (trimmedInput.length >= 3 && trimmedInput.length <= 30 && /^[a-zA-Z0-9_]+$/.test(trimmedInput)) {
+            usernameToRegister = trimmedInput
+            setRegistrationUsername(trimmedInput)
+          } else {
+            alert("Invalid username. Must be 3-30 characters and contain only letters, numbers, and underscores.")
+            setIsAuthenticating(false)
+            return
+          }
+        }
+        
         try {
-          console.log("[Auth] Reg Step 1: Generating registration challenge for new user...")
-          // Use "user" as default username for new registrations
-          const newUsername = usernameToUse || "user"
-          const challenge = await generateRegistrationChallenge(newUsername)
+          console.log("[Auth] Reg Step 1: Generating registration challenge with username:", usernameToRegister)
+          const challenge = await generateRegistrationChallenge(usernameToRegister)
           console.log("[Auth] Reg Step 2: Challenge generated, calling createPasskey...")
           
           try {
@@ -310,16 +277,6 @@ function AuthContent() {
               setIsAuthenticating(false)
               return // Return early, user can try again
             }
-            
-            // Check if passkey already exists (InvalidStateError)
-            if (passkeyError instanceof DOMException && passkeyError.name === "InvalidStateError") {
-              console.log("[Auth] Passkey already exists on device, trying to use it for login instead...")
-              // Try to login with the existing passkey
-              // First, we need to check if user exists in DB
-              // For now, just show error and ask user to use login
-              throw new Error("A passkey already exists on this device. Please try logging in instead.")
-            }
-            
             throw passkeyError // Re-throw other errors
           }
           
@@ -329,8 +286,7 @@ function AuthContent() {
 
           console.log("[Auth] Reg Step 4: Verifying registration...")
           // Pass the challenge to verifyRegistration in case the in-memory store doesn't have it
-          // Also pass referral code if present
-          const regResult = await verifyRegistration(newUsername, credential, challenge.challenge, referralCode)
+          const regResult = await verifyRegistration(usernameToRegister, credential, challenge.challenge)
           console.log("[Auth] Reg Step 5: Verification result:", regResult)
           console.log("[Auth] Registration success:", regResult.success)
           console.log("[Auth] Registration userId:", regResult.userId)
@@ -350,26 +306,28 @@ function AuthContent() {
           if (typeof window !== "undefined") {
             console.log("[Auth] Reg Step 6: Setting up authentication...")
             
-            // Store userId and username in localStorage for future logins
-            // userId is preferred since it never changes, even if username changes
-            const registeredUserId = regResult.userId
-            const registeredUsername = (regResult as any).username || newUsername
-            
-            if (registeredUserId) {
-              localStorage.setItem("sozu_user_id", registeredUserId)
-              console.log("[Auth] Saved userId to localStorage after registration:", registeredUserId)
-            }
-            
+            // Store username in localStorage for future logins
+            const registeredUsername = (regResult as any).username || usernameToUse || "user"
             if (registeredUsername) {
               localStorage.setItem("sozu_username", registeredUsername)
               console.log("[Auth] Saved username to localStorage after registration:", registeredUsername)
             }
             
+            // CRITICAL: Always use userId from API response, never fall back to username
+            // Using username as fallback causes wallet lookup issues
+            if (!regResult.userId) {
+              console.error("[Auth] ERROR: No userId returned from registration API!")
+              throw new Error("Registration succeeded but no userId was returned. Cannot continue.")
+            }
+            
             // Store in session storage FIRST (client-side auth check)
-            sessionStorage.setItem("dev_username", regResult.userId || registeredUsername)
+            // Use userId (UUID) not username - this is critical for wallet consistency
+            sessionStorage.setItem("dev_username", regResult.userId)
             sessionStorage.setItem("dev_authenticated", "true")
             sessionStorage.setItem("passkey_registered", "true")
             sessionStorage.setItem("dev_username_display", registeredUsername) // Store for display
+            
+            console.log("[Auth] Stored userId in sessionStorage after registration:", regResult.userId, "Username:", registeredUsername)
             
             // Verify sessionStorage was set
             const verifyAuth = sessionStorage.getItem("dev_authenticated")
@@ -413,8 +371,13 @@ function AuthContent() {
               
               // Force a synchronous write to sessionStorage
               // This ensures it's definitely set before we navigate
+              // CRITICAL: Use userId (UUID), never fallback to username
+              if (!regResult.userId) {
+                console.error("[Auth] CRITICAL: No userId available for sessionStorage!")
+                return // Don't redirect if we don't have a userId
+              }
               sessionStorage.setItem("dev_authenticated", "true")
-              sessionStorage.setItem("dev_username", regResult.userId || "user")
+              sessionStorage.setItem("dev_username", regResult.userId)
               sessionStorage.setItem("passkey_registered", "true")
               sessionStorage.setItem("redirect_to_wallet", "true")
               
@@ -546,23 +509,5 @@ function AuthContent() {
         />
       </div>
     </div>
-  )
-}
-
-export default function AuthPage() {
-  return (
-    <Suspense fallback={
-      <div className="relative flex h-screen w-full items-center justify-center overflow-hidden bg-black">
-        <div className="absolute inset-0 z-0">
-          <FallingPattern 
-            className="h-full w-full" 
-            backgroundColor="oklch(0 0 0)"
-            color="oklch(1 0 0)"
-          />
-        </div>
-      </div>
-    }>
-      <AuthContent />
-    </Suspense>
   )
 }

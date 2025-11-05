@@ -4,7 +4,7 @@ import { challengeStore } from "@/lib/webauthn/config"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
-import { createStellarWallet, storeStellarWallet } from "@/lib/turnkey/stellar-wallet"
+import { createStellarWallet, storeStellarWallet, getStellarWallet } from "@/lib/turnkey/stellar-wallet"
 
 export async function OPTIONS(request: NextRequest) {
   return handleOPTIONS(request)
@@ -12,7 +12,7 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { username, credential, challenge, referralCode } = await request.json()
+    const { username, credential, challenge } = await request.json()
 
     // Try to verify challenge from store (for security)
     // If challenge store doesn't have it (e.g., in serverless environments), 
@@ -66,95 +66,13 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    // FIRST: Check if a user with this username already exists
-    console.log("[Register] Checking if username already exists:", username)
-    const { data: usernameCheck } = await supabase
-      .from("profiles")
-      .select("id, username")
-      .eq("username", username)
-      .single()
-    
-    if (usernameCheck) {
-      console.log("[Register] Username already exists:", usernameCheck.id)
-      
-      // Check if this user already has passkeys
-      const { data: existingPasskeys } = await supabase
-        .from("passkeys")
-        .select("id, credential_id")
-        .eq("user_id", usernameCheck.id)
-      
-      if (existingPasskeys && existingPasskeys.length > 0) {
-        console.log("[Register] User already has passkeys, this should be a login not registration")
-        return NextResponse.json(
-          { 
-            error: "User already exists with this username and has passkeys. Please try logging in instead.",
-            userId: usernameCheck.id,
-            username: usernameCheck.username
-          },
-          { status: 400, headers: corsHeaders(request) }
-        )
-      }
-      
-      // User exists but has no passkeys - add the passkey to existing user
-      console.log("[Register] User exists but has no passkeys, adding passkey to existing user")
-      // Note: Since profiles.id references auth.users(id), if profile exists, auth user exists
-      
-      // Use service client to bypass RLS since we're not authenticated as this user
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-      const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-      
-      let serviceSupabase = supabase
-      if (supabaseServiceKey && supabaseUrl) {
-        console.log("[Register] Using service client to bypass RLS for passkey insertion")
-        serviceSupabase = createServiceClient(supabaseUrl, supabaseServiceKey) as any
-      } else {
-        console.warn("[Register] Service client not available, this may fail due to RLS")
-      }
-      
-      // Store passkey for existing user
-      const publicKey = credential.response.publicKey || credential.response.attestationObject || credential.id
-      
-      const { error: passkeyError } = await serviceSupabase.from("passkeys").insert({
-        user_id: usernameCheck.id,
-        credential_id: credential.id,
-        public_key: publicKey,
-        counter: 0,
-        transports: credential.response.transports || [],
-      })
-      
-      if (passkeyError) {
-        console.error("[Register] Error storing passkey for existing user:", passkeyError)
-        return NextResponse.json(
-          { 
-            error: "Failed to store passkey", 
-            details: passkeyError.message 
-          },
-          { status: 500, headers: corsHeaders(request) }
-        )
-      }
-      
-      // Process referral code if provided (only for new registrations, skip for existing users)
-      // Skip referral processing since this is an existing user adding a passkey
-      
-      return NextResponse.json(
-        { 
-          success: true, 
-          userId: usernameCheck.id,
-          username: usernameCheck.username,
-          message: "Passkey added to existing account"
-        },
-        { headers: corsHeaders(request) }
-      )
-    }
-    
-    // Username doesn't exist - proceed with creating new user
     // Use a valid email format - Supabase requires proper email format with valid TLD
     // Generate a unique email using UUID to ensure uniqueness and pass validation
     // Using test.com domain which is a real domain (not reserved like example.com)
     const uuid = crypto.randomUUID()
     const randomEmail = `passkey-${uuid}@test.com`
 
-    console.log("[Register] Username is available, creating new user with email:", randomEmail)
+    console.log("[Register] Attempting to create user with email:", randomEmail)
     console.log("[Register] Supabase URL:", process.env.NEXT_PUBLIC_SUPABASE_URL ? "Set" : "Missing")
     
     // The trigger handle_new_user() tries to create profile with email column,
@@ -379,13 +297,21 @@ export async function POST(request: NextRequest) {
     const serviceClient = createServiceClient(supabaseUrl, supabaseServiceKey)
     
     console.log("[Register] Storing passkey for user:", authData.user.id)
-    const { error: passkeyError } = await serviceClient.from("passkeys").insert({
+    console.log("[Register] Credential ID being stored:", {
+      id: credential.id,
+      length: credential.id.length,
+      first_20: credential.id.substring(0, 20),
+      last_20: credential.id.substring(credential.id.length - 20),
+      type: typeof credential.id
+    })
+    
+    const { error: passkeyError, data: insertedPasskey } = await serviceClient.from("passkeys").insert({
       user_id: authData.user.id,
       credential_id: credential.id,
       public_key: publicKey,
       counter: 0,
       transports: credential.response.transports || [],
-    })
+    }).select().single()
 
     if (passkeyError) {
       console.error("[Register] Error storing passkey:", passkeyError)
@@ -405,59 +331,29 @@ export async function POST(request: NextRequest) {
         { status: 500, headers: corsHeaders(request) }
       )
     }
-
-    // Process referral code if provided
-    if (referralCode) {
-      try {
-        console.log("[Register] Processing referral code:", referralCode)
-        
-        // Find the user who owns this referral code (by username or invite code)
-        const { data: referrerProfile } = await supabase
-          .from("profiles")
-          .select("id")
-          .or(`username.eq.${referralCode},id.eq.${referralCode}`)
-          .maybeSingle()
-        
-        if (referrerProfile && authData.user && referrerProfile.id !== authData.user.id) {
-          // Valid referral - award points to both users
-          console.log("[Register] Valid referral code found, awarding bonus points")
-          
-          // Award points to referrer (inviter) - use direct SQL update
-          const { data: referrerTrustPoints } = await supabase
-            .from("trust_points")
-            .select("balance")
-            .eq("user_id", referrerProfile.id)
-            .single()
-          
-          if (referrerTrustPoints) {
-            await supabase
-              .from("trust_points")
-              .update({ balance: referrerTrustPoints.balance + 5 })
-              .eq("user_id", referrerProfile.id)
-          }
-          
-          // Award points to new user (invited) - use direct SQL update
-          const { data: newUserTrustPoints } = await supabase
-            .from("trust_points")
-            .select("balance")
-            .eq("user_id", authData.user.id)
-            .single()
-          
-          if (newUserTrustPoints) {
-            await supabase
-              .from("trust_points")
-              .update({ balance: newUserTrustPoints.balance + 5 })
-              .eq("user_id", authData.user.id)
-          }
-          
-          console.log("[Register] Referral bonus points awarded successfully")
-        } else {
-          console.log("[Register] Referral code not found or invalid, skipping bonus")
-        }
-      } catch (refError) {
-        // Log error but don't fail registration
-        console.error("[Register] Error processing referral code:", refError)
-        console.warn("[Register] Registration will proceed without referral bonus")
+    
+    // Verify the passkey was stored correctly
+    if (insertedPasskey) {
+      console.log("[Register] ✅ Passkey stored successfully:", {
+        passkey_id: insertedPasskey.id,
+        credential_id: insertedPasskey.credential_id,
+        credential_id_length: insertedPasskey.credential_id?.length || 0,
+        user_id: insertedPasskey.user_id,
+        stored_first_20: insertedPasskey.credential_id?.substring(0, 20) || "NULL",
+        stored_last_20: insertedPasskey.credential_id?.substring((insertedPasskey.credential_id?.length || 0) - 20) || "NULL"
+      })
+      
+      // Verify we can retrieve it immediately
+      const { data: verifyPasskey } = await serviceClient
+        .from("passkeys")
+        .select("credential_id")
+        .eq("credential_id", credential.id)
+        .maybeSingle()
+      
+      if (verifyPasskey) {
+        console.log("[Register] ✅ Verified: Can retrieve passkey immediately after storage")
+      } else {
+        console.error("[Register] ❌ WARNING: Cannot retrieve passkey immediately after storage!")
       }
     }
 
@@ -465,13 +361,24 @@ export async function POST(request: NextRequest) {
     // Registration succeeds even if wallet creation fails
     // Use service client since we don't have an authenticated Supabase session here yet
     try {
-      console.log("[Register] Creating Stellar wallet for user:", authData.user.id)
+      console.log("[Register] Checking for existing wallet for userId:", authData.user.id)
+      const existingWallet = await getStellarWallet(authData.user.id, true) // Use service client
+      if (!existingWallet) {
+        console.log("[Register] No Stellar wallet found for userId:", authData.user.id, "- creating new wallet")
       const wallet = await createStellarWallet(authData.user.id)
-      await storeStellarWallet(authData.user.id, wallet.turnkeyWalletId, wallet.publicKey, true) // Use service client
-      console.log("[Register] Stellar wallet created successfully:", wallet.publicKey)
+        console.log("[Register] Created wallet with Turnkey, storing in database...")
+        const storedWallet = await storeStellarWallet(authData.user.id, wallet.turnkeyWalletId, wallet.publicKey, true) // Use service client
+        console.log("[Register] ✅ Stellar wallet created and stored successfully:", {
+          userId: authData.user.id,
+          publicKey: storedWallet.publicKey ? `${storedWallet.publicKey.substring(0, 10)}...` : "NULL",
+          turnkeyWalletId: storedWallet.turnkeyWalletId,
+        })
+      } else {
+        console.log("[Register] ✅ Stellar wallet already exists for userId:", authData.user.id, "publicKey:", existingWallet.publicKey ? `${existingWallet.publicKey.substring(0, 10)}...` : "NULL")
+      }
     } catch (walletError) {
       // Log error but don't fail registration
-      console.error("[Register] Error creating Stellar wallet:", walletError)
+      console.error("[Register] ❌ Error with wallet for userId:", authData.user.id, "Error:", walletError)
       console.warn("[Register] Registration will proceed without wallet. Wallet can be created later via API.")
       // Registration continues successfully
     }

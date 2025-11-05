@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useRef } from "react"
 import { Wallet, Award, ArrowLeft, Globe, LogOut } from "lucide-react"
-import { useRouter } from "next/navigation"
 import { FallingPattern } from "@/components/ui/falling-pattern"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
@@ -26,13 +25,13 @@ interface TrustPoints {
 }
 
 export default function WalletPage() {
-  const router = useRouter()
   const [vault, setVault] = useState<Vault | null>(null)
   const [trustPoints, setTrustPoints] = useState<TrustPoints | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isBalanceVisible, setIsBalanceVisible] = useState(true)
   const [xlmBalance, setXlmBalance] = useState<number | null>(null)
+  const [isBalanceLoading, setIsBalanceLoading] = useState(true)
   const [isTrustModalOpen, setIsTrustModalOpen] = useState(false)
   const [isProfileSheetOpen, setIsProfileSheetOpen] = useState(false)
   const [modalView, setModalView] = useState<"main" | "invite" | "vouch">("main")
@@ -123,12 +122,11 @@ export default function WalletPage() {
       // Profile button
       openProfile: "Abrir perfil",
       closeProfile: "Cerrar perfil",
-      // Social share
-      inviteMessage: "¡Únete a Sozu Credit! Usa mi enlace de invitación: {link} y recibamos ambos puntos de confianza extra. 🚀",
-      codeCopiedShare: "Mensaje copiado al portapapeles. ¡Listo para compartir!",
-      // Logout
       logout: "Cerrar Sesión",
       logoutConfirm: "¿Estás seguro de que quieres cerrar sesión?",
+      // Social share
+      inviteMessage: "¡Únete a Sozu Credit! Usa mi código de invitación: {code} y recibamos ambos puntos de confianza extra. 🚀",
+      codeCopiedShare: "Código copiado al portapapeles. ¡Listo para compartir!",
     },
     en: {
       // Profile
@@ -189,12 +187,11 @@ export default function WalletPage() {
       // Profile button
       openProfile: "Open profile",
       closeProfile: "Close profile",
-      // Social share
-      inviteMessage: "Join Sozu Credit! Use my invite link: {link} and let's both get extra trust points. 🚀",
-      codeCopiedShare: "Message copied to clipboard. Ready to share!",
-      // Logout
       logout: "Log Out",
       logoutConfirm: "Are you sure you want to log out?",
+      // Social share
+      inviteMessage: "Join Sozu Credit! Use my invite code: {code} and let's both get extra trust points. 🚀",
+      codeCopiedShare: "Code copied to clipboard. Ready to share!",
     },
   }
   
@@ -338,6 +335,7 @@ export default function WalletPage() {
           // Function to fetch XLM balance from Stellar wallet
           const fetchXLMBalance = async (publicKey: string) => {
             try {
+              setIsBalanceLoading(true)
               console.log("[Wallet] Fetching XLM balance for wallet:", publicKey)
               const balanceResponse = await fetch("/api/wallet/stellar/balance", {
                 headers: {
@@ -350,12 +348,15 @@ export default function WalletPage() {
                 console.log("[Wallet] XLM balance received:", balanceData)
                 if (balanceData.balance !== undefined) {
                   setXlmBalance(balanceData.balance)
+                  setIsBalanceLoading(false)
                 }
               } else {
                 console.warn("[Wallet] Failed to fetch XLM balance:", balanceResponse.status)
+                setIsBalanceLoading(false)
               }
             } catch (error) {
               console.error("[Wallet] Error fetching XLM balance:", error)
+              setIsBalanceLoading(false)
             }
           }
           
@@ -561,10 +562,10 @@ export default function WalletPage() {
     
     // Fetch APY immediately
     fetchRealAPY()
-    
+
     // Refresh APY every 5 minutes (APY doesn't change that frequently)
     const apyInterval = setInterval(fetchRealAPY, 5 * 60 * 1000)
-    
+
     return () => clearInterval(apyInterval)
   }, [])
 
@@ -596,22 +597,18 @@ export default function WalletPage() {
   const animatedBalanceRef = useRef(0)
   const baseBalanceRef = useRef(0)
   
-  // Animate balance growth based on APY (only for USD and ARS, keep XLM stable)
+  // Animate balance growth based on APY
   useEffect(() => {
-    // For XLM, keep it stable (no animation)
-    if (currency === "XLM") {
-      setAnimatedBalance(baseBalance)
-      animatedBalanceRef.current = baseBalance
-      baseBalanceRef.current = baseBalance
-      return
-    }
-    
-    // For USD and ARS, apply animation
     // Calculate APY growth per second
     const apyPerSecond = currentAPY / 100 / 365 / 24 / 60 / 60 // Convert APY to per-second rate
     
     // Check if base balance changed significantly (new funds received or currency changed)
     const baseChanged = Math.abs(baseBalance - baseBalanceRef.current) / (baseBalanceRef.current || 1) > 0.001
+    
+    // If we have a balance (even if it's 0) and we're still loading, mark as loaded
+    if (xlmBalance !== null && isBalanceLoading) {
+      setIsBalanceLoading(false)
+    }
     
     if (baseChanged || animatedBalanceRef.current === 0) {
       // Reset to new base balance if it changed significantly or is initializing
@@ -636,7 +633,7 @@ export default function WalletPage() {
     }, 100)
     
     return () => clearInterval(interval)
-  }, [baseBalance, currentAPY, currency])
+  }, [baseBalance, currentAPY])
 
   // Format balance to 4 decimals
   const balance = animatedBalance.toFixed(4)
@@ -801,6 +798,20 @@ export default function WalletPage() {
     input.click()
   }
 
+  const handleLogout = () => {
+    if (window.confirm(t.logoutConfirm)) {
+      // Clear all session storage
+      sessionStorage.clear()
+      localStorage.removeItem("sozu_username")
+      
+      // Close profile sheet
+      setIsProfileSheetOpen(false)
+      
+      // Redirect to auth page
+      window.location.href = "/auth"
+    }
+  }
+
   const handleCopyWalletAddress = async () => {
     if (!walletAddress) {
       console.warn("Cannot copy: wallet address not available yet")
@@ -829,49 +840,6 @@ export default function WalletPage() {
     
     // Open Stellar Expert in a new tab
     window.open(stellarExpertUrl, "_blank", "noopener,noreferrer")
-  }
-
-  const handleLogout = async () => {
-    // Confirm logout
-    if (!confirm(t.logoutConfirm)) {
-      return
-    }
-
-    try {
-      // Clear all session data
-      if (typeof window !== "undefined") {
-        sessionStorage.removeItem("dev_authenticated")
-        sessionStorage.removeItem("dev_username")
-        sessionStorage.removeItem("passkey_registered")
-        sessionStorage.removeItem("dev_username_display")
-        
-        // Optionally clear username from localStorage (or keep it for future logins)
-        // localStorage.removeItem("sozu_username")
-      }
-
-      // Try to sign out from Supabase
-      try {
-        const response = await fetch("/auth/signout", {
-          method: "POST",
-        })
-        if (response.ok) {
-          console.log("[Logout] Supabase session cleared")
-        }
-      } catch (supabaseError) {
-        console.warn("[Logout] Error clearing Supabase session:", supabaseError)
-        // Continue with logout even if Supabase signout fails
-      }
-
-      // Close the profile sheet
-      setIsProfileSheetOpen(false)
-
-      // Redirect to auth page
-      router.push("/auth")
-    } catch (error) {
-      console.error("[Logout] Error during logout:", error)
-      // Still redirect to auth page even if there's an error
-      router.push("/auth")
-    }
   }
 
   // Swipe gesture handlers for opening menu (swipe right to left on main content)
@@ -1034,8 +1002,6 @@ export default function WalletPage() {
           className="h-full w-full" 
           backgroundColor="oklch(0 0 0)"
           color="oklch(1 0 0)"
-          useVideoFallback={true}
-          videoSrc="https://res.cloudinary.com/dezm9avsj/video/upload/v1762265486/pixelflow_bg_720_xj7b1e.mp4"
         />
       </div>
 
@@ -1056,7 +1022,9 @@ export default function WalletPage() {
                 className="text-6xl font-bold text-white cursor-pointer select-none flex items-center justify-center min-h-[4rem]"
                 onClick={toggleBalanceVisibility}
               >
-                {isBalanceVisible ? (
+                {isBalanceLoading && xlmBalance === null ? (
+                  <span className="tabular-nums">----</span>
+                ) : isBalanceVisible ? (
                   <SlidingNumber value={animatedBalance} />
                 ) : (
                   <span className="tabular-nums">{maskedBalance}</span>
@@ -1164,12 +1132,8 @@ export default function WalletPage() {
               <Button
                 onClick={async () => {
                   try {
-                    // Create referral link with invite code
-                    const baseUrl = typeof window !== "undefined" ? window.location.origin : "https://sozucredit.com"
-                    const referralLink = `${baseUrl}/auth?ref=${inviteCode}`
-                    
-                    // Create social media ready message with referral link
-                    const inviteMessage = t.inviteMessage.replace("{link}", referralLink)
+                    // Create social media ready message with invite code
+                    const inviteMessage = t.inviteMessage.replace("{code}", inviteCode)
                     
                     // Copy to clipboard
                     await navigator.clipboard.writeText(inviteMessage)
@@ -1398,11 +1362,11 @@ export default function WalletPage() {
               </CardContent>
             </Card>
 
-            {/* Logout Button - Bottom Right */}
-            <div className="flex justify-end mt-6 pb-8">
+            {/* Logout Button */}
+            <div className="relative">
               <button
                 onClick={handleLogout}
-                className="text-white/60 hover:text-white transition-colors p-2"
+                className="absolute right-0 flex items-center gap-1 text-white/60 hover:text-white cursor-pointer"
                 aria-label={t.logout}
               >
                 <LogOut className="w-5 h-5" />

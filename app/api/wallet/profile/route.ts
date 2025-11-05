@@ -187,7 +187,7 @@ export async function PUT(request: Request) {
         .update(updateData)
         .eq("id", userId)
         .select("username, display_name")
-        .single()
+        .maybeSingle()
       
       if (updateError) {
         console.error("[Profile API] Error updating profile:", updateError)
@@ -195,6 +195,26 @@ export async function PUT(request: Request) {
         // Check if it's a unique constraint violation
         if (updateError.code === "23505") {
           return NextResponse.json({ error: "Username is already taken" }, { status: 409 })
+        }
+        
+        // Check if it's the "Cannot coerce to single JSON object" error
+        if (updateError.message && updateError.message.includes("coerce")) {
+          console.error("[Profile API] Query returned multiple rows or unexpected result")
+          // Try to get the profile after update
+          const { data: profileAfterUpdate, error: fetchError } = await serviceClient
+            .from("profiles")
+            .select("username, display_name")
+            .eq("id", userId)
+            .maybeSingle()
+          
+          if (fetchError || !profileAfterUpdate) {
+            return NextResponse.json({ 
+              error: "Failed to update profile",
+              details: updateError.message 
+            }, { status: 500 })
+          }
+          
+          return NextResponse.json({ profile: profileAfterUpdate })
         }
         
         return NextResponse.json({ 
@@ -213,13 +233,20 @@ export async function PUT(request: Request) {
             display_name: display_name?.trim() || trimmedUsername
           })
           .select("username, display_name")
-          .single()
+          .maybeSingle()
         
         if (createError) {
           console.error("[Profile API] Error creating profile:", createError)
           return NextResponse.json({ 
             error: "Failed to create profile",
             details: createError.message 
+          }, { status: 500 })
+        }
+        
+        if (!newProfile) {
+          return NextResponse.json({ 
+            error: "Failed to create profile",
+            details: "Profile creation returned no data"
           }, { status: 500 })
         }
         

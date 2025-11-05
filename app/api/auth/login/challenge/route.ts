@@ -11,104 +11,74 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { username, userId } = await request.json()
+    const { username } = await request.json()
 
-    // Accept either username or userId (userId is preferred since it never changes)
-    if (!username && !userId) {
-      return NextResponse.json(
-        { error: "Username or userId is required" },
-        { status: 400, headers: corsHeaders(request) }
-      )
-    }
+    console.log("[Login Challenge] Request received - username:", username || "(empty/not provided)", "type:", typeof username)
 
-    // Verify user exists
-    const supabase = await createClient()
-    let profile
-    
-    if (userId) {
-      // Use userId if provided (preferred method - more reliable)
-      const { data: profileById } = await supabase
-        .from("profiles")
-        .select("id, username")
-        .eq("id", userId)
-        .single()
-      
-      if (!profileById) {
-        return NextResponse.json(
-          { error: "User not found" },
-          { status: 404, headers: corsHeaders(request) }
-        )
-      }
-      profile = profileById
-      console.log("[Login Challenge] Found user by userId:", userId, "username:", profile.username)
-    } else if (username) {
-      // Fallback to username lookup (for backward compatibility)
-      const { data: profileByUsername } = await supabase
-        .from("profiles")
-        .select("id, username")
-        .eq("username", username)
-        .single()
-      
-      if (!profileByUsername) {
-        return NextResponse.json(
-          { error: "User not found" },
-          { status: 404, headers: corsHeaders(request) }
-        )
-      }
-      profile = profileByUsername
-      console.log("[Login Challenge] Found user by username:", username, "userId:", profile.id)
-    }
-
-    if (!profile) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404, headers: corsHeaders(request) }
-      )
-    }
-
-    // Get user's passkeys
-    const { data: passkeys } = await supabase.from("passkeys").select("credential_id").eq("user_id", profile.id)
-
-    if (!passkeys || passkeys.length === 0) {
-      return NextResponse.json(
-        { error: "No passkeys found" },
-        { status: 404, headers: corsHeaders(request) }
-      )
-    }
-
-    // Clean up old challenges
+    // Clean up old challenges (but keep recent ones)
     cleanupChallenges()
 
     // Generate challenge
     const challenge = generateChallenge()
+    console.log("[Login Challenge] Generated challenge:", challenge.substring(0, 20) + "...")
 
-    // Store challenge temporarily using userId (preferred) or username (fallback)
-    // Using userId as key ensures challenges work even if username changes
-    // Store under both userId and username keys for backward compatibility
-    const challengeKey = userId || profile.id || username
+    // If username provided and not empty, try to get specific passkeys for that user
+    if (username && typeof username === "string" && username !== "") {
+      console.log("[Login Challenge] Username provided:", username)
+      
+      // Verify user exists
+      const supabase = await createClient()
+      const { data: profile } = await supabase.from("profiles").select("id").eq("username", username).single()
+
+      if (profile) {
+        // Get user's passkeys
+        const { data: passkeys } = await supabase.from("passkeys").select("credential_id").eq("user_id", profile.id)
+
+        if (passkeys && passkeys.length > 0) {
+          console.log("[Login Challenge] Found", passkeys.length, "passkey(s) for user:", username)
+          
+          // Store challenge temporarily
+          challengeStore.set(username, {
+            challenge,
+            timestamp: Date.now(),
+          })
+          console.log("[Login Challenge] ✅ Stored challenge under username key:", username, "Store size:", challengeStore.size)
+
+          // Return WebAuthn authentication options with CORS headers
+          return NextResponse.json(
+            {
+              challenge,
+              allowCredentials: passkeys.map((pk) => ({
+                id: pk.credential_id,
+                type: "public-key",
+                transports: ["internal"],
+              })),
+              timeout: 60000,
+              userVerification: "required",
+            },
+            { headers: corsHeaders(request) }
+          )
+        }
+      }
+    }
+
+    // If no username or user not found, allow discovery of any passkey
+    // This enables passkey-based login without requiring username
+    console.log("[Login Challenge] Username not provided or user not found, enabling passkey discovery")
     
-    challengeStore.set(challengeKey, {
+    // Store challenge with a special key for discovery mode
+    challengeStore.set("__discovery__", {
       challenge,
       timestamp: Date.now(),
     })
-    
-    // Also store under username key if different from userId (for backward compatibility)
-    if (username && username !== challengeKey) {
-      challengeStore.set(username, {
-        challenge,
-        timestamp: Date.now(),
-      })
-    }
+    console.log("[Login Challenge] ✅ Stored challenge under discovery key: __discovery__, Store size:", challengeStore.size, "Store keys:", [...challengeStore.keys()])
 
-    // Return WebAuthn authentication options with CORS headers
+    // Return WebAuthn authentication options without allowCredentials
+    // This allows the browser to discover and use any registered passkey
     return NextResponse.json(
       {
         challenge,
-        allowCredentials: passkeys.map((pk) => ({
-          id: pk.credential_id,
-          type: "public-key",
-          transports: ["internal"],
-        })),
+        // Omit allowCredentials to enable passkey discovery
         timeout: 60000,
         userVerification: "required",
       },
