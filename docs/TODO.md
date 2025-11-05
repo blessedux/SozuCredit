@@ -5,6 +5,7 @@ This document tracks high-priority features and improvements for the SozuCredit 
 ## 🔥 High Priority
 
 ### 1. Phone Number Login with SMS 2FA
+
 **Status:** Not Started  
 **Priority:** High  
 **Target:** Devices without passkey support
@@ -13,6 +14,7 @@ This document tracks high-priority features and improvements for the SozuCredit 
 Implement an alternative authentication method for users who don't have passkey support on their devices. This will enable broader platform access while maintaining security.
 
 **Requirements:**
+
 - Phone number input and validation
 - SMS code generation and delivery
 - SMS verification with 2FA
@@ -21,6 +23,7 @@ Implement an alternative authentication method for users who don't have passkey 
 - User preference selection (passkey vs SMS)
 
 **Technical Considerations:**
+
 - SMS provider integration (Twilio, AWS SNS, or similar)
 - Rate limiting for SMS requests
 - Phone number verification and storage
@@ -28,6 +31,7 @@ Implement an alternative authentication method for users who don't have passkey 
 - Cost management for SMS delivery
 
 **Dependencies:**
+
 - SMS service provider account
 - Phone number validation service
 - Database schema updates for phone numbers
@@ -37,6 +41,7 @@ Implement an alternative authentication method for users who don't have passkey 
 ## 📊 Core Features
 
 ### 2. Expenditure Management
+
 **Status:** Not Started  
 **Priority:** Medium-High
 
@@ -44,6 +49,7 @@ Implement an alternative authentication method for users who don't have passkey 
 A comprehensive system for users to track and manage their expenses, enabling better financial planning and budgeting.
 
 **Requirements:**
+
 - Expense categorization (food, transport, utilities, etc.)
 - Manual expense entry
 - Automatic expense categorization (via ML/AI if possible)
@@ -54,6 +60,7 @@ A comprehensive system for users to track and manage their expenses, enabling be
 - Export functionality (CSV, PDF)
 
 **Technical Considerations:**
+
 - Database schema for expenses
 - Expense categorization logic
 - Reporting and analytics
@@ -62,6 +69,7 @@ A comprehensive system for users to track and manage their expenses, enabling be
 ---
 
 ### 3. Visual Cashflow
+
 **Status:** Not Started  
 **Priority:** Medium-High
 
@@ -69,6 +77,7 @@ A comprehensive system for users to track and manage their expenses, enabling be
 Interactive visualizations showing cash flow trends, income vs expenses, and financial health indicators.
 
 **Requirements:**
+
 - Income vs expense charts
 - Cash flow timeline (daily, weekly, monthly, yearly views)
 - Trend analysis and forecasting
@@ -78,18 +87,21 @@ Interactive visualizations showing cash flow trends, income vs expenses, and fin
 - Export visualizations as images
 
 **Technical Considerations:**
+
 - Chart library integration (Recharts, Chart.js, D3.js)
 - Data aggregation and processing
 - Real-time data updates
 - Mobile-responsive visualizations
 
 **Dependencies:**
+
 - Expenditure Management (Feature #2)
 - Income tracking system
 
 ---
 
 ### 4. Loan Request and Payback Traceability
+
 **Status:** Not Started  
 **Priority:** Medium
 
@@ -97,6 +109,7 @@ Interactive visualizations showing cash flow trends, income vs expenses, and fin
 Complete system for loan management, including request submission, approval workflow, disbursement tracking, and repayment traceability.
 
 **Requirements:**
+
 - Loan request form and submission
 - Loan application status tracking
 - Approval/rejection workflow
@@ -109,6 +122,7 @@ Complete system for loan management, including request submission, approval work
 - Loan analytics and reporting
 
 **Technical Considerations:**
+
 - Loan calculation engine (interest, fees, etc.)
 - Payment processing integration
 - Notification system
@@ -116,6 +130,7 @@ Complete system for loan management, including request submission, approval work
 - Audit trail for all loan-related actions
 
 **Dependencies:**
+
 - User authentication system
 - Wallet system (existing)
 - Payment processing infrastructure
@@ -125,6 +140,7 @@ Complete system for loan management, including request submission, approval work
 ## 💱 Financial Operations
 
 ### 5. Onramp and Offramp
+
 **Status:** Not Started  
 **Priority:** Medium
 
@@ -132,25 +148,25 @@ Complete system for loan management, including request submission, approval work
 Enable users to convert between fiat currencies (USD, ARS, etc.) and digital assets (XLM, Stellar tokens) seamlessly.
 
 **Requirements:**
+
 - Fiat to crypto (Onramp) functionality
   - Bank transfer integration
   - Credit/debit card processing
   - Supported currencies (USD, ARS, etc.)
   - Real-time exchange rates
   - Transaction limits and KYC compliance
-  
 - Crypto to fiat (Offramp) functionality
   - Bank withdrawal processing
   - Supported currencies
   - Withdrawal limits and verification
   - Transaction fees and pricing transparency
-  
 - Exchange rate management
 - Transaction history and tracking
 - Compliance and regulatory requirements (KYC/AML)
 - Multi-currency support
 
 **Technical Considerations:**
+
 - Payment processor integration (Stripe, PayPal, etc.)
 - Fiat gateway services
 - Regulatory compliance tools
@@ -159,6 +175,7 @@ Enable users to convert between fiat currencies (USD, ARS, etc.) and digital ass
 - Secure payment handling
 
 **Dependencies:**
+
 - Stellar wallet integration (existing)
 - Payment processor accounts
 - Compliance verification systems
@@ -183,6 +200,5 @@ Enable users to convert between fiat currencies (USD, ARS, etc.) and digital ass
 
 ---
 
-**Last Updated:** 2025-01-23  
+**Last Updated:** 2025-10-04  
 **Maintained By:** Development Team
-

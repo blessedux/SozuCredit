@@ -141,6 +141,7 @@
 **Goal:** Integrate Peanut Protocol SDK for secure offramp withdrawals to MercadoPago
 
 #### Key Requirements:
+
 - **Offramp Only**: Withdrawals only happen when user requests offramp to MercadoPago
 - **Peanut Protocol**: Use [Peanut Protocol SDK](https://github.com/peanutprotocol/peanut-sdk) for secure withdrawal process
 - **MercadoPago Integration**: Connect to MercadoPago for fiat conversion and payout
@@ -148,12 +149,14 @@
 #### Tasks:
 
 1. **Install and Setup Peanut Protocol SDK**
+
    - [ ] Install `@squirrel-labs/peanut-sdk` package: `npm install @squirrel-labs/peanut-sdk`
    - [ ] Review Peanut Protocol SDK documentation: https://github.com/peanutprotocol/peanut-sdk
    - [ ] Understand SDK API methods and integration patterns
    - [ ] Configure Peanut Protocol API endpoints
 
 2. **Implement Withdrawal via Peanut Protocol**
+
    - [ ] Create withdrawal function using Peanut Protocol SDK
    - [ ] Integrate with DeFindex strategy withdrawal
    - [ ] Handle withdrawal transaction signing via Turnkey
@@ -161,6 +164,7 @@
    - [ ] Generate secure withdrawal links using Peanut Protocol
 
 3. **MercadoPago Integration**
+
    - [ ] Research MercadoPago API for receiving funds
    - [ ] Implement MercadoPago account linking
    - [ ] Handle fiat conversion (USDC → ARS via MercadoPago)
@@ -175,23 +179,27 @@
    - [ ] Display Peanut Protocol secure link generation
 
 **Files to Create:**
+
 - `lib/peanut/offramp.ts` - Peanut Protocol integration for offramp
 - `lib/mercadopago/client.ts` - MercadoPago API integration
 - `app/api/wallet/offramp/route.ts` - Offramp API endpoint
 - `app/api/wallet/offramp/mercadopago/route.ts` - MercadoPago webhook handler
 
 **Files to Modify:**
+
 - `lib/defindex/vault.ts` - Update `withdrawFromStrategy()` to integrate with Peanut Protocol
 - `app/wallet/page.tsx` - Add offramp UI components
 - `lib/turnkey/stellar-wallet.ts` - Add withdrawal transaction signing
 
 **Dependencies:**
+
 - Peanut Protocol SDK: `npm install @squirrel-labs/peanut-sdk`
 - MercadoPago API credentials
 - Soroban RPC endpoint for withdrawals
 - Turnkey wallet signing for withdrawals
 
 **Database Changes:**
+
 - Add `mercadopago_account_id` to profiles table (optional, for linking)
 - Create `offramp_transactions` table to track withdrawal history
 
