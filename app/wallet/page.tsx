@@ -69,6 +69,64 @@ export default function WalletPage() {
   const [isAutoDepositing, setIsAutoDepositing] = useState(false)
 
   // Swipe gesture state
+
+  // Function to fetch DeFindex balance
+  const fetchDefindexBalance = async (userId: string) => {
+    try {
+      console.log("[Wallet] Fetching DeFindex balance")
+      const defindexResponse = await fetch("/api/wallet/defindex/balance", {
+        headers: {
+          "x-user-id": userId,
+        },
+      })
+
+      if (defindexResponse.ok) {
+        const defindexData = await defindexResponse.json()
+        console.log("[Wallet] DeFindex balance received:", defindexData)
+        if (defindexData.success) {
+          setDefindexBalance({
+            walletBalance: defindexData.walletBalance,
+            strategyBalance: defindexData.strategyBalance,
+            totalBalance: defindexData.balance,
+            strategyShares: defindexData.strategyShares,
+            apy: defindexData.apy,
+          })
+        }
+      } else {
+        console.warn("[Wallet] Failed to fetch DeFindex balance:", defindexResponse.status)
+      }
+    } catch (error) {
+      console.error("[Wallet] Error fetching DeFindex balance:", error)
+    }
+  }
+
+  // Function to fetch auto-deposit status
+  const fetchAutoDepositStatus = async (userId: string) => {
+    try {
+      console.log("[Wallet] Fetching auto-deposit status")
+      const autoDepositResponse = await fetch("/api/wallet/defindex/auto-deposit", {
+        headers: {
+          "x-user-id": userId,
+        },
+      })
+
+      if (autoDepositResponse.ok) {
+        const autoDepositData = await autoDepositResponse.json()
+        console.log("[Wallet] Auto-deposit status received:", autoDepositData)
+        if (autoDepositData.success) {
+          setAutoDepositStatus({
+            wouldTrigger: autoDepositData.wouldTriggerAutoDeposit,
+            currentBalance: autoDepositData.currentBalance,
+            previousBalance: autoDepositData.previousBalance,
+          })
+        }
+      } else {
+        console.warn("[Wallet] Failed to fetch auto-deposit status:", autoDepositResponse.status)
+      }
+    } catch (error) {
+      console.error("[Wallet] Error fetching auto-deposit status:", error)
+    }
+  }
   const touchStartX = useRef<number | null>(null)
   const touchEndX = useRef<number | null>(null)
   const touchStartY = useRef<number | null>(null)
@@ -373,63 +431,6 @@ export default function WalletPage() {
             }
           }
 
-          // Function to fetch DeFindex balance
-          const fetchDefindexBalance = async () => {
-            try {
-              console.log("[Wallet] Fetching DeFindex balance")
-              const defindexResponse = await fetch("/api/wallet/defindex/balance", {
-                headers: {
-                  "x-user-id": userId,
-                },
-              })
-
-              if (defindexResponse.ok) {
-                const defindexData = await defindexResponse.json()
-                console.log("[Wallet] DeFindex balance received:", defindexData)
-                if (defindexData.success) {
-                  setDefindexBalance({
-                    walletBalance: defindexData.walletBalance,
-                    strategyBalance: defindexData.strategyBalance,
-                    totalBalance: defindexData.balance,
-                    strategyShares: defindexData.strategyShares,
-                    apy: defindexData.apy,
-                  })
-                }
-              } else {
-                console.warn("[Wallet] Failed to fetch DeFindex balance:", defindexResponse.status)
-              }
-            } catch (error) {
-              console.error("[Wallet] Error fetching DeFindex balance:", error)
-            }
-          }
-
-          // Function to fetch auto-deposit status
-          const fetchAutoDepositStatus = async () => {
-            try {
-              console.log("[Wallet] Fetching auto-deposit status")
-              const autoDepositResponse = await fetch("/api/wallet/defindex/auto-deposit", {
-                headers: {
-                  "x-user-id": userId,
-                },
-              })
-
-              if (autoDepositResponse.ok) {
-                const autoDepositData = await autoDepositResponse.json()
-                console.log("[Wallet] Auto-deposit status received:", autoDepositData)
-                if (autoDepositData.success) {
-                  setAutoDepositStatus({
-                    wouldTrigger: autoDepositData.wouldTriggerAutoDeposit,
-                    currentBalance: autoDepositData.currentBalance,
-                    previousBalance: autoDepositData.previousBalance,
-                  })
-                }
-              } else {
-                console.warn("[Wallet] Failed to fetch auto-deposit status:", autoDepositResponse.status)
-              }
-            } catch (error) {
-              console.error("[Wallet] Error fetching auto-deposit status:", error)
-            }
-          }
           
           // Fetch real Stellar wallet address from API
           // Retry up to 5 times with delay to account for wallet creation during login
@@ -460,8 +461,8 @@ export default function WalletPage() {
                   fetchXLMBalance(walletData.publicKey)
 
                   // Fetch DeFindex balance and auto-deposit status
-                  fetchDefindexBalance()
-                  fetchAutoDepositStatus()
+                  fetchDefindexBalance(userId)
+                  fetchAutoDepositStatus(userId)
                   
                   return // Success, no need to retry
                 } else {
@@ -491,8 +492,8 @@ export default function WalletPage() {
                           fetchXLMBalance(createData.publicKey)
 
                           // Fetch DeFindex balance and auto-deposit status
-                          fetchDefindexBalance()
-                          fetchAutoDepositStatus()
+                          fetchDefindexBalance(userId)
+                          fetchAutoDepositStatus(userId)
                           return
                         }
                       }
@@ -760,7 +761,7 @@ export default function WalletPage() {
       const response = await fetch("/api/wallet/defindex/auto-deposit", {
         method: "POST",
         headers: {
-          "x-user-id": sessionStorage.getItem("dev_username"),
+          "x-user-id": sessionStorage.getItem("dev_username") || "",
         },
       })
 
@@ -773,8 +774,11 @@ export default function WalletPage() {
             : `✅ Auto-deposit successful: $${data.depositAmount} USDC deposited`
           )
           // Refresh balances
-          fetchDefindexBalance()
-          fetchAutoDepositStatus()
+          const userId = sessionStorage.getItem("dev_username")
+          if (userId) {
+            fetchDefindexBalance(userId)
+            fetchAutoDepositStatus(userId)
+          }
         } else {
           alert(t.language === "es"
             ? "ℹ️ Depósito automático no activado"
