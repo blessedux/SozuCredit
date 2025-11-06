@@ -107,10 +107,21 @@ export function APYDisplay({
   const getSourceColor = (source: string) => {
     switch (source) {
       case 'contract': return 'bg-blue-100 text-blue-800'
-      case 'calculated': return 'bg-purple-100 text-purple-800'
+      case 'calculated': return 'bg-purple-100 text-purple-800 hover:bg-purple-200 cursor-pointer'
       case 'external': return 'bg-green-100 text-green-800'
       case 'fallback': return 'bg-orange-100 text-orange-800'
       default: return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  const getDisplaySource = (source: string) => {
+    return source === 'calculated' ? 'DeFi Vault' : source
+  }
+
+  const handleSourceClick = (source: string) => {
+    if (source === 'calculated') {
+      // Open Blend protocol USDC vault
+      window.open('https://mainnet.blend.capital/asset/?poolId=CAJJZSGMMM3PD7N33TAPHGBUGTB43OC73HVIK2L2G6BNGGGYOSSYBXBD&assetId=CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75', '_blank')
     }
   }
 
@@ -121,8 +132,12 @@ export function APYDisplay({
         <span className="font-semibold text-green-600">
           {apyData ? `${apyData.primary}%` : loading ? '...' : '15.5%'}
         </span>
-        <Badge variant="outline" className={`text-xs ${getSourceColor(apyData?.source || 'fallback')}`}>
-          {apyData?.source || 'fallback'}
+        <Badge
+          variant="outline"
+          className={`text-xs ${getSourceColor(apyData?.source || 'fallback')}`}
+          onClick={() => handleSourceClick(apyData?.source || 'fallback')}
+        >
+          {getDisplaySource(apyData?.source || 'fallback')}
         </Badge>
         {loading && <RefreshCw className="w-3 h-3 animate-spin" />}
       </div>
@@ -236,8 +251,12 @@ export function APYDisplay({
         {apyData && (
           <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t">
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className={getSourceColor(apyData.source)}>
-                {apyData.source}
+              <Badge
+                variant="outline"
+                className={getSourceColor(apyData.source)}
+                onClick={() => handleSourceClick(apyData.source)}
+              >
+                {getDisplaySource(apyData.source)}
               </Badge>
               <span>Precision: {apyData.precision}</span>
             </div>
@@ -261,14 +280,72 @@ export function APYDisplay({
 
 // Compact version for inline display
 export function APYBadge({ strategyAddress, className = "" }: { strategyAddress: string, className?: string }) {
+  const [apyData, setApyData] = useState<APYData | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchAPY = async () => {
+      try {
+        setLoading(true)
+        const response = await fetch('/api/wallet/defindex/apy')
+        const data = await response.json()
+        if (data.success && data.apy) {
+          setApyData(data.apy)
+        }
+      } catch (error) {
+        console.error('Failed to fetch APY for badge:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchAPY()
+  }, [strategyAddress])
+
+  const getDisplaySource = (source: string) => {
+    return source === 'calculated' ? 'DeFi Vault' : source
+  }
+
+  const getSourceColor = (source: string) => {
+    switch (source) {
+      case 'contract': return 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+      case 'calculated': return 'bg-purple-100 text-purple-800 hover:bg-purple-200 cursor-pointer'
+      case 'external': return 'bg-green-100 text-green-800 hover:bg-green-200'
+      case 'fallback': return 'bg-orange-100 text-orange-800 hover:bg-orange-200'
+      default: return 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+    }
+  }
+
+  const handleBadgeClick = (source: string) => {
+    if (source === 'calculated') {
+      // Open Blend protocol USDC vault
+      window.open('https://mainnet.blend.capital/asset/?poolId=CAJJZSGMMM3PD7N33TAPHGBUGTB43OC73HVIK2L2G6BNGGGYOSSYBXBD&assetId=CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75', '_blank')
+    }
+  }
+
+  if (loading || !apyData) {
+    return (
+      <div className={`flex items-center gap-2 ${className}`}>
+        <TrendingUp className="w-4 h-4 text-green-600" />
+        <span className="font-semibold text-green-600">...</span>
+      </div>
+    )
+  }
+
   return (
-    <APYDisplay
-      strategyAddress={strategyAddress}
-      compact={true}
-      showControls={false}
-      autoRefresh={false}
-      className={className}
-    />
+    <div className={`flex items-center gap-2 ${className}`}>
+      <TrendingUp className="w-4 h-4 text-green-600" />
+      <span className="font-semibold text-green-600">
+        {apyData.primary}%
+      </span>
+      <Badge
+        variant="outline"
+        className={`${getSourceColor(apyData.source)} transition-colors`}
+        onClick={() => handleBadgeClick(apyData.source)}
+      >
+        {getDisplaySource(apyData.source)}
+      </Badge>
+    </div>
   )
 }
 

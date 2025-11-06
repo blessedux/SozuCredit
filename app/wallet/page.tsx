@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Card, CardContent } from "@/components/ui/card"
 import { SlidingNumber } from "@/components/ui/sliding-number"
+import { AnimatedARSBalance } from "@/components/ui/animated-ars-balance"
 import { APYDisplay, APYBadge } from "@/components/defindex/apy-display"
 
 interface Vault {
@@ -1111,14 +1112,23 @@ export default function WalletPage() {
           <div className="mb-8">
             <div className="border border-white/20 rounded-lg p-8 text-center">
               <div className="text-sm text-white/60 mb-4">{t.totalBalance} ({getCurrencySymbol()})</div>
-              <div 
+              <div
                 className="text-6xl font-bold text-white cursor-pointer select-none flex items-center justify-center min-h-[4rem]"
                 onClick={toggleBalanceVisibility}
               >
                 {isBalanceLoading && xlmBalance === null ? (
                   <span className="tabular-nums">----</span>
                 ) : isBalanceVisible ? (
-                  <SlidingNumber value={animatedBalance} />
+                  currency === "ARS" ? (
+                    <AnimatedARSBalance
+                      initialBalance={animatedBalance / (usdToArsRate || 900)} // Convert ARS back to USD
+                      usdToArsRate={usdToArsRate || 900}
+                      apy={defindexBalance?.apy || 15.5}
+                      isVisible={isBalanceVisible}
+                    />
+                  ) : (
+                    <SlidingNumber value={animatedBalance} />
+                  )
                 ) : (
                   <span className="tabular-nums">{maskedBalance}</span>
                 )}
