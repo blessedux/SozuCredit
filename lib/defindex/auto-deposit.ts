@@ -3,8 +3,7 @@
  * Monitors wallet balance and automatically deposits funds into DeFindex strategy
  */
 
-import { getUSDCBalance } from "@/lib/turnkey/stellar-wallet"
-import { getStellarWallet } from "@/lib/turnkey/stellar-wallet"
+import { getUSDCBalance, getStellarWallet, updatePreviousUsdcBalance, saveBalanceSnapshot } from "@/lib/turnkey/stellar-wallet"
 import { depositToStrategy } from "./vault"
 
 export interface AutoDepositConfig {
@@ -158,10 +157,11 @@ async function depositWithRetry(
 /**
  * Monitor wallet balance and trigger auto-deposit when funds are received
  * This should be called periodically (e.g., every 30 seconds) or via webhook
+ * Now uses database instead of in-memory store for persistence
  */
 export async function monitorBalanceAndAutoDeposit(
   userId: string,
-  previousBalanceStore: Map<string, number> | null = null,
+  previousBalanceStore: Map<string, number> | null = null, // Deprecated: kept for backward compatibility
   config: Partial<AutoDepositConfig> = {}
 ): Promise<{ triggered: boolean; depositAmount?: number; transactionHash?: string }> {
   try {
@@ -175,9 +175,14 @@ export async function monitorBalanceAndAutoDeposit(
     // Get current USDC balance
     const currentBalance = await getUSDCBalance(wallet.publicKey)
     
-    // Get previous balance from store or database
-    // For now, using in-memory store (in production, use database)
-    const previousBalance = previousBalanceStore?.get(userId) || null
+    // Get previous balance from database (or fallback to in-memory store for backward compatibility)
+    let previousBalance: number | null = wallet.previousUsdcBalance ?? null
+    
+    // Fallback to in-memory store if database doesn't have it (for backward compatibility)
+    if (previousBalance === null && previousBalanceStore) {
+      previousBalance = previousBalanceStore.get(userId) || null
+      console.log("[Auto-Deposit] Using in-memory store for previous balance (fallback)")
+    }
     
     // Check and trigger auto-deposit
     const result = await checkAndTriggerAutoDeposit(
@@ -187,9 +192,36 @@ export async function monitorBalanceAndAutoDeposit(
       config
     )
     
-    // Update stored balance
-    if (previousBalanceStore) {
-      previousBalanceStore.set(userId, currentBalance)
+    // Update balance in database (always update, even if no deposit triggered)
+    try {
+      await updatePreviousUsdcBalance(userId, currentBalance, true)
+    } catch (error) {
+      console.error("[Auto-Deposit] Error updating previous balance in database:", error)
+      // Fallback to in-memory store if database update fails
+      if (previousBalanceStore) {
+        previousBalanceStore.set(userId, currentBalance)
+      }
+    }
+    
+    // Save balance snapshot if auto-deposit was triggered
+    if (result.triggered) {
+      try {
+        await saveBalanceSnapshot(
+          userId,
+          currentBalance,
+          {
+            previousBalance,
+            autoDepositTriggered: true,
+            depositAmount: result.depositAmount,
+            transactionHash: result.transactionHash,
+            snapshotType: "auto_deposit_trigger",
+          },
+          true
+        )
+      } catch (error) {
+        console.error("[Auto-Deposit] Error saving balance snapshot:", error)
+        // Don't fail if snapshot save fails
+      }
     }
     
     return {

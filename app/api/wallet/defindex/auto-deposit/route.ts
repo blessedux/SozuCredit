@@ -42,13 +42,10 @@ export async function POST(request: NextRequest) {
     const config = body.config || {}
     
     // Monitor balance and trigger auto-deposit
-    // Note: In production, you should use a database to track previous balances
-    // For now, using an in-memory store (not ideal for production)
-    const previousBalanceStore = new Map<string, number>()
-    
+    // Now uses database for balance tracking (persistent across server restarts)
     const result = await monitorBalanceAndAutoDeposit(
       user.id,
-      previousBalanceStore,
+      null, // No longer needed - using database
       config
     )
     
