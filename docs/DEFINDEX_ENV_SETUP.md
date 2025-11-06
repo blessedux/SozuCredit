@@ -50,14 +50,17 @@ TESTNET_USDC_CONTRACT_ADDRESS=CCVFV3K4JXYQKXKT5G7L5O5G7L5O5G7L5O5G7L5O5G7L5O5G7L
 If you have access to real DeFindex contracts:
 
 1. **Get DeFindex Contract Addresses:**
+
    - Check DeFindex documentation or deployment scripts
    - Use testnet contracts for development
 
 2. **Get USDC Contract Addresses:**
+
    - **Testnet:** Circle's USDC on Stellar testnet
    - **Mainnet:** Circle's USDC on Stellar mainnet
 
    Common addresses:
+
    ```env
    # Testnet USDC (Circle)
    TESTNET_USDC_CONTRACT_ADDRESS=CDLZFC3SYJYDZT7K67VZRVHPXWS62KQBXEFCM2IBHQKHI4P273XMUAWL
@@ -110,6 +113,7 @@ curl http://localhost:3000/api/test/soroban
 ```
 
 **Expected Response:**
+
 ```json
 {
   "success": true,
@@ -131,18 +135,21 @@ curl http://localhost:3000/api/wallet/defindex/balance \
 ```
 
 **Expected Response (with placeholder contracts):**
+
 - Will show balance 0 (normal for non-existent contracts)
 - No "configuration invalid" error
 
 ## What Happens Without Configuration
 
 **Current Error:**
+
 ```
 "error": "Failed to get DeFindex balance",
 "details": "DeFindex configuration is invalid. Please check environment variables."
 ```
 
 This error occurs because:
+
 1. `validateDeFindexConfig()` returns `false`
 2. The balance endpoint tries to query DeFindex contracts
 3. Without valid configuration, it fails before making the query
@@ -173,4 +180,3 @@ This error occurs because:
 **Status:** ⚠️ Environment variables needed  
 **Action Required:** Set DeFindex environment variables  
 **Last Updated:** 2025-01-06
-

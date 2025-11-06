@@ -11,6 +11,7 @@ import { getStellarConfig } from "@/lib/turnkey/config"
 import * as rpc from "@stellar/stellar-sdk/rpc"
 import { Api } from "@stellar/stellar-sdk/rpc"
 import { signSorobanTransaction, submitSorobanTransaction } from "@/lib/turnkey/soroban-signing"
+import { updatePositionOnDeposit, saveTransaction, updateTransactionStatus } from "./positions"
 
 export interface VaultBalance {
   walletBalance: number // Balance in wallet
@@ -213,11 +214,93 @@ export async function depositToStrategy(
     const submitResult = await submitSorobanTransaction(signedTransaction, config.network)
     
     if (!submitResult.success) {
+      // Save failed transaction record for tracking
+      if (userId && submitResult.transactionHash) {
+        try {
+          await saveTransaction(
+            userId,
+            submitResult.transactionHash,
+            "deposit",
+            amount,
+            strategyAddr,
+            {
+              shares,
+              status: "failed",
+              errorMessage: `Transaction failed with status: ${submitResult.status}`,
+            },
+            true // use service client
+          )
+        } catch (dbError) {
+          console.error("[DeFindex] Failed to save failed transaction record:", dbError)
+        }
+      }
       throw new Error(`Transaction submission failed with status: ${submitResult.status}`)
     }
     
     console.log("[DeFindex] ✅ Deposit transaction successful!")
     console.log("[DeFindex] Transaction hash:", submitResult.transactionHash)
+    
+    // Save transaction record and update position (non-blocking)
+    if (userId && submitResult.transactionHash) {
+      try {
+        // Update position first
+        const positionId = await updatePositionOnDeposit(
+          userId,
+          strategyAddr,
+          amount,
+          shares,
+          true // use service client
+        )
+        
+        // Save transaction record
+        await saveTransaction(
+          userId,
+          submitResult.transactionHash,
+          "deposit",
+          amount,
+          strategyAddr,
+          {
+            positionId,
+            shares,
+            status: submitResult.status === "SUCCESS" ? "confirmed" : "pending",
+          },
+          true // use service client
+        )
+        
+        // If transaction was pending, update status when confirmed
+        if (submitResult.status === "SUCCESS") {
+          await updateTransactionStatus(
+            submitResult.transactionHash,
+            "confirmed",
+            null,
+            true // use service client
+          )
+        }
+        
+        console.log("[DeFindex] ✅ Position and transaction saved to database")
+      } catch (dbError) {
+        // Log error but don't fail the deposit - transaction already succeeded on-chain
+        console.error("[DeFindex] Error saving position/transaction to database:", dbError)
+        // Still save transaction record for tracking (even if position update failed)
+        try {
+          await saveTransaction(
+            userId,
+            submitResult.transactionHash,
+            "deposit",
+            amount,
+            strategyAddr,
+            {
+              shares,
+              status: "confirmed",
+              errorMessage: dbError instanceof Error ? dbError.message : String(dbError),
+            },
+            true
+          )
+        } catch (saveError) {
+          console.error("[DeFindex] Failed to save transaction record:", saveError)
+        }
+      }
+    }
     
     // Get updated balance after deposit
     const strategyInfo = await getStrategyInfo(strategyAddr)
@@ -414,24 +497,22 @@ export async function getStrategyInfo(
       ? 0
       : scValToAmount((totalSharesResult as Api.SimulateTransactionSuccessResponse).result!.retval)
     
-    // Query strategy contract for current APY
-    const apyTx = new TransactionBuilder(tempAccount, {
-      fee: BASE_FEE,
-      networkPassphrase
-    })
-      .addOperation(contract.call("get_apy"))
-      .setTimeout(30)
-      .build()
-    
-    const apyResult = await rpc.simulateTransaction(apyTx)
+    // Use the comprehensive APY calculator instead of direct contract calls
+    // This provides better fallback mechanisms and multiple data sources
     let apy = 15.5 // Default fallback APY
-    if (Api.isSimulationSuccess(apyResult) && apyResult.result) {
-      try {
-        const apyScVal = (apyResult as Api.SimulateTransactionSuccessResponse).result!.retval
-        apy = Number(scValToNative(apyScVal)) || 15.5
-      } catch {
-        // Use default if conversion fails
+
+    try {
+      const { getRealTimeAPY } = await import('./apy-calculator')
+      const apyResult = await getRealTimeAPY(strategyAddr)
+
+      if (apyResult.success && apyResult.data) {
+        apy = apyResult.data.yearly
+        console.log(`[DeFindex] Using calculated APY:`, apy, "% (source:", apyResult.data.source, ")")
+      } else {
+        console.warn("[DeFindex] APY calculation failed, using fallback:", apy, "%")
       }
+    } catch (apyError) {
+      console.warn("[DeFindex] APY calculator import/execution failed, using fallback:", apy, "%", apyError)
     }
     
     return {

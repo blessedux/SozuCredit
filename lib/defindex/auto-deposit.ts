@@ -129,6 +129,10 @@ async function depositWithRetry(
       
       if (result.success && result.transactionHash) {
         console.log(`[Auto-Deposit] ✅ Deposit successful on attempt ${attempt}`)
+        
+        // Transaction is already saved by depositToStrategy, but we can verify it
+        // The position and transaction records are handled by depositToStrategy()
+        
         return {
           success: true,
           transactionHash: result.transactionHash,
