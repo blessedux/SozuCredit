@@ -91,23 +91,66 @@ function scValToAmount(scVal: xdr.ScVal): number {
  */
 export async function getVaultBalance(
   userWalletAddress: string,
+  userId?: string,
   strategyAddress?: string
 ): Promise<VaultBalance> {
   const config = getDeFindexConfig()
-  
+
   if (!validateDeFindexConfig(config)) {
     throw new Error("DeFindex configuration is invalid. Please check environment variables.")
   }
-  
+
   try {
     // Query wallet balance from Stellar network using existing wallet service
     const walletBalance = await getUSDCBalance(userWalletAddress)
-    
-    // Query strategy balance from DeFindex
-    const strategyInfo = await getStrategyInfo(strategyAddress || config.defindexStrategyAddress)
-    const strategyBalance = await getUserStrategyBalance(userWalletAddress, strategyInfo)
-    const strategyShares = await getUserStrategyShares(userWalletAddress, strategyInfo)
-    
+
+    let strategyBalance = 0
+    let strategyShares = 0
+
+    // If we have a userId, try to get strategy balance from database records
+    // instead of contract queries (since the contract doesn't support individual balance queries)
+    if (userId) {
+      try {
+        const { createClient } = await import("@supabase/supabase-js")
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+        if (supabaseUrl && supabaseServiceKey) {
+          const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
+          // Get user's position from database
+          const targetStrategy = strategyAddress || config.defindexStrategyAddress
+          const { data: position } = await supabase
+            .from("defindex_positions")
+            .select("*")
+            .eq("user_id", userId)
+            .eq("strategy_address", targetStrategy)
+            .single()
+
+          if (position) {
+            // Calculate strategy balance based on total deposited minus total withdrawn
+            strategyBalance = Number(position.total_deposited) - Number(position.total_withdrawn)
+            strategyShares = Number(position.shares)
+            console.log(`[DeFindex] Found position in database: balance=${strategyBalance}, shares=${strategyShares}`)
+          }
+        }
+      } catch (dbError) {
+        console.warn("[DeFindex] Could not get position from database:", dbError)
+      }
+    }
+
+    // Fallback: try contract query (will likely return 0 since functions don't exist)
+    if (strategyBalance === 0) {
+      try {
+        const strategyInfo = await getStrategyInfo(strategyAddress || config.defindexStrategyAddress)
+        strategyBalance = await getUserStrategyBalance(userWalletAddress, strategyInfo)
+        strategyShares = await getUserStrategyShares(userWalletAddress, strategyInfo)
+        console.log(`[DeFindex] Using contract query: balance=${strategyBalance}, shares=${strategyShares}`)
+      } catch (contractError) {
+        console.warn("[DeFindex] Contract query failed:", contractError)
+      }
+    }
+
     return {
       walletBalance,
       strategyBalance,
