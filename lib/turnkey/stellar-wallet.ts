@@ -13,6 +13,7 @@ export interface StellarWallet {
   network: "testnet" | "mainnet"
   createdAt: string
   updatedAt: string
+  previousUsdcBalance?: number | null
 }
 
 /**
@@ -300,6 +301,7 @@ export async function getStellarWallet(userId: string, useServiceClient = false)
     network: data.network,
     createdAt: data.created_at,
     updatedAt: data.updated_at,
+    previousUsdcBalance: data.previous_usdc_balance ? Number(data.previous_usdc_balance) : null,
   } as StellarWallet
 }
 
@@ -543,5 +545,151 @@ export async function getUSDCBalance(publicKey: string): Promise<number> {
     console.warn("[getUSDCBalance] Could not find USDC balance, returning 0:", error)
     return 0
   }
+}
+
+/**
+ * Update previous USDC balance in database for a user
+ * This is used for auto-deposit detection
+ */
+export async function updatePreviousUsdcBalance(
+  userId: string,
+  currentBalance: number,
+  useServiceClient = false
+): Promise<void> {
+  let supabase = await createClient()
+  
+  if (useServiceClient) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    
+    if (supabaseServiceKey && supabaseUrl) {
+      supabase = createServiceClient(supabaseUrl, supabaseServiceKey) as any
+    }
+  } else {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+      
+      if (supabaseServiceKey && supabaseUrl) {
+        supabase = createServiceClient(supabaseUrl, supabaseServiceKey) as any
+      }
+    }
+  }
+
+  // Get the wallet to get wallet_id
+  const wallet = await getStellarWallet(userId, useServiceClient)
+  if (!wallet) {
+    console.warn("[updatePreviousUsdcBalance] Wallet not found for userId:", userId)
+    return
+  }
+
+  const previousBalance = wallet.previousUsdcBalance ?? null
+
+  // Update previous_usdc_balance in stellar_wallets table
+  const { error: updateError } = await supabase
+    .from("stellar_wallets")
+    .update({
+      previous_usdc_balance: currentBalance,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", userId)
+
+  if (updateError) {
+    console.error("[updatePreviousUsdcBalance] Error updating previous balance:", updateError)
+    throw new Error(`Failed to update previous balance: ${updateError.message}`)
+  }
+
+  // Save balance snapshot for historical tracking
+  const { error: snapshotError } = await supabase
+    .from("balance_snapshots")
+    .insert({
+      user_id: userId,
+      wallet_id: wallet.id,
+      usdc_balance: currentBalance,
+      previous_balance: previousBalance,
+      snapshot_type: "poll",
+    })
+
+  if (snapshotError) {
+    console.error("[updatePreviousUsdcBalance] Error saving balance snapshot:", snapshotError)
+    // Don't throw - snapshot is optional, balance update is more important
+  }
+
+  console.log("[updatePreviousUsdcBalance] ✅ Updated previous balance for userId:", userId, {
+    previousBalance,
+    currentBalance,
+  })
+}
+
+/**
+ * Save a balance snapshot with auto-deposit information
+ */
+export async function saveBalanceSnapshot(
+  userId: string,
+  currentBalance: number,
+  options: {
+    previousBalance?: number | null
+    autoDepositTriggered?: boolean
+    depositAmount?: number
+    transactionHash?: string
+    snapshotType?: "poll" | "webhook" | "manual" | "auto_deposit_trigger"
+  } = {},
+  useServiceClient = false
+): Promise<void> {
+  let supabase = await createClient()
+  
+  if (useServiceClient) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    
+    if (supabaseServiceKey && supabaseUrl) {
+      supabase = createServiceClient(supabaseUrl, supabaseServiceKey) as any
+    }
+  } else {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+      
+      if (supabaseServiceKey && supabaseUrl) {
+        supabase = createServiceClient(supabaseUrl, supabaseServiceKey) as any
+      }
+    }
+  }
+
+  // Get the wallet to get wallet_id
+  const wallet = await getStellarWallet(userId, useServiceClient)
+  if (!wallet) {
+    console.warn("[saveBalanceSnapshot] Wallet not found for userId:", userId)
+    return
+  }
+
+  // Get previous balance if not provided
+  const previousBalance = options.previousBalance ?? wallet.previousUsdcBalance ?? null
+
+  const { error } = await supabase
+    .from("balance_snapshots")
+    .insert({
+      user_id: userId,
+      wallet_id: wallet.id,
+      usdc_balance: currentBalance,
+      previous_balance: previousBalance,
+      snapshot_type: options.snapshotType || "poll",
+      auto_deposit_triggered: options.autoDepositTriggered || false,
+      deposit_amount: options.depositAmount || null,
+      transaction_hash: options.transactionHash || null,
+    })
+
+  if (error) {
+    console.error("[saveBalanceSnapshot] Error saving balance snapshot:", error)
+    throw new Error(`Failed to save balance snapshot: ${error.message}`)
+  }
+
+  console.log("[saveBalanceSnapshot] ✅ Saved balance snapshot for userId:", userId, {
+    currentBalance,
+    previousBalance,
+    autoDepositTriggered: options.autoDepositTriggered,
+  })
 }
 

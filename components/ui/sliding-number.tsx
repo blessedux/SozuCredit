@@ -125,7 +125,7 @@ export function SlidingNumber({
   );
 
   return (
-    <div className='flex items-baseline'>
+    <div className='flex items-end'>
       {value < 0 && '-'}
       {integerDigits.map((_, index) => (
         <Digit

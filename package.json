@@ -6,7 +6,9 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "eslint .",
-    "start": "next start"
+    "start": "next start",
+    "auto-deposit": "tsx scripts/auto-deposit-cron.ts",
+    "auto-deposit:cron": "tsx scripts/auto-deposit-cron.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

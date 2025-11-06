@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Card, CardContent } from "@/components/ui/card"
 import { SlidingNumber } from "@/components/ui/sliding-number"
+import { AnimatedARSBalance } from "@/components/ui/animated-ars-balance"
+import { APYDisplay, APYBadge } from "@/components/defindex/apy-display"
 
 interface Vault {
   id: string
@@ -39,7 +41,6 @@ export default function WalletPage() {
   const [vouchPoints, setVouchPoints] = useState("1")
   const [vouchLoading, setVouchLoading] = useState(false)
   const [inviteCode, setInviteCode] = useState("")
-  const [currentAPY, setCurrentAPY] = useState(18.0)
   
   // Profile state
   const [username, setUsername] = useState("")
@@ -54,8 +55,79 @@ export default function WalletPage() {
   const [xlmPriceUSD, setXlmPriceUSD] = useState<number | null>(null)
   const [usdToArsRate, setUsdToArsRate] = useState<number | null>(null)
   const [animatedBalance, setAnimatedBalance] = useState<number>(0)
-  
+  const [defindexBalance, setDefindexBalance] = useState<{
+    walletBalance: number
+    strategyBalance: number
+    totalBalance: number
+    strategyShares: number
+    apy: number
+  } | null>(null)
+  const [autoDepositStatus, setAutoDepositStatus] = useState<{
+    wouldTrigger: boolean
+    currentBalance: number
+    previousBalance: number | null
+  } | null>(null)
+  const [isAutoDepositing, setIsAutoDepositing] = useState(false)
+
   // Swipe gesture state
+
+  // Function to fetch DeFindex balance
+  const fetchDefindexBalance = async (userId: string) => {
+    try {
+      console.log("[Wallet] Fetching DeFindex balance")
+      const defindexResponse = await fetch("/api/wallet/defindex/balance", {
+        headers: {
+          "x-user-id": userId,
+        },
+      })
+
+      if (defindexResponse.ok) {
+        const defindexData = await defindexResponse.json()
+        console.log("[Wallet] DeFindex balance received:", defindexData)
+        if (defindexData.success) {
+          setDefindexBalance({
+            walletBalance: defindexData.walletBalance,
+            strategyBalance: defindexData.strategyBalance,
+            totalBalance: defindexData.balance,
+            strategyShares: defindexData.strategyShares,
+            apy: defindexData.apy,
+          })
+        }
+      } else {
+        console.warn("[Wallet] Failed to fetch DeFindex balance:", defindexResponse.status)
+      }
+    } catch (error) {
+      console.error("[Wallet] Error fetching DeFindex balance:", error)
+    }
+  }
+
+  // Function to fetch auto-deposit status
+  const fetchAutoDepositStatus = async (userId: string) => {
+    try {
+      console.log("[Wallet] Fetching auto-deposit status")
+      const autoDepositResponse = await fetch("/api/wallet/defindex/auto-deposit", {
+        headers: {
+          "x-user-id": userId,
+        },
+      })
+
+      if (autoDepositResponse.ok) {
+        const autoDepositData = await autoDepositResponse.json()
+        console.log("[Wallet] Auto-deposit status received:", autoDepositData)
+        if (autoDepositData.success) {
+          setAutoDepositStatus({
+            wouldTrigger: autoDepositData.wouldTriggerAutoDeposit,
+            currentBalance: autoDepositData.currentBalance,
+            previousBalance: autoDepositData.previousBalance,
+          })
+        }
+      } else {
+        console.warn("[Wallet] Failed to fetch auto-deposit status:", autoDepositResponse.status)
+      }
+    } catch (error) {
+      console.error("[Wallet] Error fetching auto-deposit status:", error)
+    }
+  }
   const touchStartX = useRef<number | null>(null)
   const touchEndX = useRef<number | null>(null)
   const touchStartY = useRef<number | null>(null)
@@ -342,7 +414,7 @@ export default function WalletPage() {
                   "x-user-id": userId,
                 },
               })
-              
+
               if (balanceResponse.ok) {
                 const balanceData = await balanceResponse.json()
                 console.log("[Wallet] XLM balance received:", balanceData)
@@ -359,6 +431,7 @@ export default function WalletPage() {
               setIsBalanceLoading(false)
             }
           }
+
           
           // Fetch real Stellar wallet address from API
           // Retry up to 5 times with delay to account for wallet creation during login
@@ -387,6 +460,10 @@ export default function WalletPage() {
                   
                   // Fetch XLM balance for this wallet
                   fetchXLMBalance(walletData.publicKey)
+
+                  // Fetch DeFindex balance and auto-deposit status
+                  fetchDefindexBalance(userId)
+                  fetchAutoDepositStatus(userId)
                   
                   return // Success, no need to retry
                 } else {
@@ -414,6 +491,10 @@ export default function WalletPage() {
                           }
                           // Fetch XLM balance for this wallet
                           fetchXLMBalance(createData.publicKey)
+
+                          // Fetch DeFindex balance and auto-deposit status
+                          fetchDefindexBalance(userId)
+                          fetchAutoDepositStatus(userId)
                           return
                         }
                       }
@@ -537,37 +618,6 @@ export default function WalletPage() {
     }
   }, [])
 
-  // Fetch real APY from DeFindex strategy
-  useEffect(() => {
-    const fetchRealAPY = async () => {
-      try {
-        const response = await fetch("/api/wallet/defindex/apy")
-        if (response.ok) {
-          const data = await response.json()
-          if (data.success && data.apy) {
-            setCurrentAPY(data.apy)
-            console.log("[Wallet] Fetched real DeFindex APY:", data.apy)
-          }
-        } else {
-          console.warn("[Wallet] Failed to fetch DeFindex APY, using fallback")
-          // Fallback to a reasonable default if API fails
-          setCurrentAPY(15.5)
-        }
-      } catch (error) {
-        console.error("[Wallet] Error fetching DeFindex APY:", error)
-        // Fallback to a reasonable default if fetch fails
-        setCurrentAPY(15.5)
-      }
-    }
-    
-    // Fetch APY immediately
-    fetchRealAPY()
-
-    // Refresh APY every 5 minutes (APY doesn't change that frequently)
-    const apyInterval = setInterval(fetchRealAPY, 5 * 60 * 1000)
-
-    return () => clearInterval(apyInterval)
-  }, [])
 
   // Convert balance based on selected currency
   const getBaseBalance = () => {
@@ -597,27 +647,24 @@ export default function WalletPage() {
   const animatedBalanceRef = useRef(0)
   const baseBalanceRef = useRef(0)
   
-  // Animate balance growth based on APY
+  // Simple balance animation (no APY growth for now)
   useEffect(() => {
-    // Calculate APY growth per second
-    const apyPerSecond = currentAPY / 100 / 365 / 24 / 60 / 60 // Convert APY to per-second rate
-    
     // Check if base balance changed significantly (new funds received or currency changed)
     const baseChanged = Math.abs(baseBalance - baseBalanceRef.current) / (baseBalanceRef.current || 1) > 0.001
-    
+
     // If we have a balance (even if it's 0) and we're still loading, mark as loaded
     if (xlmBalance !== null && isBalanceLoading) {
       setIsBalanceLoading(false)
     }
-    
+
     if (baseChanged || animatedBalanceRef.current === 0) {
       // Reset to new base balance if it changed significantly or is initializing
       animatedBalanceRef.current = baseBalance
       baseBalanceRef.current = baseBalance
       setAnimatedBalance(baseBalance)
     }
-    
-    // Update balance every 100ms for smooth animation
+
+    // Update balance every 100ms for smooth animation (without growth)
     const interval = setInterval(() => {
       // Check if base balance changed during interval
       if (Math.abs(baseBalance - baseBalanceRef.current) / (baseBalanceRef.current || 1) > 0.001) {
@@ -625,15 +672,13 @@ export default function WalletPage() {
         animatedBalanceRef.current = baseBalance
         baseBalanceRef.current = baseBalance
       }
-      
-      // Calculate growth for this interval (100ms = 0.1 seconds)
-      const growthPerInterval = animatedBalanceRef.current * apyPerSecond * 0.1
-      animatedBalanceRef.current += growthPerInterval
+
+      // For now, just keep the balance static (no growth animation)
       setAnimatedBalance(animatedBalanceRef.current)
     }, 100)
-    
+
     return () => clearInterval(interval)
-  }, [baseBalance, currentAPY])
+  }, [baseBalance])
 
   // Format balance to 4 decimals
   const balance = animatedBalance.toFixed(4)
@@ -707,6 +752,55 @@ export default function WalletPage() {
   const handleSaveProfile = async () => {
     // TODO: Save profile changes to backend
     console.log("Saving profile:", { username, language, profilePic })
+  }
+
+  const handleAutoDeposit = async () => {
+    if (!autoDepositStatus?.wouldTrigger) return
+
+    setIsAutoDepositing(true)
+    try {
+      const response = await fetch("/api/wallet/defindex/auto-deposit", {
+        method: "POST",
+        headers: {
+          "x-user-id": sessionStorage.getItem("dev_username") || "",
+        },
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        if (data.triggered) {
+          alert(t.language === "es"
+            ? `✅ Depósito automático exitoso: $${data.depositAmount} USDC depositados`
+            : `✅ Auto-deposit successful: $${data.depositAmount} USDC deposited`
+          )
+          // Refresh balances
+          const userId = sessionStorage.getItem("dev_username")
+          if (userId) {
+            fetchDefindexBalance(userId)
+            fetchAutoDepositStatus(userId)
+          }
+        } else {
+          alert(t.language === "es"
+            ? "ℹ️ Depósito automático no activado"
+            : "ℹ️ Auto-deposit not triggered"
+          )
+        }
+      } else {
+        alert(t.language === "es"
+          ? `❌ Error en depósito automático: ${data.error}`
+          : `❌ Auto-deposit error: ${data.error}`
+        )
+      }
+    } catch (error) {
+      console.error("[Wallet] Error triggering auto-deposit:", error)
+      alert(t.language === "es"
+        ? "❌ Error al procesar depósito automático"
+        : "❌ Error processing auto-deposit"
+      )
+    } finally {
+      setIsAutoDepositing(false)
+    }
   }
 
   // Auto-save when profile sheet closes
@@ -1018,27 +1112,100 @@ export default function WalletPage() {
           <div className="mb-8">
             <div className="border border-white/20 rounded-lg p-8 text-center">
               <div className="text-sm text-white/60 mb-4">{t.totalBalance} ({getCurrencySymbol()})</div>
-              <div 
+              <div
                 className="text-6xl font-bold text-white cursor-pointer select-none flex items-center justify-center min-h-[4rem]"
                 onClick={toggleBalanceVisibility}
               >
                 {isBalanceLoading && xlmBalance === null ? (
                   <span className="tabular-nums">----</span>
                 ) : isBalanceVisible ? (
-                  <SlidingNumber value={animatedBalance} />
+                  currency === "ARS" ? (
+                    <AnimatedARSBalance
+                      initialBalance={animatedBalance / (usdToArsRate || 900)} // Convert ARS back to USD
+                      usdToArsRate={usdToArsRate || 900}
+                      apy={defindexBalance?.apy || 15.5}
+                      isVisible={isBalanceVisible}
+                    />
+                  ) : (
+                    <SlidingNumber value={animatedBalance} />
+                  )
                 ) : (
                   <span className="tabular-nums">{maskedBalance}</span>
                 )}
               </div>
               {/* Real-time APY Display */}
-              <div className="mt-2 text-xs text-white/50 font-normal">
-                {t.todayAPY}: <span className="font-medium">{
-                  currency === "ARS" && usdToArsRate
-                    ? (currentAPY * usdToArsRate).toFixed(2)
-                    : currentAPY.toFixed(2)
-                }%</span>
+              <div className="mt-2">
+                <APYBadge strategyAddress="CBLXUUHUL7TA3LF3U5G6ZTU7EACBBOSJLR4AYOM5YJKJ4APZ7O547R5T" />
               </div>
             </div>
+
+            {/* DeFindex Balance Breakdown */}
+            {defindexBalance && (
+              <div className="mt-4 space-y-2">
+                <div className="text-sm text-white/60 text-center">
+                  {t.language === "es" ? "Distribución de Balance" : "Balance Breakdown"}
+                </div>
+
+                {/* Wallet Balance */}
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-white/80">
+                    {t.language === "es" ? "Billetera" : "Wallet"}:
+                  </span>
+                  <span className="text-white font-medium">
+                    ${defindexBalance.walletBalance.toFixed(2)} USDC
+                  </span>
+                </div>
+
+                {/* Strategy Balance */}
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-white/80">
+                    {t.language === "es" ? "Estrategia DeFi" : "DeFi Strategy"}:
+                  </span>
+                  <span className="text-green-400 font-medium">
+                    ${defindexBalance.strategyBalance.toFixed(2)} USDC
+                  </span>
+                </div>
+
+                {/* Shares */}
+                {defindexBalance.strategyShares > 0 && (
+                  <div className="flex justify-between items-center text-xs text-white/60">
+                    <span>{t.language === "es" ? "Acciones" : "Shares"}:</span>
+                    <span>{defindexBalance.strategyShares.toFixed(4)}</span>
+                  </div>
+                )}
+
+                {/* Auto-Deposit Button */}
+                {autoDepositStatus && (
+                  <div className="mt-3 pt-3 border-t border-white/20">
+                    <button
+                      onClick={handleAutoDeposit}
+                      disabled={!autoDepositStatus.wouldTrigger || isAutoDepositing}
+                      className={`w-full py-2 px-4 rounded text-sm font-medium transition-colors ${
+                        autoDepositStatus.wouldTrigger && !isAutoDepositing
+                          ? "bg-green-600 hover:bg-green-700 text-white"
+                          : "bg-gray-600 text-gray-400 cursor-not-allowed"
+                      }`}
+                    >
+                      {isAutoDepositing
+                        ? (t.language === "es" ? "Depositando..." : "Depositing...")
+                        : autoDepositStatus.wouldTrigger
+                        ? (t.language === "es" ? "💰 Depositar Automáticamente" : "💰 Auto-Deposit")
+                        : (t.language === "es" ? "Esperando fondos suficientes" : "Waiting for sufficient funds")
+                      }
+                    </button>
+
+                    {autoDepositStatus.wouldTrigger && (
+                      <div className="text-xs text-green-400 text-center mt-1">
+                        {t.language === "es"
+                          ? `$${Math.max(0, autoDepositStatus.currentBalance - 1).toFixed(2)} USDC disponible para depositar`
+                          : `$${Math.max(0, autoDepositStatus.currentBalance - 1).toFixed(2)} USDC available to deposit`
+                        }
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

@@ -3,17 +3,17 @@
  * Returns user's balance from DeFindex strategy
  */
 
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { getVaultBalance, getStrategyInfo } from "@/lib/defindex/vault"
 import { getStellarWallet } from "@/lib/turnkey/stellar-wallet"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
 
-export async function OPTIONS(request: Request) {
+export async function OPTIONS(request: NextRequest) {
   return handleOPTIONS(request)
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
     // Get user ID from session
     const supabase = await createClient()
@@ -36,8 +36,8 @@ export async function GET(request: Request) {
       )
     }
     
-    // Get vault balance from DeFindex
-    const vaultBalance = await getVaultBalance(wallet.publicKey)
+    // Get vault balance from DeFindex (including database position tracking)
+    const vaultBalance = await getVaultBalance(wallet.publicKey, user.id)
     
     // Get strategy info including APY
     const strategyInfo = await getStrategyInfo()

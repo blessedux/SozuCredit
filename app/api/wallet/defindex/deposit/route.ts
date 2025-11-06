@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Deposit to DeFindex strategy
-    const result = await depositToStrategy(wallet.publicKey, amount)
+    const result = await depositToStrategy(wallet.publicKey, amount, user.id)
     
     if (!result.success) {
       return NextResponse.json(
@@ -61,6 +61,7 @@ export async function POST(request: NextRequest) {
         success: true,
         shares: result.shares,
         balance: result.balance,
+        transactionHash: result.transactionHash,
       },
       { headers: corsHeaders(request) }
     )

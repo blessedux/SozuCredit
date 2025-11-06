@@ -1,13 +1,15 @@
 import { createClient } from "@/lib/supabase/server"
-import { NextResponse } from "next/server"
+import { NextResponse, NextRequest } from "next/server"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
 import { getStellarWallet, getWalletBalance } from "@/lib/turnkey/stellar-wallet"
+import { getUSDCBalance } from "@/lib/turnkey/stellar-wallet"
+import { monitorBalanceAndAutoDeposit } from "@/lib/defindex/auto-deposit"
 
 export async function OPTIONS(request: Request) {
   return handleOPTIONS(request as any)
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
 
@@ -45,13 +47,40 @@ export async function GET(request: Request) {
 
     // Query XLM balance from Stellar network
     const balance = await getWalletBalance(wallet.publicKey, "native")
+    
+    // Query USDC balance for auto-deposit monitoring
+    let usdcBalance = 0
+    try {
+      usdcBalance = await getUSDCBalance(wallet.publicKey)
+      console.log("[Stellar Balance API] USDC balance:", usdcBalance)
+    } catch (error) {
+      console.warn("[Stellar Balance API] Could not fetch USDC balance:", error)
+    }
+
+    // Check for auto-deposit trigger (only if USDC balance > 0)
+    // Note: This uses an in-memory store for previous balances
+    // In production, you should use a database to track previous balances
+    let autoDepositResult = null
+    if (usdcBalance > 0) {
+      try {
+        // In a real implementation, you'd fetch previous balance from database
+        // For now, we'll skip auto-deposit on balance API calls to avoid issues
+        // Auto-deposit should be triggered by a separate background job or webhook
+        console.log("[Stellar Balance API] USDC balance detected, but auto-deposit should be handled separately")
+      } catch (error) {
+        console.error("[Stellar Balance API] Auto-deposit check failed:", error)
+        // Don't fail the balance request if auto-deposit check fails
+      }
+    }
 
     return NextResponse.json(
       {
         balance,
         asset: "XLM", // Native Stellar asset
+        usdcBalance, // Include USDC balance
         publicKey: wallet.publicKey,
         network: wallet.network,
+        autoDepositTriggered: autoDepositResult?.triggered || false,
       },
       { headers: corsHeaders(request as any) }
     )
@@ -71,4 +100,3 @@ export async function GET(request: Request) {
     )
   }
 }
-
