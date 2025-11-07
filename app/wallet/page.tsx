@@ -199,6 +199,9 @@ export default function WalletPage() {
       // Social share
       inviteMessage: "¡Únete a Sozu Credit! Usa mi código de invitación: {code} y recibamos ambos puntos de confianza extra. 🚀",
       codeCopiedShare: "Código copiado al portapapeles. ¡Listo para compartir!",
+      copyLink: "Copiar Enlace",
+      copyMessage: "Copiar Mensaje",
+      inviteLinkCopied: "Enlace de invitación copiado",
     },
     en: {
       // Profile
@@ -264,6 +267,9 @@ export default function WalletPage() {
       // Social share
       inviteMessage: "Join Sozu Credit! Use my invite code: {code} and let's both get extra trust points. 🚀",
       codeCopiedShare: "Code copied to clipboard. Ready to share!",
+      copyLink: "Copy Link",
+      copyMessage: "Copy Message",
+      inviteLinkCopied: "Invite link copied",
     },
   }
   
