@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
-import { createStellarWallet, storeStellarWallet, getStellarWallet, deleteStellarWallet } from "@/lib/turnkey/stellar-wallet"
+import { createStellarWallet, storeStellarWallet, getStellarWallet, deleteStellarWallet, createUSDCTrustline } from "@/lib/turnkey/stellar-wallet"
 
 export async function OPTIONS(request: Request) {
   return handleOPTIONS(request as any)
@@ -96,11 +96,32 @@ export async function POST(request: Request) {
       throw new Error("Stored wallet is missing publicKey. Database constraint may have failed.")
     }
 
+    // Attempt to create USDC trustline (non-blocking)
+    // This will only succeed if the account has been funded with XLM
+    let trustlineResult = null
+    try {
+      console.log("[Stellar Wallet API] Attempting to create USDC trustline...")
+      trustlineResult = await createUSDCTrustline(userId, storedWallet.publicKey)
+      if (trustlineResult.success) {
+        console.log("[Stellar Wallet API] ✅ USDC trustline created successfully")
+      } else {
+        console.log("[Stellar Wallet API] ⚠️ USDC trustline creation skipped:", trustlineResult.error)
+        // This is expected if account hasn't been funded yet
+        // Trustline can be created later when account is funded
+      }
+    } catch (trustlineError) {
+      // Don't fail wallet creation if trustline creation fails
+      console.warn("[Stellar Wallet API] ⚠️ Error creating USDC trustline (non-blocking):", trustlineError)
+      // Trustline can be created later via a separate API call
+    }
+
     return NextResponse.json(
       {
         walletId: storedWallet.turnkeyWalletId,
         publicKey: storedWallet.publicKey,
         network: storedWallet.network,
+        trustlineCreated: trustlineResult?.success || false,
+        trustlineError: trustlineResult?.error || null,
       },
       { headers: corsHeaders(request as any) }
     )

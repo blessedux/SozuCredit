@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useRef } from "react"
-import { Wallet, Award, ArrowLeft, Globe, LogOut } from "lucide-react"
+import { Wallet, Award, ArrowLeft, Globe, LogOut, Link2, ExternalLink, X } from "lucide-react"
 import { FallingPattern } from "@/components/ui/falling-pattern"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
@@ -41,6 +41,14 @@ export default function WalletPage() {
   const [vouchPoints, setVouchPoints] = useState("1")
   const [vouchLoading, setVouchLoading] = useState(false)
   const [inviteCode, setInviteCode] = useState("")
+  
+  // EVM Address state
+  const [evmAddress, setEvmAddress] = useState<string | null>(null)
+  const [isEvmDialogOpen, setIsEvmDialogOpen] = useState(false)
+  const [evmInput, setEvmInput] = useState("")
+  const [evmLoading, setEvmLoading] = useState(false)
+  const [maxflowEgoScore, setMaxflowEgoScore] = useState<any | null>(null)
+  const [maxflowLoading, setMaxflowLoading] = useState(false)
   
   // Profile state
   const [username, setUsername] = useState("")
@@ -199,6 +207,22 @@ export default function WalletPage() {
       // Social share
       inviteMessage: "¡Únete a Sozu Credit! Usa mi código de invitación: {code} y recibamos ambos puntos de confianza extra. 🚀",
       codeCopiedShare: "Código copiado al portapapeles. ¡Listo para compartir!",
+      // EVM Address
+      linkEvmAddress: "Vincular Dirección EVM",
+      evmAddressTitle: "Dirección EVM para MaxFlow",
+      evmAddressDesc: "Vincula tu dirección Ethereum para obtener tu puntuación de ego de MaxFlow",
+      evmAddressPlaceholder: "0x...",
+      linkAddress: "Vincular Dirección",
+      unlinkAddress: "Desvincular",
+      evmAddressLinked: "Dirección vinculada",
+      evmAddressNotLinked: "No hay dirección vinculada",
+      maxflowScore: "Puntuación MaxFlow",
+      localHealth: "Salud Local",
+      totalNodes: "Nodos Totales",
+      acceptedUsers: "Usuarios Aceptados",
+      loadingScore: "Cargando puntuación...",
+      errorLoadingScore: "Error al cargar puntuación",
+      evmAddressCopied: "Dirección copiada",
     },
     en: {
       // Profile
@@ -264,6 +288,22 @@ export default function WalletPage() {
       // Social share
       inviteMessage: "Join Sozu Credit! Use my invite code: {code} and let's both get extra trust points. 🚀",
       codeCopiedShare: "Code copied to clipboard. Ready to share!",
+      // EVM Address
+      linkEvmAddress: "Link EVM Address",
+      evmAddressTitle: "EVM Address for MaxFlow",
+      evmAddressDesc: "Link your Ethereum address to get your MaxFlow ego score",
+      evmAddressPlaceholder: "0x...",
+      linkAddress: "Link Address",
+      unlinkAddress: "Unlink",
+      evmAddressLinked: "Address linked",
+      evmAddressNotLinked: "No address linked",
+      maxflowScore: "MaxFlow Score",
+      localHealth: "Local Health",
+      totalNodes: "Total Nodes",
+      acceptedUsers: "Accepted Users",
+      loadingScore: "Loading score...",
+      errorLoadingScore: "Error loading score",
+      evmAddressCopied: "Address copied",
     },
   }
   
@@ -605,6 +645,17 @@ export default function WalletPage() {
           
           // Start fetching wallet address
           fetchWalletAddress()
+
+          // Fetch EVM address
+          const evmResponse = await fetch("/api/wallet/evm-address", {
+            headers: {
+              "x-user-id": userId,
+            },
+          })
+          if (evmResponse.ok) {
+            const evmData = await evmResponse.json()
+            setEvmAddress(evmData.evmAddress || null)
+          }
         } catch (err) {
           console.error("[Wallet] Error fetching data:", err)
           setError(err instanceof Error ? err.message : "Failed to load data")
@@ -617,6 +668,43 @@ export default function WalletPage() {
       checkAuth()
     }
   }, [])
+
+  // Fetch MaxFlow ego score when EVM address is available
+  useEffect(() => {
+    const fetchMaxFlowScore = async () => {
+      if (!evmAddress) {
+        setMaxflowEgoScore(null)
+        return
+      }
+
+      setMaxflowLoading(true)
+      try {
+        const userId = sessionStorage.getItem("dev_username")
+        if (!userId) return
+
+        const response = await fetch(`/api/maxflow/ego/${evmAddress}/score`, {
+          headers: {
+            "x-user-id": userId,
+          },
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          setMaxflowEgoScore(data.egoScore)
+        } else {
+          console.error("[Wallet] Error fetching MaxFlow score:", response.status)
+          setMaxflowEgoScore(null)
+        }
+      } catch (error) {
+        console.error("[Wallet] Error fetching MaxFlow score:", error)
+        setMaxflowEgoScore(null)
+      } finally {
+        setMaxflowLoading(false)
+      }
+    }
+
+    fetchMaxFlowScore()
+  }, [evmAddress])
 
 
   // Convert balance based on selected currency
@@ -903,6 +991,85 @@ export default function WalletPage() {
       
       // Redirect to auth page
       window.location.href = "/auth"
+    }
+  }
+
+  const handleLinkEvmAddress = async () => {
+    if (!evmInput.trim()) {
+      alert(t.language === "es" ? "Por favor ingresa una dirección EVM" : "Please enter an EVM address")
+      return
+    }
+
+    setEvmLoading(true)
+    try {
+      const userId = sessionStorage.getItem("dev_username")
+      if (!userId) {
+        throw new Error(t.notAuthenticated)
+      }
+
+      const response = await fetch("/api/wallet/evm-address", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": userId,
+        },
+        body: JSON.stringify({
+          evmAddress: evmInput.trim(),
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || t.errorLoadingScore)
+      }
+
+      const data = await response.json()
+      setEvmAddress(data.evmAddress)
+      setEvmInput("")
+      setIsEvmDialogOpen(false)
+    } catch (error) {
+      alert(error instanceof Error ? error.message : t.errorLoadingScore)
+    } finally {
+      setEvmLoading(false)
+    }
+  }
+
+  const handleUnlinkEvmAddress = async () => {
+    if (!window.confirm(t.language === "es" ? "¿Estás seguro de que quieres desvincular esta dirección?" : "Are you sure you want to unlink this address?")) {
+      return
+    }
+
+    setEvmLoading(true)
+    try {
+      const userId = sessionStorage.getItem("dev_username")
+      if (!userId) {
+        throw new Error(t.notAuthenticated)
+      }
+
+      const response = await fetch("/api/wallet/evm-address", {
+        method: "DELETE",
+        headers: {
+          "x-user-id": userId,
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(t.errorLoadingScore)
+      }
+
+      setEvmAddress(null)
+      setMaxflowEgoScore(null)
+    } catch (error) {
+      alert(error instanceof Error ? error.message : t.errorLoadingScore)
+    } finally {
+      setEvmLoading(false)
+    }
+  }
+
+  const handleCopyEvmAddress = () => {
+    if (evmAddress) {
+      navigator.clipboard.writeText(evmAddress)
+      alert(t.evmAddressCopied)
     }
   }
 
@@ -1526,6 +1693,89 @@ export default function WalletPage() {
                     </Button>
                   </div>
                 </div>
+
+                {/* EVM Address Section */}
+                <div className="space-y-2 pt-4 border-t border-white/20">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Link2 className="w-4 h-4 text-white" />
+                      <span className="text-sm text-white/80">{t.linkEvmAddress}</span>
+                    </div>
+                    {evmAddress && (
+                      <button
+                        onClick={handleUnlinkEvmAddress}
+                        disabled={evmLoading}
+                        className="text-xs text-white/60 hover:text-white/80 transition-colors"
+                      >
+                        {t.unlinkAddress}
+                      </button>
+                    )}
+                  </div>
+                  
+                  {evmAddress ? (
+                    <div className="space-y-2">
+                      <div 
+                        onClick={handleCopyEvmAddress}
+                        className="p-4 bg-white/5 border border-white/10 rounded-lg cursor-pointer hover:bg-white/10 transition-colors relative"
+                      >
+                        <code className="text-sm text-white/80 font-mono truncate block pr-20">
+                          {`${evmAddress.substring(0, 8)}...${evmAddress.substring(evmAddress.length - 8)}`}
+                        </code>
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1 text-white/60 hover:text-white cursor-pointer">
+                          <ExternalLink className="w-3 h-3" />
+                          <span className="text-xs">{t.evmAddressCopied}</span>
+                        </div>
+                      </div>
+                      
+                      {/* MaxFlow Ego Score */}
+                      {maxflowLoading ? (
+                        <div className="p-4 bg-white/5 border border-white/10 rounded-lg text-center">
+                          <p className="text-sm text-white/60">{t.loadingScore}</p>
+                        </div>
+                      ) : maxflowEgoScore ? (
+                        <div className="p-4 bg-white/5 border border-white/10 rounded-lg space-y-2">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-semibold text-white">{t.maxflowScore}</span>
+                          </div>
+                          <div className="space-y-1 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-white/60">{t.localHealth}:</span>
+                              <span className="text-white font-medium">{maxflowEgoScore.localHealth.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-white/60">{t.totalNodes}:</span>
+                              <span className="text-white font-medium">{maxflowEgoScore.metrics.totalNodes}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-white/60">{t.acceptedUsers}:</span>
+                              <span className="text-white font-medium">{maxflowEgoScore.metrics.acceptedUsers}</span>
+                            </div>
+                            {maxflowEgoScore.metrics.avgResidualFlow > 0 && (
+                              <div className="flex justify-between">
+                                <span className="text-white/60">Avg Flow:</span>
+                                <span className="text-white font-medium">{maxflowEgoScore.metrics.avgResidualFlow.toFixed(2)}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-4 bg-white/5 border border-white/10 rounded-lg text-center">
+                          <p className="text-sm text-white/60">{t.errorLoadingScore}</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setIsEvmDialogOpen(true)}
+                      className="w-full p-4 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-colors text-left"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-white/80">{t.evmAddressNotLinked}</span>
+                        <Link2 className="w-4 h-4 text-white/60" />
+                      </div>
+                    </button>
+                  )}
+                </div>
               </CardContent>
             </Card>
 
@@ -1542,6 +1792,56 @@ export default function WalletPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* EVM Address Dialog */}
+      <Dialog open={isEvmDialogOpen} onOpenChange={setIsEvmDialogOpen}>
+        <DialogContent className="bg-black/80 backdrop-blur-md border-white/20 text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-white text-2xl">{t.evmAddressTitle}</DialogTitle>
+            <DialogDescription className="text-white/60">
+              {t.evmAddressDesc}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="evmAddress" className="text-white">
+                {t.evmAddressTitle}
+              </Label>
+              <Input
+                id="evmAddress"
+                value={evmInput}
+                onChange={(e) => setEvmInput(e.target.value)}
+                placeholder={t.evmAddressPlaceholder}
+                className="bg-black border-white/20 text-white font-mono"
+              />
+              <p className="text-xs text-white/60">
+                {t.language === "es" 
+                  ? "Ingresa tu dirección Ethereum (0x...)" 
+                  : "Enter your Ethereum address (0x...)"}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleLinkEvmAddress}
+                disabled={evmLoading || !evmInput.trim()}
+                className="flex-1 bg-white text-black hover:bg-white/90"
+              >
+                {evmLoading ? (t.language === "es" ? "Vinculando..." : "Linking...") : t.linkAddress}
+              </Button>
+              <Button
+                onClick={() => {
+                  setIsEvmDialogOpen(false)
+                  setEvmInput("")
+                }}
+                variant="outline"
+                className="border-white/20 text-white hover:bg-white/10"
+              >
+                {t.cancel}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
