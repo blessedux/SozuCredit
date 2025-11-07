@@ -1302,28 +1302,54 @@ export default function WalletPage() {
                 </code>
               </div>
 
-              <Button
-                onClick={async () => {
-                  try {
-                    // Create social media ready message with invite code
-                    const inviteMessage = t.inviteMessage.replace("{code}", inviteCode)
-                    
-                    // Copy to clipboard
-                    await navigator.clipboard.writeText(inviteMessage)
-                    
-                    // Show success message
-                    alert(t.codeCopiedShare)
-                  } catch (err) {
-                    // Fallback: just copy the code if share message fails
-                    await navigator.clipboard.writeText(inviteCode)
-                    alert(t.codeCopied)
-                  }
-                }}
-                variant="outline"
-                className="w-full border-2 border-white bg-transparent text-white hover:bg-white/10 font-semibold"
-              >
-                {t.copyCode}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  onClick={async () => {
+                    try {
+                      // Create invite link
+                      const inviteLink = typeof window !== "undefined" 
+                        ? `${window.location.origin}/auth?invite=${inviteCode}`
+                        : `https://sozucredit.com/auth?invite=${inviteCode}`
+                      
+                      // Copy invite link to clipboard
+                      await navigator.clipboard.writeText(inviteLink)
+                      
+                      // Show success message
+                      alert(t.inviteLinkCopied)
+                    } catch (err) {
+                      // Fallback: just copy the code if link copy fails
+                      await navigator.clipboard.writeText(inviteCode)
+                      alert(t.codeCopied)
+                    }
+                  }}
+                  variant="outline"
+                  className="flex-1 border-2 border-white bg-transparent text-white hover:bg-white/10 font-semibold"
+                  >
+                  {t.copyLink}
+                </Button>
+                <Button
+                  onClick={async () => {
+                    try {
+                      // Create social media ready message with invite code
+                      const inviteMessage = t.inviteMessage.replace("{code}", inviteCode)
+                      
+                      // Copy to clipboard
+                      await navigator.clipboard.writeText(inviteMessage)
+                      
+                      // Show success message
+                      alert(t.codeCopiedShare)
+                    } catch (err) {
+                      // Fallback: just copy the code if share message fails
+                      await navigator.clipboard.writeText(inviteCode)
+                      alert(t.codeCopied)
+                    }
+                  }}
+                  variant="outline"
+                  className="flex-1 border-2 border-white/30 bg-transparent text-white hover:bg-white/20 hover:border-white/50 font-semibold"
+                >
+                  {t.copyMessage}
+                </Button>
+              </div>
 
               <Button
                 onClick={() => setModalView("main")}
