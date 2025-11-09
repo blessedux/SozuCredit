@@ -22,7 +22,7 @@ export async function GET(request: Request) {
         {
           success: false,
           error: "Turnkey not configured",
-          details: "Missing required environment variables: NEXT_PUBLIC_TURNKEY_ORG_ID, NEXT_PUBLIC_TURNKEY_API_PUBLIC_KEY, and TURNKEY_API_PRIVATE_KEY (or NEXT_PRIVATE_TURNKEY_API_PRIVATE_KEY)",
+          details: "Missing required environment variables: NEXT_PUBLIC_TURNKEY_ORG_ID, NEXT_PUBLIC_TURNKEY_API_PUBLIC_KEY, and one of: NEXT_PUBLIC_TURNKEY_API_PRIVATE_KEY, TURNKEY_API_PRIVATE_KEY, or NEXT_PRIVATE_TURNKEY_API_PRIVATE_KEY",
         },
         { status: 400, headers: corsHeaders(request as any) }
       )

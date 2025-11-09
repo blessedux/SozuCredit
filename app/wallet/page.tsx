@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useRef } from "react"
-import { Wallet, Award, ArrowLeft, Globe, LogOut } from "lucide-react"
+import { Wallet, Award, ArrowLeft, Globe, LogOut, Bell, FileText } from "lucide-react"
 import { FallingPattern } from "@/components/ui/falling-pattern"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
@@ -13,6 +13,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { SlidingNumber } from "@/components/ui/sliding-number"
 import { AnimatedARSBalance } from "@/components/ui/animated-ars-balance"
 import { APYDisplay, APYBadge } from "@/components/defindex/apy-display"
+import { TrendingUp } from "lucide-react"
 
 interface Vault {
   id: string
@@ -41,13 +42,27 @@ export default function WalletPage() {
   const [vouchPoints, setVouchPoints] = useState("1")
   const [vouchLoading, setVouchLoading] = useState(false)
   const [inviteCode, setInviteCode] = useState("")
+  const [messageCopied, setMessageCopied] = useState(false)
+  const [notifications, setNotifications] = useState<Array<{
+    id: string
+    type: string
+    title: string
+    message: string
+    read: boolean
+    created_at: string
+  }>>([])
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [isBalanceAuditOpen, setIsBalanceAuditOpen] = useState(false)
+  const [apyValue, setApyValue] = useState<number | null>(null)
+  const [apyLoading, setApyLoading] = useState(true)
   
   // Profile state
   const [username, setUsername] = useState("")
   const [walletAddress, setWalletAddress] = useState("")
   const [walletNetwork, setWalletNetwork] = useState<"testnet" | "mainnet">("testnet")
   const [language, setLanguage] = useState<"es" | "en">("es")
-  const [profilePic, setProfilePic] = useState<string | null>("/default_pfp.png")
+  const [profilePic, setProfilePic] = useState<string | null>("/capybara_pfp.png")
   const [walletCopied, setWalletCopied] = useState(false)
   
   // Currency state
@@ -68,6 +83,7 @@ export default function WalletPage() {
     previousBalance: number | null
   } | null>(null)
   const [isAutoDepositing, setIsAutoDepositing] = useState(false)
+  const [isEstablishingTrustline, setIsEstablishingTrustline] = useState(false)
 
   // Swipe gesture state
 
@@ -197,11 +213,10 @@ export default function WalletPage() {
       logout: "Cerrar Sesión",
       logoutConfirm: "¿Estás seguro de que quieres cerrar sesión?",
       // Social share
-      inviteMessage: "¡Únete a Sozu Credit! Usa mi código de invitación: {code} y recibamos ambos puntos de confianza extra. 🚀",
-      codeCopiedShare: "Código copiado al portapapeles. ¡Listo para compartir!",
-      copyLink: "Copiar Enlace",
-      copyMessage: "Copiar Mensaje",
-      inviteLinkCopied: "Enlace de invitación copiado",
+      inviteMessage: "Obtén tu billetera Sozu y apoya mi proyecto. Desbloqueemos nuestros negocios juntos. {url}",
+      codeCopiedShare: "Mensaje copiado",
+      copyMessage: "Copiar",
+      messageCopied: "Mensaje copiado",
     },
     en: {
       // Profile
@@ -265,11 +280,10 @@ export default function WalletPage() {
       logout: "Log Out",
       logoutConfirm: "Are you sure you want to log out?",
       // Social share
-      inviteMessage: "Join Sozu Credit! Use my invite code: {code} and let's both get extra trust points. 🚀",
-      codeCopiedShare: "Code copied to clipboard. Ready to share!",
-      copyLink: "Copy Link",
-      copyMessage: "Copy Message",
-      inviteLinkCopied: "Invite link copied",
+      inviteMessage: "Get your Sozu wallet and support my project. Let's unlock our businesses together. {url}",
+      codeCopiedShare: "Message copied",
+      copyMessage: "Copy",
+      messageCopied: "Message copied",
     },
   }
   
@@ -382,13 +396,42 @@ export default function WalletPage() {
             const trustData = await trustResponse.json()
             setTrustPoints(trustData.trustPoints)
           } else {
-            // Default to 5 trust points if fetch fails
-            setTrustPoints({ balance: 5, last_daily_credit: null })
+            // Default to 0 trust points if fetch fails (new users start with 0)
+            setTrustPoints({ balance: 0, last_daily_credit: null })
           }
           
           // Generate invite code from user ID
           const code = userId.substring(0, 8).toUpperCase()
           setInviteCode(code)
+          
+          // Fetch notifications
+          const notificationsResponse = await fetch("/api/wallet/notifications", {
+            headers: {
+              "x-user-id": userId,
+            },
+          })
+          
+          if (notificationsResponse.ok) {
+            const notificationsData = await notificationsResponse.json()
+            setNotifications(notificationsData.notifications || [])
+            const unread = (notificationsData.notifications || []).filter((n: any) => !n.read).length
+            setUnreadCount(unread)
+          }
+          
+          // Fetch APY
+          const apyResponse = await fetch("/api/wallet/defindex/apy", {
+            headers: {
+              "x-user-id": userId,
+            },
+          })
+          
+          if (apyResponse.ok) {
+            const apyData = await apyResponse.json()
+            if (apyData.success && apyData.apy) {
+              setApyValue(apyData.apy.primary || apyData.apy.apy || null)
+            }
+          }
+          setApyLoading(false)
           
           // Fetch profile data from API
           const profileResponse = await fetch("/api/wallet/profile", {
@@ -926,12 +969,75 @@ export default function WalletPage() {
     }
   }
 
-  const handleOpenStellarExpert = (e: React.MouseEvent) => {
+  const handleOpenStellarExpert = async (e: React.MouseEvent) => {
     e.stopPropagation() // Prevent triggering copy when clicking icon
     if (!walletAddress) {
       console.warn("Cannot open Stellar Expert: wallet address not available yet")
       return
     }
+    
+    // Establish USDC trustline first
+    setIsEstablishingTrustline(true)
+    try {
+      const userId = sessionStorage.getItem("dev_username")
+      if (!userId) {
+        console.warn("Cannot establish trustline: user ID not found")
+        // Still open Stellar Expert even if trustline fails
+        setIsEstablishingTrustline(false)
+        openStellarExpert()
+        return
+      }
+
+      console.log("[Wallet] Establishing USDC trustline...")
+      const response = await fetch("/api/wallet/stellar/trustline", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": userId,
+        },
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }))
+        console.error("[Wallet] Trustline API error:", errorData)
+        throw new Error(errorData.error || "Failed to establish trustline")
+      }
+
+      const result = await response.json()
+      
+      if (result.success) {
+        console.log("[Wallet] ✅ USDC trustline established successfully")
+        if (result.transactionHash) {
+          console.log("[Wallet] Transaction hash:", result.transactionHash)
+          // Show success message to user
+          alert(t.language === "es" 
+            ? `✅ Trustline USDC establecido exitosamente\nHash: ${result.transactionHash.substring(0, 8)}...`
+            : `✅ USDC trustline established successfully\nHash: ${result.transactionHash.substring(0, 8)}...`
+          )
+        } else {
+          console.log("[Wallet] Trustline already exists")
+        }
+      } else {
+        console.error("[Wallet] Trustline establishment failed:", result.error)
+        throw new Error(result.error || "Failed to establish trustline")
+      }
+    } catch (error: any) {
+      console.error("[Wallet] Error establishing trustline:", error)
+      // Show error message to user
+      alert(t.language === "es"
+        ? `❌ Error al establecer trustline USDC: ${error.message || "Error desconocido"}\n\nAsegúrate de tener suficiente XLM para pagar las tarifas de transacción.`
+        : `❌ Error establishing USDC trustline: ${error.message || "Unknown error"}\n\nMake sure you have enough XLM to pay transaction fees.`
+      )
+      // Still open Stellar Expert even if trustline fails
+    } finally {
+      setIsEstablishingTrustline(false)
+      // Open Stellar Expert after trustline is established (or if it fails)
+      openStellarExpert()
+    }
+  }
+
+  const openStellarExpert = () => {
+    if (!walletAddress) return
     
     // Determine the Stellar Expert URL based on network
     const stellarExpertUrl = walletNetwork === "mainnet"
@@ -1115,8 +1221,8 @@ export default function WalletPage() {
       >
         <div className="container mx-auto px-6 py-8 md:py-12">
           {/* Balance Display Box */}
-          <div className="mb-8">
-            <div className="border border-white/20 rounded-lg p-8 text-center">
+          <div className="mb-8 relative">
+            <div className="border border-white/20 rounded-lg p-8 text-center relative">
               <div className="text-sm text-white/60 mb-4">{t.totalBalance} ({getCurrencySymbol()})</div>
               <div
                 className="text-6xl font-bold text-white cursor-pointer select-none flex items-center justify-center min-h-[4rem]"
@@ -1139,81 +1245,36 @@ export default function WalletPage() {
                   <span className="tabular-nums">{maskedBalance}</span>
                 )}
               </div>
-              {/* Real-time APY Display */}
+              {/* Real-time APY Display - Clickable */}
               <div className="mt-2">
-                <APYBadge strategyAddress="CBLXUUHUL7TA3LF3U5G6ZTU7EACBBOSJLR4AYOM5YJKJ4APZ7O547R5T" />
+                <button
+                  onClick={() => setIsBalanceAuditOpen(true)}
+                  className="flex items-center justify-center gap-2 text-green-400 hover:text-green-300 transition-colors cursor-pointer"
+                  aria-label="View Balance Audit"
+                >
+                  <TrendingUp className="w-4 h-4" />
+                  <span className="font-semibold">
+                    {apyLoading ? "..." : apyValue ? `${apyValue}%` : "15.5%"}
+                  </span>
+                </button>
               </div>
             </div>
-
-            {/* DeFindex Balance Breakdown */}
-            {defindexBalance && (
-              <div className="mt-4 space-y-2">
-                <div className="text-sm text-white/60 text-center">
-                  {t.language === "es" ? "Distribución de Balance" : "Balance Breakdown"}
-                </div>
-
-                {/* Wallet Balance */}
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-white/80">
-                    {t.language === "es" ? "Billetera" : "Wallet"}:
-                  </span>
-                  <span className="text-white font-medium">
-                    ${defindexBalance.walletBalance.toFixed(2)} USDC
-                  </span>
-                </div>
-
-                {/* Strategy Balance */}
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-white/80">
-                    {t.language === "es" ? "Estrategia DeFi" : "DeFi Strategy"}:
-                  </span>
-                  <span className="text-green-400 font-medium">
-                    ${defindexBalance.strategyBalance.toFixed(2)} USDC
-                  </span>
-                </div>
-
-                {/* Shares */}
-                {defindexBalance.strategyShares > 0 && (
-                  <div className="flex justify-between items-center text-xs text-white/60">
-                    <span>{t.language === "es" ? "Acciones" : "Shares"}:</span>
-                    <span>{defindexBalance.strategyShares.toFixed(4)}</span>
-                  </div>
-                )}
-
-                {/* Auto-Deposit Button */}
-                {autoDepositStatus && (
-                  <div className="mt-3 pt-3 border-t border-white/20">
-                    <button
-                      onClick={handleAutoDeposit}
-                      disabled={!autoDepositStatus.wouldTrigger || isAutoDepositing}
-                      className={`w-full py-2 px-4 rounded text-sm font-medium transition-colors ${
-                        autoDepositStatus.wouldTrigger && !isAutoDepositing
-                          ? "bg-green-600 hover:bg-green-700 text-white"
-                          : "bg-gray-600 text-gray-400 cursor-not-allowed"
-                      }`}
-                    >
-                      {isAutoDepositing
-                        ? (t.language === "es" ? "Depositando..." : "Depositing...")
-                        : autoDepositStatus.wouldTrigger
-                        ? (t.language === "es" ? "💰 Depositar Automáticamente" : "💰 Auto-Deposit")
-                        : (t.language === "es" ? "Esperando fondos suficientes" : "Waiting for sufficient funds")
-                      }
-                    </button>
-
-                    {autoDepositStatus.wouldTrigger && (
-                      <div className="text-xs text-green-400 text-center mt-1">
-                        {t.language === "es"
-                          ? `$${Math.max(0, autoDepositStatus.currentBalance - 1).toFixed(2)} USDC disponible para depositar`
-                          : `$${Math.max(0, autoDepositStatus.currentBalance - 1).toFixed(2)} USDC available to deposit`
-                        }
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </div>
+
+        {/* Notification Bell Button - Top Right */}
+        <button
+          onClick={() => setIsNotificationsOpen(true)}
+          className="fixed top-4 right-4 md:top-6 md:right-6 z-10 p-3 rounded-full bg-white/10 border border-white/20 hover:bg-white/20 transition-colors relative"
+          aria-label="Notifications"
+        >
+          <Bell className="w-5 h-5 text-white" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-xs text-white font-bold">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
+        </button>
 
         {/* Trust Points - Bottom Left */}
         <button
@@ -1223,7 +1284,7 @@ export default function WalletPage() {
           <div className="px-5 py-3 md:px-4 md:py-2 flex items-center gap-2 md:gap-2 transition-colors cursor-pointer">
             <Award className="w-6 h-6 md:w-5 md:h-5 text-white" />
             <span className="text-white font-semibold text-base md:text-sm">
-              {trustPoints?.balance || 5} TRUST
+              {trustPoints?.balance || 0} TRUST
             </span>
           </div>
         </button>
@@ -1246,7 +1307,7 @@ export default function WalletPage() {
           <DialogHeader>
             <DialogTitle className="text-white text-2xl">{t.trustPointsTitle}</DialogTitle>
             <DialogDescription className="text-white/60">
-              {t.currentBalance} <span className="font-bold text-white">{trustPoints?.balance || 5} TRUST</span>
+              {t.currentBalance} <span className="font-bold text-white">{trustPoints?.balance || 0} TRUST</span>
             </DialogDescription>
           </DialogHeader>
 
@@ -1296,65 +1357,44 @@ export default function WalletPage() {
                 </p>
               </div>
 
-              <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
-                <code className="text-xl font-bold text-white font-mono tracking-wider">
-                  {inviteCode}
-                </code>
-              </div>
-
-              <div className="flex gap-2">
-                <Button
-                  onClick={async () => {
-                    try {
-                      // Create invite link
-                      const inviteLink = typeof window !== "undefined" 
-                        ? `${window.location.origin}/auth?invite=${inviteCode}`
-                        : `https://sozucredit.com/auth?invite=${inviteCode}`
-                      
-                      // Copy invite link to clipboard
-                      await navigator.clipboard.writeText(inviteLink)
-                      
-                      // Show success message
-                      alert(t.inviteLinkCopied)
-                    } catch (err) {
-                      // Fallback: just copy the code if link copy fails
-                      await navigator.clipboard.writeText(inviteCode)
-                      alert(t.codeCopied)
-                    }
-                  }}
-                  variant="outline"
-                  className="flex-1 border-2 border-white bg-transparent text-white hover:bg-white/10 font-semibold"
-                  >
-                  {t.copyLink}
-                </Button>
-                <Button
-                  onClick={async () => {
-                    try {
-                      // Create social media ready message with invite code
-                      const inviteMessage = t.inviteMessage.replace("{code}", inviteCode)
-                      
-                      // Copy to clipboard
-                      await navigator.clipboard.writeText(inviteMessage)
-                      
-                      // Show success message
-                      alert(t.codeCopiedShare)
-                    } catch (err) {
-                      // Fallback: just copy the code if share message fails
-                      await navigator.clipboard.writeText(inviteCode)
-                      alert(t.codeCopied)
-                    }
-                  }}
-                  variant="outline"
-                  className="flex-1 border-2 border-white/30 bg-transparent text-white hover:bg-white/20 hover:border-white/50 font-semibold"
-                >
-                  {t.copyMessage}
-                </Button>
-              </div>
+              <Button
+                onClick={async () => {
+                  try {
+                    // Create invite link
+                    const inviteLink = typeof window !== "undefined" 
+                      ? `${window.location.origin}/auth?invite=${inviteCode}`
+                      : `https://sozucredit.com/auth?invite=${inviteCode}`
+                    
+                    // Create the expressive message
+                    const inviteMessage = t.inviteMessage.replace("{url}", inviteLink)
+                    
+                    // Copy message to clipboard
+                    await navigator.clipboard.writeText(inviteMessage)
+                    
+                    // Update button state
+                    setMessageCopied(true)
+                    setTimeout(() => setMessageCopied(false), 3000)
+                  } catch (err) {
+                    console.error("Failed to copy message:", err)
+                    // Fallback: just copy the link if message copy fails
+                    const inviteLink = typeof window !== "undefined" 
+                      ? `${window.location.origin}/auth?invite=${inviteCode}`
+                      : `https://sozucredit.com/auth?invite=${inviteCode}`
+                    await navigator.clipboard.writeText(inviteLink)
+                    setMessageCopied(true)
+                    setTimeout(() => setMessageCopied(false), 3000)
+                  }
+                }}
+                variant="outline"
+                className="w-full border-2 border-white bg-transparent text-white hover:bg-white/10 hover:text-white font-semibold text-lg py-6"
+              >
+                {messageCopied ? t.messageCopied : t.copyMessage}
+              </Button>
 
               <Button
                 onClick={() => setModalView("main")}
                 variant="outline"
-                className="w-full border-2 border-white/30 bg-transparent text-white hover:bg-white/20 hover:border-white/50"
+                className="w-full border-2 border-white/30 bg-transparent text-white hover:bg-white/20 hover:border-white/50 hover:text-white"
               >
                 {t.back}
               </Button>
@@ -1392,14 +1432,14 @@ export default function WalletPage() {
                     id="points"
                     type="number"
                     min="1"
-                    max={trustPoints?.balance || 5}
+                    max={trustPoints?.balance || 0}
                     value={vouchPoints}
                     onChange={(e) => setVouchPoints(e.target.value)}
                     className="bg-black border-white/20 text-white"
                     placeholder="1"
                   />
                   <p className="text-xs text-white/60">
-                    {t.available} {trustPoints?.balance || 5} TRUST
+                    {t.available} {trustPoints?.balance || 0} TRUST
                   </p>
                 </div>
 
@@ -1448,6 +1488,7 @@ export default function WalletPage() {
             <ArrowLeft className="w-5 h-5 text-white" />
           </button>
 
+
           <div className="space-y-6 px-4 pt-12 pb-8">
             <Card className="border-white/20 bg-black">
               <CardContent className="space-y-6 pt-6">
@@ -1458,7 +1499,7 @@ export default function WalletPage() {
                     className="cursor-pointer hover:opacity-80 transition-opacity"
                   >
                     <Avatar className="w-24 h-24 border-2 border-white/20">
-                      <AvatarImage src={profilePic || "/default_pfp.png"} />
+                      <AvatarImage src={profilePic || "/capybara_pfp.png"} />
                       <AvatarFallback className="bg-white/10 text-white text-2xl">
                         {username.substring(0, 2).toUpperCase()}
                       </AvatarFallback>
@@ -1490,10 +1531,19 @@ export default function WalletPage() {
                     </code>
                     <div 
                       onClick={handleOpenStellarExpert}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1 text-white/60 hover:text-white cursor-pointer"
+                      className={`absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1 text-white/60 hover:text-white cursor-pointer ${isEstablishingTrustline ? "opacity-50 cursor-wait" : ""}`}
                     >
-                      <Wallet className="w-3 h-3" />
-                      <span className="text-xs">{t.addy}</span>
+                      {isEstablishingTrustline ? (
+                        <>
+                          <div className="w-3 h-3 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
+                          <span className="text-xs">{t.language === "es" ? "Configurando..." : "Setting up..."}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Wallet className="w-3 h-3" />
+                          <span className="text-xs">{t.addy}</span>
+                        </>
+                      )}
                     </div>
                   </div>
                   {walletAddress && (
@@ -1561,11 +1611,26 @@ export default function WalletPage() {
               </CardContent>
             </Card>
 
-            {/* Logout Button */}
-            <div className="relative">
+            {/* Notifications and Logout Buttons */}
+            <div className="relative flex items-center justify-between">
+              <button
+                onClick={() => {
+                  setIsProfileSheetOpen(false)
+                  setIsNotificationsOpen(true)
+                }}
+                className="flex items-center gap-2 p-3 rounded-lg bg-white/10 border border-white/20 hover:bg-white/20 transition-colors relative"
+                aria-label="Notifications"
+              >
+                <Bell className="w-5 h-5 text-white" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-xs text-white font-bold">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </button>
               <button
                 onClick={handleLogout}
-                className="absolute right-0 flex items-center gap-1 text-white/60 hover:text-white cursor-pointer"
+                className="flex items-center gap-1 text-white/60 hover:text-white cursor-pointer"
                 aria-label={t.logout}
               >
                 <LogOut className="w-5 h-5" />
@@ -1574,6 +1639,164 @@ export default function WalletPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Notifications Dialog */}
+      <Dialog open={isNotificationsOpen} onOpenChange={setIsNotificationsOpen}>
+        <DialogContent className="bg-black/80 backdrop-blur-md border-white/20 text-white max-w-md max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-white text-2xl">Notifications</DialogTitle>
+            <DialogDescription className="text-white/60">
+              {unreadCount > 0 ? `${unreadCount} unread notification${unreadCount > 1 ? 's' : ''}` : "No unread notifications"}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 py-4">
+            {notifications.length === 0 ? (
+              <p className="text-white/60 text-center py-8">No notifications yet</p>
+            ) : (
+              notifications.map((notification) => (
+                <div
+                  key={notification.id}
+                  className={`p-4 rounded-lg border cursor-pointer ${
+                    notification.read
+                      ? "bg-white/5 border-white/10"
+                      : "bg-white/10 border-white/20"
+                  }`}
+                  onClick={async () => {
+                    if (!notification.read) {
+                      // Mark as read
+                      const userId = sessionStorage.getItem("dev_username")
+                      if (userId) {
+                        await fetch("/api/wallet/notifications", {
+                          method: "PUT",
+                          headers: {
+                            "Content-Type": "application/json",
+                            "x-user-id": userId,
+                          },
+                          body: JSON.stringify({
+                            notificationId: notification.id,
+                            read: true,
+                          }),
+                        })
+                        
+                        // Update local state
+                        setNotifications(notifications.map(n => 
+                          n.id === notification.id ? { ...n, read: true } : n
+                        ))
+                        setUnreadCount(Math.max(0, unreadCount - 1))
+                      }
+                    }
+                  }}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-white">{notification.title}</h4>
+                      <p className="text-sm text-white/80 mt-1">{notification.message}</p>
+                      <p className="text-xs text-white/60 mt-2">
+                        {new Date(notification.created_at).toLocaleDateString()} {new Date(notification.created_at).toLocaleTimeString()}
+                      </p>
+                    </div>
+                    {!notification.read && (
+                      <div className="w-2 h-2 bg-blue-500 rounded-full ml-2 mt-1" />
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Balance Audit Modal */}
+      <Dialog open={isBalanceAuditOpen} onOpenChange={setIsBalanceAuditOpen}>
+        <DialogContent className="bg-black/80 backdrop-blur-md border-white/20 text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-white text-2xl">
+              {t.language === "es" ? "Auditoría de Balance" : "Balance Audit"}
+            </DialogTitle>
+            <DialogDescription className="text-white/60">
+              {t.language === "es" ? "Desglose detallado de tu balance" : "Detailed breakdown of your balance"}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {defindexBalance ? (
+              <>
+                <div className="space-y-3">
+                  {/* Wallet Balance */}
+                  <div className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/10">
+                    <span className="text-white/80">
+                      {t.language === "es" ? "Billetera" : "Wallet"}:
+                    </span>
+                    <span className="text-white font-medium text-lg">
+                      ${defindexBalance.walletBalance.toFixed(2)} USDC
+                    </span>
+                  </div>
+
+                  {/* Strategy Balance */}
+                  <div className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/10">
+                    <span className="text-white/80">
+                      {t.language === "es" ? "Estrategia DeFi" : "DeFi Strategy"}:
+                    </span>
+                    <span className="text-green-400 font-medium text-lg">
+                      ${defindexBalance.strategyBalance.toFixed(2)} USDC
+                    </span>
+                  </div>
+
+                  {/* Total Balance */}
+                  <div className="flex justify-between items-center p-4 bg-white/10 rounded-lg border-2 border-white/20">
+                    <span className="text-white font-semibold">
+                      {t.language === "es" ? "Total" : "Total"}:
+                    </span>
+                    <span className="text-white font-bold text-xl">
+                      ${defindexBalance.totalBalance.toFixed(2)} USDC
+                    </span>
+                  </div>
+
+                  {/* Shares */}
+                  {defindexBalance.strategyShares > 0 && (
+                    <div className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/10">
+                      <span className="text-white/60 text-sm">
+                        {t.language === "es" ? "Acciones" : "Shares"}:
+                      </span>
+                      <span className="text-white/80 text-sm">
+                        {defindexBalance.strategyShares.toFixed(4)}
+                      </span>
+                    </div>
+                  )}
+
+                </div>
+
+                {/* APY and View Blend Strategy Button */}
+                <div className="mt-4 pt-4 border-t border-white/20">
+                  <button
+                    onClick={() => {
+                      window.open('https://mainnet.blend.capital/asset/?poolId=CAJJZSGMMM3PD7N33TAPHGBUGTB43OC73HVIK2L2G6BNGGGYOSSYBXBD&assetId=CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75', '_blank')
+                    }}
+                    className="w-full py-3 px-4 rounded-lg text-sm font-medium bg-green-600 hover:bg-green-700 text-white transition-colors flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4" />
+                      <span>{t.language === "es" ? "Ver Estrategia Blend" : "View Blend Strategy"}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span>
+                        {apyLoading ? "..." : apyValue ? `${apyValue}` : defindexBalance.apy.toFixed(2)}
+                      </span>
+                      <span>%</span>
+                      <span>APY</span>
+                    </div>
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="text-white/60 text-center py-8">
+                {t.language === "es" ? "No hay datos de balance disponibles" : "No balance data available"}
+              </p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

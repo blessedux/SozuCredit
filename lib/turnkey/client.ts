@@ -16,7 +16,7 @@ export function getTurnkeyClient(): TurnkeyClient {
   const config = getTurnkeyConfig()
   if (!config) {
     throw new Error(
-      "Turnkey configuration not found. Please set NEXT_PUBLIC_TURNKEY_ORG_ID, NEXT_PUBLIC_TURNKEY_API_PUBLIC_KEY, and TURNKEY_API_PRIVATE_KEY (or NEXT_PRIVATE_TURNKEY_API_PRIVATE_KEY) environment variables."
+      "Turnkey configuration not found. Please set NEXT_PUBLIC_TURNKEY_ORG_ID, NEXT_PUBLIC_TURNKEY_API_PUBLIC_KEY, and one of: NEXT_PUBLIC_TURNKEY_API_PRIVATE_KEY, TURNKEY_API_PRIVATE_KEY, or NEXT_PRIVATE_TURNKEY_API_PRIVATE_KEY environment variables."
     )
   }
 
