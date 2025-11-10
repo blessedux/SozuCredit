@@ -86,6 +86,7 @@ export async function POST(request: NextRequest) {
       options: {
         data: {
           username,
+          referral_code: referralCode || null, // Pass referral code to trigger
         },
         emailRedirectTo: undefined, // Disable email redirect
       },
@@ -241,7 +242,7 @@ export async function POST(request: NextRequest) {
       // New users start with 0 trust points
       const { error: trustError } = await supabase.from("trust_points").insert({
         user_id: authData.user.id,
-        balance: 0,
+        balance: 0, // New users start with 0 points (only get points from referrals)
       })
 
       if (trustError) {

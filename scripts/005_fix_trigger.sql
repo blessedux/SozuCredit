@@ -35,7 +35,7 @@ begin
       profiles.username
     );
 
-  -- Create trust points account (if not exists) - new users start with 0 points
+  -- Create trust points account (if not exists) with 0 balance (new users start with 0 points)
   insert into public.trust_points (user_id, balance)
   values (new.id, 0)
   on conflict (user_id) do nothing;

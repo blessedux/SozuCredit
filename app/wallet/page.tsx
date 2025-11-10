@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useRef } from "react"
-import { Wallet, Award, ArrowLeft, Globe, LogOut, Bell, FileText } from "lucide-react"
+import { Wallet, Award, ArrowLeft, Globe, LogOut, Bell, FileText, Link2, ExternalLink, X } from "lucide-react"
 import { FallingPattern } from "@/components/ui/falling-pattern"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
@@ -42,7 +42,13 @@ export default function WalletPage() {
   const [vouchPoints, setVouchPoints] = useState("1")
   const [vouchLoading, setVouchLoading] = useState(false)
   const [inviteCode, setInviteCode] = useState("")
-  const [messageCopied, setMessageCopied] = useState(false)
+  const [referralLoading, setReferralLoading] = useState(false)
+  const [referralStats, setReferralStats] = useState<{
+    totalReferrals: number
+    totalPointsEarned: number
+  } | null>(null)
+  
+  // Notifications state (from credit-request)
   const [notifications, setNotifications] = useState<Array<{
     id: string
     type: string
@@ -56,6 +62,14 @@ export default function WalletPage() {
   const [isBalanceAuditOpen, setIsBalanceAuditOpen] = useState(false)
   const [apyValue, setApyValue] = useState<number | null>(null)
   const [apyLoading, setApyLoading] = useState(true)
+  
+  // EVM Address state (from main)
+  const [evmAddress, setEvmAddress] = useState<string | null>(null)
+  const [isEvmDialogOpen, setIsEvmDialogOpen] = useState(false)
+  const [evmInput, setEvmInput] = useState("")
+  const [evmLoading, setEvmLoading] = useState(false)
+  const [maxflowEgoScore, setMaxflowEgoScore] = useState<any | null>(null)
+  const [maxflowLoading, setMaxflowLoading] = useState(false)
   
   // Profile state
   const [username, setUsername] = useState("")
@@ -191,7 +205,7 @@ export default function WalletPage() {
       vouchForUser: "Apoyar un Proyecto",
       // Invite Code
       yourInviteCode: "Tu Código de Invitación",
-      inviteCodeDesc: "Comparte este código con nuevos usuarios. Cuando se registren, ambos recibirán puntos adicionales.",
+      inviteCodeDesc: "Comparte este código con nuevos usuarios. Cuando se registren usando tu código, recibirás 1 punto de confianza.",
       copyCode: "Copiar Código",
       codeCopied: "Código copiado al portapapeles",
       back: "Volver",
@@ -213,10 +227,24 @@ export default function WalletPage() {
       logout: "Cerrar Sesión",
       logoutConfirm: "¿Estás seguro de que quieres cerrar sesión?",
       // Social share
-      inviteMessage: "Obtén tu billetera Sozu y apoya mi proyecto. Desbloqueemos nuestros negocios juntos. {url}",
-      codeCopiedShare: "Mensaje copiado",
-      copyMessage: "Copiar",
-      messageCopied: "Mensaje copiado",
+      inviteMessage: "¡Únete a Sozu Credit! Usa mi código de invitación: {code} y recibamos ambos puntos de confianza extra. 🚀",
+      codeCopiedShare: "Código copiado al portapapeles. ¡Listo para compartir!",
+      // EVM Address
+      linkEvmAddress: "Vincular Dirección EVM",
+      evmAddressTitle: "Dirección EVM para MaxFlow",
+      evmAddressDesc: "Vincula tu dirección Ethereum para obtener tu puntuación de ego de MaxFlow",
+      evmAddressPlaceholder: "0x...",
+      linkAddress: "Vincular Dirección",
+      unlinkAddress: "Desvincular",
+      evmAddressLinked: "Dirección vinculada",
+      evmAddressNotLinked: "No hay dirección vinculada",
+      maxflowScore: "Puntuación MaxFlow",
+      localHealth: "Salud Local",
+      totalNodes: "Nodos Totales",
+      acceptedUsers: "Usuarios Aceptados",
+      loadingScore: "Cargando puntuación...",
+      errorLoadingScore: "Error al cargar puntuación",
+      evmAddressCopied: "Dirección copiada",
     },
     en: {
       // Profile
@@ -258,7 +286,7 @@ export default function WalletPage() {
       vouchForUser: "Vouch for Project",
       // Invite Code
       yourInviteCode: "Your Invite Code",
-      inviteCodeDesc: "Share this code with new users. When they register, both of you will receive additional points.",
+      inviteCodeDesc: "Share this code with new users. When they register using your code, you'll receive 1 trust point.",
       copyCode: "Copy Code",
       codeCopied: "Code copied to clipboard",
       back: "Back",
@@ -280,10 +308,24 @@ export default function WalletPage() {
       logout: "Log Out",
       logoutConfirm: "Are you sure you want to log out?",
       // Social share
-      inviteMessage: "Get your Sozu wallet and support my project. Let's unlock our businesses together. {url}",
-      codeCopiedShare: "Message copied",
-      copyMessage: "Copy",
-      messageCopied: "Message copied",
+      inviteMessage: "Join Sozu Credit! Use my invite code: {code} and let's both get extra trust points. 🚀",
+      codeCopiedShare: "Code copied to clipboard. Ready to share!",
+      // EVM Address
+      linkEvmAddress: "Link EVM Address",
+      evmAddressTitle: "EVM Address for MaxFlow",
+      evmAddressDesc: "Link your Ethereum address to get your MaxFlow ego score",
+      evmAddressPlaceholder: "0x...",
+      linkAddress: "Link Address",
+      unlinkAddress: "Unlink",
+      evmAddressLinked: "Address linked",
+      evmAddressNotLinked: "No address linked",
+      maxflowScore: "MaxFlow Score",
+      localHealth: "Local Health",
+      totalNodes: "Total Nodes",
+      acceptedUsers: "Accepted Users",
+      loadingScore: "Loading score...",
+      errorLoadingScore: "Error loading score",
+      evmAddressCopied: "Address copied",
     },
   }
   
@@ -400,9 +442,78 @@ export default function WalletPage() {
             setTrustPoints({ balance: 0, last_daily_credit: null })
           }
           
-          // Generate invite code from user ID
-          const code = userId.substring(0, 8).toUpperCase()
-          setInviteCode(code)
+          // Fetch referral code and stats
+          try {
+            setReferralLoading(true)
+            const referralStatusResponse = await fetch("/api/wallet/referral/status", {
+              headers: {
+                "x-user-id": userId,
+              },
+            })
+            
+            if (referralStatusResponse.ok) {
+              const referralData = await referralStatusResponse.json()
+              if (referralData.success) {
+                const code = referralData.referralCode || ""
+                setInviteCode(code)
+                setReferralStats({
+                  totalReferrals: referralData.totalReferrals || 0,
+                  totalPointsEarned: referralData.totalPointsEarned || 0,
+                })
+                
+                // If no referral code exists, generate one
+                if (!code) {
+                  const generateResponse = await fetch("/api/wallet/referral/generate", {
+                    method: "POST",
+                    headers: {
+                      "x-user-id": userId,
+                    },
+                  })
+                  
+                  if (generateResponse.ok) {
+                    const generateData = await generateResponse.json()
+                    if (generateData.success && generateData.referralCode) {
+                      setInviteCode(generateData.referralCode)
+                    }
+                  }
+                }
+              } else {
+                // If status fetch failed, try to generate
+                const generateResponse = await fetch("/api/wallet/referral/generate", {
+                  method: "POST",
+                  headers: {
+                    "x-user-id": userId,
+                  },
+                })
+                
+                if (generateResponse.ok) {
+                  const generateData = await generateResponse.json()
+                  if (generateData.success && generateData.referralCode) {
+                    setInviteCode(generateData.referralCode)
+                  }
+                }
+              }
+            } else {
+              // If status fetch failed, try to generate
+              const generateResponse = await fetch("/api/wallet/referral/generate", {
+                method: "POST",
+                headers: {
+                  "x-user-id": userId,
+                },
+              })
+              
+              if (generateResponse.ok) {
+                const generateData = await generateResponse.json()
+                if (generateData.success && generateData.referralCode) {
+                  setInviteCode(generateData.referralCode)
+                }
+              }
+            }
+          } catch (referralError) {
+            console.error("[Wallet] Error fetching referral data:", referralError)
+          } finally {
+            setReferralLoading(false)
+          }
           
           // Fetch notifications
           const notificationsResponse = await fetch("/api/wallet/notifications", {
@@ -654,6 +765,17 @@ export default function WalletPage() {
           
           // Start fetching wallet address
           fetchWalletAddress()
+
+          // Fetch EVM address
+          const evmResponse = await fetch("/api/wallet/evm-address", {
+            headers: {
+              "x-user-id": userId,
+            },
+          })
+          if (evmResponse.ok) {
+            const evmData = await evmResponse.json()
+            setEvmAddress(evmData.evmAddress || null)
+          }
         } catch (err) {
           console.error("[Wallet] Error fetching data:", err)
           setError(err instanceof Error ? err.message : "Failed to load data")
@@ -666,6 +788,43 @@ export default function WalletPage() {
       checkAuth()
     }
   }, [])
+
+  // Fetch MaxFlow ego score when EVM address is available
+  useEffect(() => {
+    const fetchMaxFlowScore = async () => {
+      if (!evmAddress) {
+        setMaxflowEgoScore(null)
+        return
+      }
+
+      setMaxflowLoading(true)
+      try {
+        const userId = sessionStorage.getItem("dev_username")
+        if (!userId) return
+
+        const response = await fetch(`/api/maxflow/ego/${evmAddress}/score`, {
+          headers: {
+            "x-user-id": userId,
+          },
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          setMaxflowEgoScore(data.egoScore)
+        } else {
+          console.error("[Wallet] Error fetching MaxFlow score:", response.status)
+          setMaxflowEgoScore(null)
+        }
+      } catch (error) {
+        console.error("[Wallet] Error fetching MaxFlow score:", error)
+        setMaxflowEgoScore(null)
+      } finally {
+        setMaxflowLoading(false)
+      }
+    }
+
+    fetchMaxFlowScore()
+  }, [evmAddress])
 
 
   // Convert balance based on selected currency
@@ -952,6 +1111,85 @@ export default function WalletPage() {
       
       // Redirect to auth page
       window.location.href = "/auth"
+    }
+  }
+
+  const handleLinkEvmAddress = async () => {
+    if (!evmInput.trim()) {
+      alert(t.language === "es" ? "Por favor ingresa una dirección EVM" : "Please enter an EVM address")
+      return
+    }
+
+    setEvmLoading(true)
+    try {
+      const userId = sessionStorage.getItem("dev_username")
+      if (!userId) {
+        throw new Error(t.notAuthenticated)
+      }
+
+      const response = await fetch("/api/wallet/evm-address", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": userId,
+        },
+        body: JSON.stringify({
+          evmAddress: evmInput.trim(),
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || t.errorLoadingScore)
+      }
+
+      const data = await response.json()
+      setEvmAddress(data.evmAddress)
+      setEvmInput("")
+      setIsEvmDialogOpen(false)
+    } catch (error) {
+      alert(error instanceof Error ? error.message : t.errorLoadingScore)
+    } finally {
+      setEvmLoading(false)
+    }
+  }
+
+  const handleUnlinkEvmAddress = async () => {
+    if (!window.confirm(t.language === "es" ? "¿Estás seguro de que quieres desvincular esta dirección?" : "Are you sure you want to unlink this address?")) {
+      return
+    }
+
+    setEvmLoading(true)
+    try {
+      const userId = sessionStorage.getItem("dev_username")
+      if (!userId) {
+        throw new Error(t.notAuthenticated)
+      }
+
+      const response = await fetch("/api/wallet/evm-address", {
+        method: "DELETE",
+        headers: {
+          "x-user-id": userId,
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(t.errorLoadingScore)
+      }
+
+      setEvmAddress(null)
+      setMaxflowEgoScore(null)
+    } catch (error) {
+      alert(error instanceof Error ? error.message : t.errorLoadingScore)
+    } finally {
+      setEvmLoading(false)
+    }
+  }
+
+  const handleCopyEvmAddress = () => {
+    if (evmAddress) {
+      navigator.clipboard.writeText(evmAddress)
+      alert(t.evmAddressCopied)
     }
   }
 
@@ -1284,7 +1522,7 @@ export default function WalletPage() {
           <div className="px-5 py-3 md:px-4 md:py-2 flex items-center gap-2 md:gap-2 transition-colors cursor-pointer">
             <Award className="w-6 h-6 md:w-5 md:h-5 text-white" />
             <span className="text-white font-semibold text-base md:text-sm">
-              {trustPoints?.balance || 0} TRUST
+              {trustPoints?.balance ?? 0} TRUST
             </span>
           </div>
         </button>
@@ -1307,7 +1545,7 @@ export default function WalletPage() {
           <DialogHeader>
             <DialogTitle className="text-white text-2xl">{t.trustPointsTitle}</DialogTitle>
             <DialogDescription className="text-white/60">
-              {t.currentBalance} <span className="font-bold text-white">{trustPoints?.balance || 0} TRUST</span>
+              {t.currentBalance} <span className="font-bold text-white">{trustPoints?.balance ?? 0} TRUST</span>
             </DialogDescription>
           </DialogHeader>
 
@@ -1323,10 +1561,15 @@ export default function WalletPage() {
               <div className="space-y-2">
                 <h3 className="text-lg font-semibold text-white">{t.howToGetMore}</h3>
                 <ul className="text-sm text-white/80 space-y-1 list-disc list-inside">
-                  <li>{t.waitForDaily}</li>
                   <li>{t.inviteUsers}</li>
                   <li>{t.receivePoints}</li>
                 </ul>
+                {referralStats && (
+                  <div className="mt-4 p-3 bg-white/5 border border-white/10 rounded-lg">
+                    <div className="text-sm text-white/60">Referidos exitosos: <span className="text-white font-semibold">{referralStats.totalReferrals}</span></div>
+                    <div className="text-sm text-white/60">Puntos ganados: <span className="text-white font-semibold">{referralStats.totalPointsEarned}</span></div>
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-col gap-2 pt-4">
@@ -1357,38 +1600,43 @@ export default function WalletPage() {
                 </p>
               </div>
 
+              {referralLoading ? (
+                <div className="p-4 bg-white/5 border border-white/10 rounded-lg text-white/60 text-center">
+                  Cargando código de referido...
+                </div>
+              ) : inviteCode ? (
+                <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
+                  <code className="text-xl font-bold text-white font-mono tracking-wider">
+                    {inviteCode}
+                  </code>
+                </div>
+              ) : (
+                <div className="p-4 bg-white/5 border border-white/10 rounded-lg text-white/60 text-center">
+                  No se pudo cargar el código de referido
+                </div>
+              )}
+
               <Button
                 onClick={async () => {
                   try {
-                    // Create invite link
-                    const inviteLink = typeof window !== "undefined" 
-                      ? `${window.location.origin}/auth?invite=${inviteCode}`
-                      : `https://sozucredit.com/auth?invite=${inviteCode}`
+                    // Create social media ready message with invite code
+                    const inviteMessage = t.inviteMessage.replace("{code}", inviteCode)
                     
-                    // Create the expressive message
-                    const inviteMessage = t.inviteMessage.replace("{url}", inviteLink)
-                    
-                    // Copy message to clipboard
+                    // Copy to clipboard
                     await navigator.clipboard.writeText(inviteMessage)
                     
-                    // Update button state
-                    setMessageCopied(true)
-                    setTimeout(() => setMessageCopied(false), 3000)
+                    // Show success message
+                    alert(t.codeCopiedShare)
                   } catch (err) {
-                    console.error("Failed to copy message:", err)
-                    // Fallback: just copy the link if message copy fails
-                    const inviteLink = typeof window !== "undefined" 
-                      ? `${window.location.origin}/auth?invite=${inviteCode}`
-                      : `https://sozucredit.com/auth?invite=${inviteCode}`
-                    await navigator.clipboard.writeText(inviteLink)
-                    setMessageCopied(true)
-                    setTimeout(() => setMessageCopied(false), 3000)
+                    // Fallback: just copy the code if share message fails
+                    await navigator.clipboard.writeText(inviteCode)
+                    alert(t.codeCopied)
                   }
                 }}
                 variant="outline"
-                className="w-full border-2 border-white bg-transparent text-white hover:bg-white/10 hover:text-white font-semibold text-lg py-6"
+                className="w-full border-2 border-white bg-transparent text-white hover:bg-white/10 font-semibold"
               >
-                {messageCopied ? t.messageCopied : t.copyMessage}
+                {t.copyCode}
               </Button>
 
               <Button
@@ -1432,14 +1680,14 @@ export default function WalletPage() {
                     id="points"
                     type="number"
                     min="1"
-                    max={trustPoints?.balance || 0}
+                    max={trustPoints?.balance ?? 0}
                     value={vouchPoints}
                     onChange={(e) => setVouchPoints(e.target.value)}
                     className="bg-black border-white/20 text-white"
                     placeholder="1"
                   />
                   <p className="text-xs text-white/60">
-                    {t.available} {trustPoints?.balance || 0} TRUST
+                    {t.available} {trustPoints?.balance ?? 0} TRUST
                   </p>
                 </div>
 
@@ -1607,6 +1855,89 @@ export default function WalletPage() {
                       {t.ars}
                     </Button>
                   </div>
+                </div>
+
+                {/* EVM Address Section */}
+                <div className="space-y-2 pt-4 border-t border-white/20">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Link2 className="w-4 h-4 text-white" />
+                      <span className="text-sm text-white/80">{t.linkEvmAddress}</span>
+                    </div>
+                    {evmAddress && (
+                      <button
+                        onClick={handleUnlinkEvmAddress}
+                        disabled={evmLoading}
+                        className="text-xs text-white/60 hover:text-white/80 transition-colors"
+                      >
+                        {t.unlinkAddress}
+                      </button>
+                    )}
+                  </div>
+                  
+                  {evmAddress ? (
+                    <div className="space-y-2">
+                      <div 
+                        onClick={handleCopyEvmAddress}
+                        className="p-4 bg-white/5 border border-white/10 rounded-lg cursor-pointer hover:bg-white/10 transition-colors relative"
+                      >
+                        <code className="text-sm text-white/80 font-mono truncate block pr-20">
+                          {`${evmAddress.substring(0, 8)}...${evmAddress.substring(evmAddress.length - 8)}`}
+                        </code>
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1 text-white/60 hover:text-white cursor-pointer">
+                          <ExternalLink className="w-3 h-3" />
+                          <span className="text-xs">{t.evmAddressCopied}</span>
+                        </div>
+                      </div>
+                      
+                      {/* MaxFlow Ego Score */}
+                      {maxflowLoading ? (
+                        <div className="p-4 bg-white/5 border border-white/10 rounded-lg text-center">
+                          <p className="text-sm text-white/60">{t.loadingScore}</p>
+                        </div>
+                      ) : maxflowEgoScore ? (
+                        <div className="p-4 bg-white/5 border border-white/10 rounded-lg space-y-2">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-semibold text-white">{t.maxflowScore}</span>
+                          </div>
+                          <div className="space-y-1 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-white/60">{t.localHealth}:</span>
+                              <span className="text-white font-medium">{maxflowEgoScore.localHealth.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-white/60">{t.totalNodes}:</span>
+                              <span className="text-white font-medium">{maxflowEgoScore.metrics.totalNodes}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-white/60">{t.acceptedUsers}:</span>
+                              <span className="text-white font-medium">{maxflowEgoScore.metrics.acceptedUsers}</span>
+                            </div>
+                            {maxflowEgoScore.metrics.avgResidualFlow > 0 && (
+                              <div className="flex justify-between">
+                                <span className="text-white/60">Avg Flow:</span>
+                                <span className="text-white font-medium">{maxflowEgoScore.metrics.avgResidualFlow.toFixed(2)}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-4 bg-white/5 border border-white/10 rounded-lg text-center">
+                          <p className="text-sm text-white/60">{t.errorLoadingScore}</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setIsEvmDialogOpen(true)}
+                      className="w-full p-4 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-colors text-left"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-white/80">{t.evmAddressNotLinked}</span>
+                        <Link2 className="w-4 h-4 text-white/60" />
+                      </div>
+                    </button>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -1794,6 +2125,56 @@ export default function WalletPage() {
                 {t.language === "es" ? "No hay datos de balance disponibles" : "No balance data available"}
               </p>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* EVM Address Dialog */}
+      <Dialog open={isEvmDialogOpen} onOpenChange={setIsEvmDialogOpen}>
+        <DialogContent className="bg-black/80 backdrop-blur-md border-white/20 text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-white text-2xl">{t.evmAddressTitle}</DialogTitle>
+            <DialogDescription className="text-white/60">
+              {t.evmAddressDesc}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="evmAddress" className="text-white">
+                {t.evmAddressTitle}
+              </Label>
+              <Input
+                id="evmAddress"
+                value={evmInput}
+                onChange={(e) => setEvmInput(e.target.value)}
+                placeholder={t.evmAddressPlaceholder}
+                className="bg-black border-white/20 text-white font-mono"
+              />
+              <p className="text-xs text-white/60">
+                {t.language === "es" 
+                  ? "Ingresa tu dirección Ethereum (0x...)" 
+                  : "Enter your Ethereum address (0x...)"}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleLinkEvmAddress}
+                disabled={evmLoading || !evmInput.trim()}
+                className="flex-1 bg-white text-black hover:bg-white/90"
+              >
+                {evmLoading ? (t.language === "es" ? "Vinculando..." : "Linking...") : t.linkAddress}
+              </Button>
+              <Button
+                onClick={() => {
+                  setIsEvmDialogOpen(false)
+                  setEvmInput("")
+                }}
+                variant="outline"
+                className="border-white/20 text-white hover:bg-white/10"
+              >
+                {t.cancel}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

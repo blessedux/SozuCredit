@@ -1,10 +1,9 @@
 import { getTurnkeyClient } from "./client"
 import { getTurnkeyConfig, getStellarConfig } from "./config"
 import { createActivityPoller } from "@turnkey/http"
-import { Horizon, TransactionBuilder, Operation, Asset, Networks, BASE_FEE, Account, Transaction } from "@stellar/stellar-sdk"
+import { Horizon, Asset, TransactionBuilder, Networks, Operation, BASE_FEE } from "@stellar/stellar-sdk"
 import { createClient } from "@/lib/supabase/server"
 import { createClient as createServiceClient } from "@supabase/supabase-js"
-import { signSorobanTransaction, submitSorobanTransaction } from "./soroban-signing"
 
 export interface StellarWallet {
   id: string
@@ -223,6 +222,10 @@ export async function createStellarWallet(
     console.log("[createStellarWallet] Wallet creation successful!")
     console.log("[createStellarWallet] Turnkey Wallet ID:", privateKeyId)
     console.log("[createStellarWallet] Stellar Public Key:", stellarPublicKey)
+
+    // Note: USDC trustline will be created after wallet is funded
+    // We'll create it in storeStellarWallet or via a separate API call
+    // This is because trustlines require the account to exist and have XLM for fees
 
     return {
       turnkeyWalletId: privateKeyId,
@@ -695,78 +698,79 @@ export async function saveBalanceSnapshot(
 }
 
 /**
- * Establish a trustline for USDC on Stellar
- * This is required before an account can receive USDC
+ * USDC issuers for Stellar network
  */
-export async function establishUSDCTrustline(
+const USDC_ISSUERS = {
+  testnet: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN", // Circle testnet USDC
+  mainnet: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN", // Circle mainnet USDC
+}
+
+/**
+ * Create USDC trustline for a Stellar wallet
+ * This allows the wallet to receive and hold USDC
+ */
+export async function createUSDCTrustline(
   userId: string,
-  usdcIssuer?: string
+  publicKey: string
 ): Promise<{ success: boolean; transactionHash?: string; error?: string }> {
-  console.log("[establishUSDCTrustline] Starting trustline establishment for user:", userId)
-  
-  const turnkeyConfig = getTurnkeyConfig()
-  if (!turnkeyConfig) {
-    const missing = []
-    if (!process.env.NEXT_PUBLIC_TURNKEY_ORG_ID) missing.push("NEXT_PUBLIC_TURNKEY_ORG_ID")
-    if (!process.env.NEXT_PUBLIC_TURNKEY_API_PUBLIC_KEY) missing.push("NEXT_PUBLIC_TURNKEY_API_PUBLIC_KEY")
-    if (!process.env.NEXT_PUBLIC_TURNKEY_API_PRIVATE_KEY && !process.env.TURNKEY_API_PRIVATE_KEY && !process.env.NEXT_PRIVATE_TURNKEY_API_PRIVATE_KEY) {
-      missing.push("NEXT_PUBLIC_TURNKEY_API_PRIVATE_KEY, TURNKEY_API_PRIVATE_KEY, or NEXT_PRIVATE_TURNKEY_API_PRIVATE_KEY")
-    }
-    
-    const errorMessage = missing.length > 0
-      ? `Turnkey configuration not found. Missing environment variables: ${missing.join(", ")}`
-      : "Turnkey configuration not found. Please check your environment variables."
-    
-    console.error("[establishUSDCTrustline] Turnkey configuration error:", errorMessage)
-    throw new Error(errorMessage)
-  }
-  
-  const stellarConfig = getStellarConfig()
-  
-  // Get user's Stellar wallet
-  const wallet = await getStellarWallet(userId, true)
-  if (!wallet || !wallet.turnkeyWalletId) {
-    throw new Error("Stellar wallet not found or missing Turnkey wallet ID")
-  }
-  
-  // Use provided issuer or default to mainnet Circle USDC issuer
-  // The error shows: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
-  const issuer = usdcIssuer || process.env.USDC_ISSUER || "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
-  
-  console.log("[establishUSDCTrustline] Using USDC issuer:", issuer)
-  console.log("[establishUSDCTrustline] Wallet public key:", wallet.publicKey)
-  
+  console.log("[createUSDCTrustline] Starting trustline creation for user:", userId, "publicKey:", publicKey.substring(0, 10) + "...")
+
   try {
+    const stellarConfig = getStellarConfig()
+    const turnkeyConfig = getTurnkeyConfig()
+    
+    if (!turnkeyConfig) {
+      throw new Error("Turnkey configuration not found")
+    }
+
+    // Get user's wallet to access Turnkey wallet ID
+    const wallet = await getStellarWallet(userId, true)
+    if (!wallet || !wallet.turnkeyWalletId) {
+      throw new Error("Stellar wallet not found or missing Turnkey wallet ID")
+    }
+
+    // Get USDC issuer for the network
+    const usdcIssuer = USDC_ISSUERS[stellarConfig.network]
+    if (!usdcIssuer) {
+      throw new Error(`USDC issuer not configured for network: ${stellarConfig.network}`)
+    }
+
+    // Create USDC asset
+    const usdcAsset = new Asset("USDC", usdcIssuer)
+
     // Create Stellar server instance
     const server = new Horizon.Server(
       stellarConfig.horizonUrl,
       { allowHttp: stellarConfig.network === "testnet" }
     )
-    
+
     // Load account to get sequence number
-    const accountResponse = await server.loadAccount(wallet.publicKey)
-    const account = new Account(wallet.publicKey, accountResponse.sequenceNumber())
-    
-    // Create USDC asset
-    const usdcAsset = new Asset("USDC", issuer)
-    
+    let account
+    try {
+      account = await server.loadAccount(publicKey)
+    } catch (error: any) {
+      if (error?.response?.status === 404) {
+        console.warn("[createUSDCTrustline] Account not found yet, account may need to be funded first")
+        return { success: false, error: "Account not found. Please fund the account first." }
+      }
+      throw error
+    }
+
     // Check if trustline already exists
-    const existingTrustline = accountResponse.balances.find(
-      (bal: any) => 
+    const hasTrustline = account.balances.some(
+      (bal: any) =>
         bal.asset_type !== "native" &&
         bal.asset_code === "USDC" &&
-        bal.asset_issuer === issuer
+        bal.asset_issuer === usdcIssuer
     )
-    
-    if (existingTrustline) {
-      console.log("[establishUSDCTrustline] Trustline already exists")
+
+    if (hasTrustline) {
+      console.log("[createUSDCTrustline] ✅ USDC trustline already exists for publicKey:", publicKey.substring(0, 10) + "...")
       return { success: true }
     }
-    
-    // Build ChangeTrust operation
-    const networkPassphrase = stellarConfig.network === "testnet" 
-      ? Networks.TESTNET 
-      : Networks.PUBLIC
+
+    // Build change trust operation
+    const networkPassphrase = stellarConfig.network === "mainnet" ? Networks.PUBLIC : Networks.TESTNET
     
     const transaction = new TransactionBuilder(account, {
       fee: BASE_FEE,
@@ -775,119 +779,89 @@ export async function establishUSDCTrustline(
       .addOperation(
         Operation.changeTrust({
           asset: usdcAsset,
-          limit: "922337203685.4775807", // Maximum limit
+          limit: "922337203685.4775807", // Maximum trustline limit
         })
       )
       .setTimeout(30)
       .build()
-    
-    console.log("[establishUSDCTrustline] Transaction built, signing with Turnkey...")
-    
-    // Use the same signing function as Soroban transactions (which works for Stellar)
-    const signedTransaction = await signSorobanTransaction(userId, transaction)
-    
-    console.log("[establishUSDCTrustline] Transaction signed, submitting to network...")
-    
-    // Submit transaction to Horizon (not Soroban RPC for regular Stellar transactions)
-    let submitResult
+
+    console.log("[createUSDCTrustline] Transaction built, signing with Turnkey...")
+
+    // Sign transaction using Turnkey
+    const client = getTurnkeyClient()
+    const transactionXdr = transaction.toXDR()
+    const transactionBytes = Buffer.from(transactionXdr, "base64")
+
+    const requestBody = {
+      type: "ACTIVITY_TYPE_SIGN_TRANSACTION",
+      timestampMs: Date.now().toString(),
+      organizationId: turnkeyConfig.organizationId,
+      parameters: {
+        signWith: wallet.turnkeyWalletId,
+        unsignedTransaction: transactionBytes.toString("base64"),
+      },
+    }
+
+    let activity
     try {
-      submitResult = await server.submitTransaction(signedTransaction.transaction)
-      console.log("[establishUSDCTrustline] Transaction submitted, hash:", submitResult.hash)
-    } catch (submitError: any) {
-      console.error("[establishUSDCTrustline] Error submitting transaction:", submitError)
+      const initialResponse = await client.signTransaction({
+        body: requestBody,
+      } as any)
       
-      // Check for specific error codes
-      if (submitError?.response?.data?.extras?.result_codes) {
-        const resultCodes = submitError.response.data.extras.result_codes
-        console.error("[establishUSDCTrustline] Transaction result codes:", resultCodes)
+      activity = initialResponse.activity
+      
+      if (activity.status !== "ACTIVITY_STATUS_COMPLETED") {
+        const signTransactionPoller = createActivityPoller({
+          client,
+          requestFn: client.signTransaction,
+          refreshIntervalMs: 500,
+        })
         
-        // Check if trustline already exists
-        if (resultCodes.operations?.includes("op_already_exists")) {
-          console.log("[establishUSDCTrustline] Trustline already exists (detected from submit error)")
-          return { success: true }
-        }
+        activity = await signTransactionPoller({
+          body: requestBody,
+        } as any)
+      }
+    } catch (error: any) {
+      console.error("[createUSDCTrustline] Error with body wrapper:", error.message)
+      
+      const initialResponse = await client.signTransaction(requestBody as any)
+      activity = initialResponse.activity
+      
+      if (activity.status !== "ACTIVITY_STATUS_COMPLETED") {
+        const signTransactionPoller = createActivityPoller({
+          client,
+          requestFn: client.signTransaction,
+          refreshIntervalMs: 500,
+        })
         
-        // Check for insufficient balance for fees
-        if (resultCodes.transaction === "tx_insufficient_balance") {
-          throw new Error("Insufficient balance to pay transaction fees. Please fund your wallet with XLM first.")
-        }
+        activity = await signTransactionPoller(requestBody as any)
       }
-      
-      throw submitError
     }
-    
-    // Wait for transaction to be confirmed (poll for transaction status)
-    console.log("[establishUSDCTrustline] Waiting for transaction confirmation...")
-    let confirmed = false
-    let attempts = 0
-    const maxAttempts = 30 // Wait up to 30 seconds
-    
-    while (!confirmed && attempts < maxAttempts) {
-      await new Promise((resolve) => setTimeout(resolve, 1000)) // Wait 1 second
-      
-      try {
-        const transactionStatus = await server.transactions().transaction(submitResult.hash).call()
-        if (transactionStatus.successful) {
-          confirmed = true
-          console.log("[establishUSDCTrustline] ✅ Transaction confirmed successfully")
-        }
-      } catch (statusError) {
-        // Transaction might not be in ledger yet, continue waiting
-        console.log("[establishUSDCTrustline] Transaction not yet confirmed, waiting...")
-      }
-      
-      attempts++
+
+    if (!activity.result?.signTransactionResult?.signedTransaction) {
+      throw new Error("Turnkey did not return a signed transaction")
     }
+
+    const signedTransactionXdr = activity.result.signTransactionResult.signedTransaction
+    const signedTransaction = TransactionBuilder.fromXDR(signedTransactionXdr, networkPassphrase)
+
+    console.log("[createUSDCTrustline] Transaction signed, submitting to network...")
+
+    // Submit transaction to network
+    const response = await server.submitTransaction(signedTransaction)
     
-    if (!confirmed) {
-      console.warn("[establishUSDCTrustline] ⚠️ Transaction submitted but not yet confirmed after max attempts")
-      // Still return success since transaction was submitted
-    }
-    
-    // Verify trustline was actually established by checking account balances
-    try {
-      const updatedAccount = await server.loadAccount(wallet.publicKey)
-      const trustlineExists = updatedAccount.balances.find(
-        (bal: any) => 
-          bal.asset_type !== "native" &&
-          bal.asset_code === "USDC" &&
-          bal.asset_issuer === issuer
-      )
-      
-      if (trustlineExists) {
-        console.log("[establishUSDCTrustline] ✅ Trustline verified - exists in account balances")
-      } else {
-        console.warn("[establishUSDCTrustline] ⚠️ Trustline not found in account balances yet (may need more time)")
-      }
-    } catch (verifyError) {
-      console.warn("[establishUSDCTrustline] Could not verify trustline:", verifyError)
-    }
-    
-    console.log("[establishUSDCTrustline] ✅ Trustline established successfully")
-    console.log("[establishUSDCTrustline] Transaction hash:", submitResult.hash)
-    
+    console.log("[createUSDCTrustline] ✅ USDC trustline created successfully")
+    console.log("[createUSDCTrustline] Transaction hash:", response.hash)
+
     return {
       success: true,
-      transactionHash: submitResult.hash,
+      transactionHash: response.hash,
     }
-  } catch (error: any) {
-    console.error("[establishUSDCTrustline] Error establishing trustline:", error)
-    console.error("[establishUSDCTrustline] Error message:", error.message)
-    console.error("[establishUSDCTrustline] Error stack:", error.stack)
-    
-    // Check if trustline already exists (error code might indicate this)
-    if (error?.response?.data?.extras?.result_codes?.operations?.includes("op_already_exists")) {
-      console.log("[establishUSDCTrustline] Trustline already exists (detected from error)")
-      return { success: true }
-    }
-    
-    // Extract detailed error message for better debugging
-    const errorMessage = error.message || "Failed to establish trustline"
-    console.error("[establishUSDCTrustline] Returning error:", errorMessage)
-    
+  } catch (error) {
+    console.error("[createUSDCTrustline] Error creating USDC trustline:", error)
     return {
       success: false,
-      error: errorMessage,
+      error: error instanceof Error ? error.message : String(error),
     }
   }
 }
