@@ -16,7 +16,7 @@ export default function ProfilePage() {
   const [username, setUsername] = useState("")
   const [walletAddress, setWalletAddress] = useState("")
   const [language, setLanguage] = useState<"es" | "en">("es")
-  const [profilePic, setProfilePic] = useState<string | null>(null)
+  const [profilePic, setProfilePic] = useState<string | null>("/capybara_pfp.png")
 
   const texts = {
     es: {
@@ -127,7 +127,7 @@ export default function ProfilePage() {
             {/* Profile Picture */}
             <div className="flex items-center gap-6">
               <Avatar className="w-24 h-24 border-2 border-white/20">
-                <AvatarImage src={profilePic || undefined} />
+                <AvatarImage src={profilePic || "/capybara_pfp.png"} />
                 <AvatarFallback className="bg-white/10 text-white text-2xl">
                   {username.substring(0, 2).toUpperCase()}
                 </AvatarFallback>

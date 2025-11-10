@@ -12,7 +12,7 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { username, credential, challenge } = await request.json()
+    const { username, credential, challenge, referralCode } = await request.json()
 
     // Try to verify challenge from store (for security)
     // If challenge store doesn't have it (e.g., in serverless environments), 
@@ -238,9 +238,10 @@ export async function POST(request: NextRequest) {
 
     if (!existingTrustPoints) {
       console.log("[Register] Trust points don't exist, creating manually")
+      // New users start with 0 trust points
       const { error: trustError } = await supabase.from("trust_points").insert({
         user_id: authData.user.id,
-        balance: 5,
+        balance: 0,
       })
 
       if (trustError) {
@@ -384,6 +385,112 @@ export async function POST(request: NextRequest) {
     }
 
     console.log("[Register] Registration successful for user:", authData.user.id)
+
+    // Handle referral code if provided
+    if (referralCode) {
+      try {
+        console.log("[Register] Processing referral code:", referralCode)
+        
+        // Find referrer by invite code (first 8 chars of user ID)
+        // The invite code is the first 8 characters of the referrer's user ID
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+        
+        if (supabaseServiceKey && supabaseUrl) {
+          const serviceClient = createServiceClient(supabaseUrl, supabaseServiceKey)
+          
+          // Find referrer by matching invite code (first 8 chars of user ID)
+          // We need to search profiles or users where the first 8 chars match
+          const { data: allProfiles } = await serviceClient
+            .from("profiles")
+            .select("id")
+          
+          // Find user whose ID starts with the referral code (case-insensitive)
+          const referrerId = allProfiles?.find(profile => 
+            profile.id.substring(0, 8).toUpperCase() === referralCode.toUpperCase()
+          )?.id
+          
+          if (referrerId && referrerId !== authData.user.id) {
+            console.log("[Register] Found referrer:", referrerId)
+            
+            // Award trust points to referrer (1 point for onboarding a new user)
+            const referralReward = 1
+            const { data: referrerTrust } = await serviceClient
+              .from("trust_points")
+              .select("balance")
+              .eq("user_id", referrerId)
+              .maybeSingle()
+            
+            if (referrerTrust) {
+              const newBalance = (referrerTrust.balance || 0) + referralReward
+              await serviceClient
+                .from("trust_points")
+                .update({ 
+                  balance: newBalance,
+                  updated_at: new Date().toISOString()
+                })
+                .eq("user_id", referrerId)
+              
+              console.log("[Register] Awarded", referralReward, "trust points to referrer:", referrerId)
+            } else {
+              // Create trust points for referrer if they don't exist
+              await serviceClient
+                .from("trust_points")
+                .insert({
+                  user_id: referrerId,
+                  balance: referralReward
+                })
+              console.log("[Register] Created trust points and awarded", referralReward, "points to referrer:", referrerId)
+            }
+            
+            // Create notification for referrer
+            const { data: referrerProfile } = await serviceClient
+              .from("profiles")
+              .select("username")
+              .eq("id", referrerId)
+              .maybeSingle()
+            
+            const referrerUsername = referrerProfile?.username || "User"
+            
+            await serviceClient
+              .from("notifications")
+              .insert({
+                user_id: referrerId,
+                type: "referral_reward",
+                title: "New User Onboarded! 🎉",
+                message: `You've earned 1 trust point for onboarding a new user with your referral code.`,
+                read: false
+              })
+            
+            console.log("[Register] Created notification for referrer:", referrerId)
+            
+            // Award 1 point to new user for using a referral code (their first point)
+            const { data: newUserTrust } = await serviceClient
+              .from("trust_points")
+              .select("balance")
+              .eq("user_id", authData.user.id)
+              .maybeSingle()
+            
+            if (newUserTrust) {
+              const newUserBalance = (newUserTrust.balance || 0) + 1
+              await serviceClient
+                .from("trust_points")
+                .update({ 
+                  balance: newUserBalance,
+                  updated_at: new Date().toISOString()
+                })
+                .eq("user_id", authData.user.id)
+              console.log("[Register] Awarded 1 trust point to new user for using referral code")
+            }
+          } else {
+            console.log("[Register] Referrer not found for code:", referralCode)
+          }
+        }
+      } catch (referralError) {
+        // Don't fail registration if referral processing fails
+        console.error("[Register] Error processing referral code:", referralError)
+      }
+    }
 
     // Get the username from the profile
     const { data: registeredProfile } = await supabase

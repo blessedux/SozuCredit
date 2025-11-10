@@ -11,15 +11,30 @@ import {
   verifyAuthentication
 } from "@/lib/turnkey/passkeys"
 import { createClient } from "@/lib/supabase/client"
-import { useRouter } from "next/navigation"
-import { useState, useRef } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { useState, useRef, useEffect } from "react"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 export default function AuthPage() {
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [registrationUsername, setRegistrationUsername] = useState("")
+  const [referralCode, setReferralCode] = useState<string | null>(null)
   const router = useRouter()
+  const searchParams = useSearchParams()
   const redirectingRef = useRef(false)
+  const isMobile = useIsMobile()
+
+  // Extract invite code from URL params
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const invite = searchParams?.get("invite") || new URLSearchParams(window.location.search).get("invite")
+      if (invite) {
+        setReferralCode(invite)
+        console.log("[Auth] Referral code found in URL:", invite)
+      }
+    }
+  }, [searchParams])
 
   const handleAuth = async () => {
     if (redirectingRef.current) {
@@ -285,8 +300,8 @@ export default function AuthPage() {
           }
 
           console.log("[Auth] Reg Step 4: Verifying registration...")
-          // Pass the challenge to verifyRegistration in case the in-memory store doesn't have it
-          const regResult = await verifyRegistration(usernameToRegister, credential, challenge.challenge)
+          // Pass the challenge and referral code to verifyRegistration
+          const regResult = await verifyRegistration(usernameToRegister, credential, challenge.challenge, referralCode)
           console.log("[Auth] Reg Step 5: Verification result:", regResult)
           console.log("[Auth] Registration success:", regResult.success)
           console.log("[Auth] Registration userId:", regResult.userId)
@@ -496,11 +511,15 @@ export default function AuthPage() {
         />
       </div>
       
-      {/* Circular Button - centered vertically and horizontally */}
-      <div className={`relative z-10 transition-all duration-700 ${
+      {/* Circular Button - centered on desktop, bottom on mobile */}
+      <div className={`z-10 transition-all duration-700 ${
         isAuthenticated 
           ? "scale-150 opacity-0" 
           : "scale-100 opacity-100"
+      } ${
+        isMobile 
+          ? "fixed bottom-8 left-1/2 -translate-x-1/2 w-full flex items-center justify-center" 
+          : "absolute inset-0 flex items-center justify-center"
       }`}>
         <FingerScanButton
           onScan={handleAuth}

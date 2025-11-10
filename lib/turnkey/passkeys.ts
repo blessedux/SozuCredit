@@ -120,7 +120,8 @@ export async function generateAuthChallenge(username?: string): Promise<PasskeyC
 export async function verifyRegistration(
   username: string,
   credential: PasskeyCredential,
-  challenge?: string
+  challenge?: string,
+  referralCode?: string | null
 ): Promise<{ success: boolean; userId?: string; username?: string }> {
   try {
     // Extract public key from attestation object (simplified for now)
@@ -135,6 +136,7 @@ export async function verifyRegistration(
       body: JSON.stringify({
         username,
         challenge, // Pass challenge in case store doesn't have it
+        referralCode, // Pass referral code if provided
         credential: {
           ...credential,
           response: {

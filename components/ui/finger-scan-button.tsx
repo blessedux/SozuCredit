@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { Button } from "@/components/ui/liquid-glass-button"
 import { Fingerprint } from "lucide-react"
 
@@ -18,16 +18,24 @@ export function FingerScanButton({
   className 
 }: FingerScanButtonProps) {
   const [internalScanning, setInternalScanning] = useState(false)
+  const touchStartTimeRef = useRef<number | null>(null)
+  const hasTriggeredRef = useRef(false)
   
   // Use controlled scanning prop if provided, otherwise use internal state
   const isScanning = controlledScanning !== undefined ? controlledScanning : internalScanning
 
   const handleScan = async () => {
+    // Prevent multiple triggers
+    if (hasTriggeredRef.current) {
+      return
+    }
+    
     if (disabled || isScanning) {
       console.log("[FingerScan] Button disabled or already scanning")
       return
     }
     
+    hasTriggeredRef.current = true
     console.log("[FingerScan] Starting scan...")
     
     if (controlledScanning === undefined) {
@@ -42,15 +50,58 @@ export function FingerScanButton({
       }
     } catch (error) {
       console.error("[FingerScan] Error in scan handler:", error)
+      hasTriggeredRef.current = false
       throw error
     } finally {
       // Only reset internal state if not controlled
       if (controlledScanning === undefined) {
         setTimeout(() => {
           setInternalScanning(false)
+          hasTriggeredRef.current = false
         }, 2000)
+      } else {
+        // Reset after a delay even if controlled
+        setTimeout(() => {
+          hasTriggeredRef.current = false
+        }, 1000)
       }
     }
+  }
+
+  // Handle touch start (for tap and hold)
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (disabled || isScanning || hasTriggeredRef.current) {
+      return
+    }
+    
+    touchStartTimeRef.current = Date.now()
+    
+    // Trigger immediately on touch start (for tap and hold behavior)
+    // Users expect it to work when they place their finger, just like a real fingerprint scanner
+    handleScan()
+    
+    // Prevent click event from firing after touch (to avoid double-triggering)
+    // This only affects touch devices, desktop clicks still work normally
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
+  // Handle touch end
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    // Prevent click event from firing after touch
+    e.preventDefault()
+    e.stopPropagation()
+    
+    // Clear touch start time
+    touchStartTimeRef.current = null
+  }
+
+  // Handle touch cancel (e.g., user swipes away)
+  const handleTouchCancel = (e: React.TouchEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    touchStartTimeRef.current = null
+    // Don't reset hasTriggeredRef here - if scan already started, let it continue
   }
 
   return (
@@ -59,10 +110,14 @@ export function FingerScanButton({
         <div className="relative">
           <Button
             onClick={handleScan}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            onTouchCancel={handleTouchCancel}
             disabled={disabled || isScanning}
             className={`
               relative w-12 h-12 rounded-full border-2 transition-all duration-300
-              bg-white text-black hover:bg-white/90
+              bg-white text-black hover:bg-white/90 active:bg-white/80
+              touch-manipulation select-none
               ${
                 isScanning
                   ? "shadow-sm"
