@@ -12,10 +12,10 @@ import {
 } from "@/lib/turnkey/passkeys"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, Suspense } from "react"
 import { useIsMobile } from "@/hooks/use-mobile"
 
-export default function AuthPage() {
+function AuthPageContent() {
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [registrationUsername, setRegistrationUsername] = useState("")
@@ -657,5 +657,17 @@ export default function AuthPage() {
         />
       </div>
     </div>
+  )
+}
+
+export default function AuthPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-black dark text-white flex items-center justify-center">
+        <div className="text-white">Loading...</div>
+      </div>
+    }>
+      <AuthPageContent />
+    </Suspense>
   )
 }

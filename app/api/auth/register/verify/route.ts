@@ -495,25 +495,6 @@ export async function POST(request: NextRequest) {
                 })
               
               console.log("[Register] Created notification for referrer:", referral.referrer_id)
-              
-              // Award 1 point to new user for using a referral code (their first point)
-              const { data: newUserTrust } = await serviceClient
-                .from("trust_points")
-                .select("balance")
-                .eq("user_id", authData.user.id)
-                .maybeSingle()
-              
-              if (newUserTrust) {
-                const newUserBalance = (newUserTrust.balance || 0) + 1
-                await serviceClient
-                  .from("trust_points")
-                  .update({ 
-                    balance: newUserBalance,
-                    updated_at: new Date().toISOString()
-                  })
-                  .eq("user_id", authData.user.id)
-                console.log("[Register] Awarded 1 trust point to new user for using referral code")
-              }
             }
           } else {
             console.log("[Register] Referral is already used or invalid:", {

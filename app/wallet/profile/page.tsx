@@ -270,44 +270,6 @@ export default function ProfilePage() {
     }
   }
 
-  const loadEgoScore = async (address: string) => {
-    if (!address || !address.startsWith("0x")) return
-    
-    setIsLoadingEgoScore(true)
-    try {
-      const userId = sessionStorage.getItem("dev_username")
-      if (!userId) return
-
-      // Fetch ego score
-      const egoResponse = await fetch(`/api/maxflow/ego/${address}/score`, {
-        headers: {
-          "x-user-id": userId,
-        },
-      })
-      
-      if (egoResponse.ok) {
-        const egoData = await egoResponse.json()
-        setEgoScore(egoData.egoScore)
-      }
-
-      // Fetch trust score
-      const trustResponse = await fetch(`/api/maxflow/ego/${address}/trust-score`, {
-        headers: {
-          "x-user-id": userId,
-        },
-      })
-      
-      if (trustResponse.ok) {
-        const trustData = await trustResponse.json()
-        setTrustScore(trustData.trustScore)
-      }
-    } catch (err) {
-      console.error("[Profile] Error loading ego score:", err)
-    } finally {
-      setIsLoadingEgoScore(false)
-    }
-  }
-
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-black dark text-white">

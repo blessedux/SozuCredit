@@ -230,7 +230,7 @@ export default function WalletPage() {
       changePicture: "Cambiar Foto",
       xlm: "XLM",
       usd: "USD",
-      ars: "ARS (Pesos Argentinos)",
+      ars: "ARS",
       // Balance
       totalBalance: "Saldo Total",
       todayAPY: "APY de Hoy",
@@ -312,7 +312,7 @@ export default function WalletPage() {
       changePicture: "Change Picture",
       xlm: "XLM",
       usd: "USD",
-      ars: "ARS (Argentine Pesos)",
+      ars: "ARS",
       // Balance
       totalBalance: "Total Balance",
       todayAPY: "Today's APY",
@@ -1555,20 +1555,6 @@ export default function WalletPage() {
           </div>
         </div>
 
-        {/* Notification Bell Button - Top Right */}
-        <button
-          onClick={() => setIsNotificationsOpen(true)}
-          className="fixed top-4 right-4 md:top-6 md:right-6 z-10 p-3 rounded-full bg-white/10 border border-white/20 hover:bg-white/20 transition-colors relative"
-          aria-label="Notifications"
-        >
-          <Bell className="w-5 h-5 text-white" />
-          {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-xs text-white font-bold">
-              {unreadCount > 9 ? "9+" : unreadCount}
-            </span>
-          )}
-        </button>
-
         {/* Trust Points - Bottom Left */}
         <button
           onClick={() => setIsTrustModalOpen(true)}
@@ -1959,25 +1945,25 @@ export default function WalletPage() {
                     <span className="text-sm text-white/80">{t.currency}</span>
                   </div>
                   <p className="text-xs text-white/60 text-center mb-2">{t.currencyDesc}</p>
-                  <div className="flex flex-col justify-center gap-2">
+                  <div className="flex flex-row justify-center gap-2">
                     <Button
                       variant="outline"
                       onClick={() => handleCurrencyChange("XLM")}
-                      className={`border-2 bg-transparent w-full ${currency === "XLM" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
+                      className={`border-2 bg-transparent flex-1 ${currency === "XLM" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
                     >
                       {t.xlm}
                     </Button>
                     <Button
                       variant="outline"
                       onClick={() => handleCurrencyChange("USD")}
-                      className={`border-2 bg-transparent w-full ${currency === "USD" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
+                      className={`border-2 bg-transparent flex-1 ${currency === "USD" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
                     >
                       {t.usd}
                     </Button>
                     <Button
                       variant="outline"
                       onClick={() => handleCurrencyChange("ARS")}
-                      className={`border-2 bg-transparent w-full ${currency === "ARS" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
+                      className={`border-2 bg-transparent flex-1 ${currency === "ARS" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
                     >
                       {t.ars}
                     </Button>
