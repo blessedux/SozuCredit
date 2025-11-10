@@ -19,15 +19,27 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     
-    if (!user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401, headers: corsHeaders(request) }
-      )
+    let userId: string | null = null
+    
+    if (user) {
+      userId = user.id
+      console.log("[DeFindex Balance API] Using Supabase auth, userId:", userId)
+    } else {
+      // Fallback: check for userId in headers (for production when auth cookies might not work)
+      userId = request.headers.get("x-user-id")
+      console.log("[DeFindex Balance API] Fallback mode, userId from header:", userId)
+      
+      if (!userId) {
+        console.error("[DeFindex Balance API] No userId provided")
+        return NextResponse.json(
+          { error: "Unauthorized" },
+          { status: 401, headers: corsHeaders(request) }
+        )
+      }
     }
     
-    // Get user's Stellar wallet
-    const wallet = await getStellarWallet(user.id, true) // Use service client
+    // Get user's Stellar wallet (use service client if no authenticated user)
+    const wallet = await getStellarWallet(userId, !user)
     
     if (!wallet) {
       return NextResponse.json(
@@ -37,7 +49,7 @@ export async function GET(request: NextRequest) {
     }
     
     // Get vault balance from DeFindex (including database position tracking)
-    const vaultBalance = await getVaultBalance(wallet.publicKey, user.id)
+    const vaultBalance = await getVaultBalance(wallet.publicKey, userId)
     
     // Get strategy info including APY
     const strategyInfo = await getStrategyInfo()
