@@ -36,6 +36,17 @@ export default function AuthPage() {
     }
   }, [searchParams])
 
+  // Extract referral code from URL on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const invite = searchParams.get("invite")
+      if (invite) {
+        console.log("[Auth] Found referral code in URL:", invite)
+        setReferralCode(invite)
+      }
+    }
+  }, [searchParams])
+
   const handleAuth = async () => {
     if (redirectingRef.current) {
       console.log("[Auth] Already redirecting, ignoring...")
@@ -96,11 +107,52 @@ export default function AuthPage() {
             passkeyError.name === "NotAllowedError" || 
             passkeyError.name === "AbortError"
           )) {
-            console.log("[Auth] User cancelled passkey authentication")
-            setIsAuthenticating(false)
-            return // Return early, user can try again
+            console.log("[Auth] User cancelled passkey authentication, trying discovery mode to show all passkeys...")
+            
+            // If user cancelled and we had allowCredentials, retry with discovery mode
+            // This allows the user to choose from all available passkeys (device-stored and browser-stored)
+            if (challenge?.allowCredentials && challenge.allowCredentials.length > 0) {
+              try {
+                console.log("[Auth] Retrying with discovery mode (no credential restrictions)...")
+                const discoveryChallenge = await generateAuthChallenge("") // Discovery mode
+                credential = await getPasskey(discoveryChallenge)
+                console.log("[Auth] Discovery mode result:", credential ? "Got credential" : "No credential")
+                
+                if (credential) {
+                  // Update challenge reference for verification
+                  challenge = discoveryChallenge
+                } else {
+                  // If still no credential, user cancelled again - offer registration
+                  console.log("[Auth] User cancelled discovery mode as well, offering registration...")
+                  // Re-throw to outer catch block to trigger registration
+                  throw new Error("USER_CANCELLED_ALL_LOGIN_ATTEMPTS")
+                }
+              } catch (discoveryError) {
+                // If discovery mode also fails or is cancelled, offer registration
+                if (discoveryError instanceof DOMException && (
+                  discoveryError.name === "NotAllowedError" || 
+                  discoveryError.name === "AbortError"
+                )) {
+                  console.log("[Auth] User cancelled discovery mode, offering registration to create new passkey...")
+                  // Re-throw to outer catch block to trigger registration
+                  throw new Error("USER_CANCELLED_ALL_LOGIN_ATTEMPTS")
+                }
+                // If it's our custom error, re-throw it
+                if (discoveryError instanceof Error && discoveryError.message === "USER_CANCELLED_ALL_LOGIN_ATTEMPTS") {
+                  throw discoveryError
+                }
+                throw discoveryError
+              }
+            } else {
+              // If no allowCredentials (already in discovery mode), user cancelled
+              // Offer registration to create new passkey
+              console.log("[Auth] User cancelled passkey authentication (already in discovery mode), offering registration...")
+              // Re-throw to outer catch block to trigger registration
+              throw new Error("USER_CANCELLED_ALL_LOGIN_ATTEMPTS")
+            }
+          } else {
+            throw passkeyError // Re-throw other errors
           }
-          throw passkeyError // Re-throw other errors
         }
         
         if (credential) {
@@ -224,17 +276,29 @@ export default function AuthPage() {
         // Check the error to determine if we should try registration
         const errorMessage = loginError instanceof Error ? loginError.message : String(loginError)
         
+        console.log("[Auth] Caught login error:", errorMessage)
+        
+        // Check if user cancelled all login attempts - this means they want to register
+        // Use a specific error code to ensure we catch it correctly
+        const userCancelledAll = errorMessage === "USER_CANCELLED_ALL_LOGIN_ATTEMPTS" ||
+                                 errorMessage.includes("User cancelled all login attempts") || 
+                                 errorMessage.includes("User cancelled discovery mode")
+        
+        console.log("[Auth] userCancelledAll:", userCancelledAll, "errorMessage:", errorMessage)
+        
         // Don't try registration if:
         // 1. Challenge errors (should retry login, not register)
         // 2. Passkey not found errors (user already has passkey)
         // 3. Authentication errors (user exists but verification failed)
-        const shouldNotRegister = 
+        // UNLESS user explicitly cancelled all attempts (then they want to register)
+        const shouldNotRegister = !userCancelledAll && (
           errorMessage.includes("Challenge not found") ||
           errorMessage.includes("Challenge not found or expired") ||
           errorMessage.includes("Passkey not found") ||
           errorMessage.includes("Invalid passkey") ||
           errorMessage.includes("Authentication failed") ||
           errorMessage.includes("Failed to verify authentication")
+        )
         
         if (shouldNotRegister) {
           console.error("[Auth] Login failed with error that suggests user already exists:", errorMessage)
@@ -245,21 +309,29 @@ export default function AuthPage() {
           return
         }
         
-        // Only try registration if it's a "user not found" type error
-        if (errorMessage.includes("User not found") || errorMessage.includes("No passkeys found")) {
+        // Try registration if:
+        // 1. User cancelled all login attempts (wants to create new passkey)
+        // 2. User not found error
+        // 3. No passkeys found
+        if (userCancelledAll) {
+          console.log("[Auth] ✅ User cancelled all login attempts, proceeding with registration to create new passkey...")
+        } else if (errorMessage.includes("User not found") || errorMessage.includes("No passkeys found")) {
           console.log("[Auth] User doesn't exist yet, proceeding with registration...")
         } else {
           console.warn("[Auth] Unexpected login error:", loginError)
           console.warn("[Auth] Attempting registration as fallback...")
         }
         
-        // Prompt for username if not already set
-        let usernameToRegister = registrationUsername || "user"
-        if (!registrationUsername) {
-          // Prompt user for username
-          const userInput = prompt("Please enter a username (3-30 characters, letters, numbers, and underscores only):", "user")
+        // If user cancelled all login attempts, they want to create a NEW passkey with a NEW username
+        // Always prompt for username in this case, don't use stored username
+        let usernameToRegister: string
+        if (userCancelledAll) {
+          // User wants to create a new passkey - always prompt for new username
+          console.log("[Auth] User wants to create new passkey, prompting for new username...")
+          const userInput = prompt("Please enter a username for your new passkey (3-30 characters, letters, numbers, and underscores only):", "")
           if (userInput === null) {
             // User cancelled
+            console.log("[Auth] User cancelled username prompt")
             setIsAuthenticating(false)
             return
           }
@@ -272,11 +344,35 @@ export default function AuthPage() {
             setIsAuthenticating(false)
             return
           }
+        } else {
+          // For other cases (user not found, etc.), use stored username if available, otherwise prompt
+          usernameToRegister = registrationUsername || usernameToUse || ""
+          if (!usernameToRegister || usernameToRegister === "user") {
+            // Prompt user for username
+            const userInput = prompt("Please enter a username (3-30 characters, letters, numbers, and underscores only):", usernameToUse || "user")
+            if (userInput === null) {
+              // User cancelled
+              setIsAuthenticating(false)
+              return
+            }
+            const trimmedInput = userInput.trim()
+            if (trimmedInput.length >= 3 && trimmedInput.length <= 30 && /^[a-zA-Z0-9_]+$/.test(trimmedInput)) {
+              usernameToRegister = trimmedInput
+              setRegistrationUsername(trimmedInput)
+            } else {
+              alert("Invalid username. Must be 3-30 characters and contain only letters, numbers, and underscores.")
+              setIsAuthenticating(false)
+              return
+            }
+          } else {
+            // Use the stored username
+            setRegistrationUsername(usernameToRegister)
+          }
         }
         
         try {
           console.log("[Auth] Reg Step 1: Generating registration challenge with username:", usernameToRegister)
-          const challenge = await generateRegistrationChallenge(usernameToRegister)
+          let challenge = await generateRegistrationChallenge(usernameToRegister)
           console.log("[Auth] Reg Step 2: Challenge generated, calling createPasskey...")
           
           try {
@@ -288,11 +384,44 @@ export default function AuthPage() {
               passkeyError.name === "NotAllowedError" || 
               passkeyError.name === "AbortError"
             )) {
-              console.log("[Auth] User cancelled passkey registration")
-              setIsAuthenticating(false)
-              return // Return early, user can try again
+              console.log("[Auth] User cancelled passkey registration, trying cross-platform (browser-stored) passkey...")
+              
+              // If user cancelled, try again with cross-platform authenticator (browser-stored)
+              // This allows users to create browser-stored passkeys if they don't want device-stored
+              try {
+                console.log("[Auth] Retrying registration with cross-platform authenticator (browser-stored)...")
+                // Modify challenge to prefer cross-platform authenticators
+                challenge = {
+                  ...challenge,
+                  authenticatorSelection: {
+                    ...challenge.authenticatorSelection,
+                    authenticatorAttachment: "cross-platform", // Prefer browser-stored passkeys
+                  },
+                }
+                credential = await createPasskey(challenge)
+                console.log("[Auth] Cross-platform passkey result:", credential ? "Got credential" : "No credential")
+                
+                if (!credential) {
+                  // If still no credential, user cancelled again
+                  console.log("[Auth] User cancelled cross-platform passkey registration as well")
+                  setIsAuthenticating(false)
+                  return
+                }
+              } catch (crossPlatformError) {
+                // If cross-platform also fails or is cancelled, just return
+                if (crossPlatformError instanceof DOMException && (
+                  crossPlatformError.name === "NotAllowedError" || 
+                  crossPlatformError.name === "AbortError"
+                )) {
+                  console.log("[Auth] User cancelled cross-platform passkey registration")
+                  setIsAuthenticating(false)
+                  return
+                }
+                throw crossPlatformError
+              }
+            } else {
+              throw passkeyError // Re-throw other errors
             }
-            throw passkeyError // Re-throw other errors
           }
           
           if (!credential) {

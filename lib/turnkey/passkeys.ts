@@ -19,6 +19,12 @@ export interface PasskeyChallenge {
     type: string
     transports?: AuthenticatorTransport[]
   }>
+  authenticatorSelection?: {
+    authenticatorAttachment?: "platform" | "cross-platform"
+    requireResidentKey?: boolean
+    residentKey?: "required" | "preferred" | "discouraged"
+    userVerification?: "required" | "preferred" | "discouraged"
+  }
   timeout?: number
   userVerification?: "required" | "preferred" | "discouraged"
 }
@@ -136,7 +142,7 @@ export async function verifyRegistration(
       body: JSON.stringify({
         username,
         challenge, // Pass challenge in case store doesn't have it
-        referralCode, // Pass referral code if provided
+        referralCode: referralCode || null, // Pass referral code if provided
         credential: {
           ...credential,
           response: {
@@ -234,10 +240,12 @@ export async function createPasskey(challenge: PasskeyChallenge): Promise<Passke
         { alg: -257, type: "public-key" }, // RS256
       ],
       authenticatorSelection: {
-        authenticatorAttachment: "platform",
-        requireResidentKey: true,
-        residentKey: "required",
-        userVerification: "required",
+        // Don't restrict to platform - allow both device-stored and browser-stored passkeys
+        // Use the challenge's authenticatorSelection if provided, otherwise allow both types
+        ...(challenge.authenticatorSelection || {}),
+        requireResidentKey: challenge.authenticatorSelection?.requireResidentKey ?? true,
+        residentKey: challenge.authenticatorSelection?.residentKey ?? "required",
+        userVerification: challenge.authenticatorSelection?.userVerification ?? "required",
       },
       timeout: challenge.timeout || 60000,
     }
@@ -275,9 +283,14 @@ export async function createPasskey(challenge: PasskeyChallenge): Promise<Passke
       },
     }
   } catch (error) {
-    console.error("Error creating passkey:", error)
+    // Preserve DOMException errors (NotAllowedError, AbortError, etc.) so they can be handled properly
+    if (error instanceof DOMException) {
+      // Log but don't wrap - preserve the original error type
+      console.log("[createPasskey] WebAuthn error:", error.name, error.message)
+      throw error
+    }
     
-    // Provide better error messages
+    // For other errors, provide better error messages
     if (error instanceof Error) {
       if (error.name === "NotAllowedError") {
         throw new Error("Passkey creation was cancelled or not allowed. Please try again.")
@@ -311,7 +324,9 @@ export async function getPasskey(challenge: PasskeyChallenge): Promise<PasskeyCr
       allowCredentials: challenge.allowCredentials?.map((cred) => ({
         id: base64URLToArrayBuffer(cred.id),
         type: cred.type as PublicKeyCredentialType,
-        transports: cred.transports,
+        // Only include transports if explicitly provided
+        // Omitting transports allows browser to use any available transport for that credential
+        ...(cred.transports && cred.transports.length > 0 ? { transports: cred.transports } : {}),
       })) || [],
       timeout: challenge.timeout || 60000,
       userVerification: challenge.userVerification || "required",
@@ -349,9 +364,14 @@ export async function getPasskey(challenge: PasskeyChallenge): Promise<PasskeyCr
       },
     }
   } catch (error) {
-    console.error("Error getting passkey:", error)
+    // Preserve DOMException errors (NotAllowedError, AbortError, etc.) so they can be handled properly
+    if (error instanceof DOMException) {
+      // Log but don't wrap - preserve the original error type
+      console.log("[getPasskey] WebAuthn error:", error.name, error.message)
+      throw error
+    }
     
-    // Provide better error messages
+    // For other errors, provide better error messages
     if (error instanceof Error) {
       if (error.name === "NotAllowedError") {
         throw new Error("No passkey found. Please register first or check your device settings.")

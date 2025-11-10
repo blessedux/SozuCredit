@@ -31,8 +31,11 @@ export async function POST(request: NextRequest) {
       const { data: profile } = await supabase.from("profiles").select("id").eq("username", username).single()
 
       if (profile) {
-        // Get user's passkeys
-        const { data: passkeys } = await supabase.from("passkeys").select("credential_id").eq("user_id", profile.id)
+        // Get user's passkeys with their transport information
+        const { data: passkeys } = await supabase
+          .from("passkeys")
+          .select("credential_id, transports")
+          .eq("user_id", profile.id)
 
         if (passkeys && passkeys.length > 0) {
           console.log("[Login Challenge] Found", passkeys.length, "passkey(s) for user:", username)
@@ -45,13 +48,18 @@ export async function POST(request: NextRequest) {
           console.log("[Login Challenge] ✅ Stored challenge under username key:", username, "Store size:", challengeStore.size)
 
           // Return WebAuthn authentication options with CORS headers
+          // Include all passkeys with their stored transport types
+          // If no transports stored, allow all transports (browser will handle selection)
           return NextResponse.json(
             {
               challenge,
               allowCredentials: passkeys.map((pk) => ({
                 id: pk.credential_id,
                 type: "public-key",
-                transports: ["internal"],
+                // Use stored transports if available, otherwise omit to allow all transports
+                transports: pk.transports && pk.transports.length > 0 
+                  ? pk.transports as AuthenticatorTransport[]
+                  : undefined, // Omit transports to allow browser to use any available transport
               })),
               timeout: 60000,
               userVerification: "required",

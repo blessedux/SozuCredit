@@ -52,7 +52,8 @@ export async function POST(request: NextRequest) {
           { alg: -257, type: "public-key" }, // RS256
         ],
         authenticatorSelection: {
-          authenticatorAttachment: "platform",
+          // Don't restrict to platform - allow both device-stored and browser-stored passkeys
+          // This allows users to choose which type they prefer
           requireResidentKey: true,
           residentKey: "required",
           userVerification: "required",

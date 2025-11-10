@@ -13,6 +13,9 @@ export async function OPTIONS(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { username, credential, challenge, referralCode } = await request.json()
+    
+    // Log referral code for debugging
+    console.log("[Register] Referral code received:", referralCode || "none")
 
     // Try to verify challenge from store (for security)
     // If challenge store doesn't have it (e.g., in serverless environments), 
@@ -74,6 +77,10 @@ export async function POST(request: NextRequest) {
 
     console.log("[Register] Attempting to create user with email:", randomEmail)
     console.log("[Register] Supabase URL:", process.env.NEXT_PUBLIC_SUPABASE_URL ? "Set" : "Missing")
+    console.log("[Register] User metadata to be set:", {
+      username,
+      referral_code: referralCode || null,
+    })
     
     // The trigger handle_new_user() tries to create profile with email column,
     // but the schema was updated to remove email and require username.
@@ -91,6 +98,12 @@ export async function POST(request: NextRequest) {
         emailRedirectTo: undefined, // Disable email redirect
       },
     })
+    
+    // Log the created user's metadata to verify referral code was stored
+    if (authData?.user) {
+      console.log("[Register] User created successfully. User metadata:", authData.user.user_metadata)
+      console.log("[Register] Referral code in user metadata:", authData.user.user_metadata?.referral_code || "not found")
+    }
 
     if (authError) {
       console.error("[Register] Signup error:", JSON.stringify(authError, null, 2))
@@ -387,109 +400,134 @@ export async function POST(request: NextRequest) {
 
     console.log("[Register] Registration successful for user:", authData.user.id)
 
-    // Handle referral code if provided
+    // Manually process referral if referral code was provided
+    // The trigger should handle this, but we'll also do it manually as a backup
     if (referralCode) {
+      console.log("[Register] Processing referral code manually:", referralCode)
       try {
-        console.log("[Register] Processing referral code:", referralCode)
-        
-        // Find referrer by invite code (first 8 chars of user ID)
-        // The invite code is the first 8 characters of the referrer's user ID
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-        
-        if (supabaseServiceKey && supabaseUrl) {
-          const serviceClient = createServiceClient(supabaseUrl, supabaseServiceKey)
-          
-          // Find referrer by matching invite code (first 8 chars of user ID)
-          // We need to search profiles or users where the first 8 chars match
-          const { data: allProfiles } = await serviceClient
-            .from("profiles")
-            .select("id")
-          
-          // Find user whose ID starts with the referral code (case-insensitive)
-          const referrerId = allProfiles?.find(profile => 
-            profile.id.substring(0, 8).toUpperCase() === referralCode.toUpperCase()
-          )?.id
-          
-          if (referrerId && referrerId !== authData.user.id) {
-            console.log("[Register] Found referrer:", referrerId)
+        // Use service client to bypass RLS
+        const { data: referral, error: referralError } = await serviceClient
+          .from("referrals")
+          .select("referrer_id, trust_points_awarded, used")
+          .eq("referral_code", referralCode)
+          .maybeSingle()
+
+        if (referralError) {
+          console.error("[Register] Error looking up referral:", referralError)
+        } else if (referral) {
+          console.log("[Register] Found referral:", {
+            referrer_id: referral.referrer_id,
+            trust_points_awarded: referral.trust_points_awarded,
+            used: referral.used,
+          })
+
+          // Check if referral is valid and not already used
+          if (!referral.used && referral.referrer_id !== authData.user.id) {
+            console.log("[Register] Referral is valid, processing...")
             
-            // Award trust points to referrer (1 point for onboarding a new user)
-            const referralReward = 1
-            const { data: referrerTrust } = await serviceClient
-              .from("trust_points")
-              .select("balance")
-              .eq("user_id", referrerId)
-              .maybeSingle()
-            
-            if (referrerTrust) {
-              const newBalance = (referrerTrust.balance || 0) + referralReward
-              await serviceClient
-                .from("trust_points")
-                .update({ 
-                  balance: newBalance,
-                  updated_at: new Date().toISOString()
-                })
-                .eq("user_id", referrerId)
-              
-              console.log("[Register] Awarded", referralReward, "trust points to referrer:", referrerId)
-            } else {
-              // Create trust points for referrer if they don't exist
-              await serviceClient
-                .from("trust_points")
-                .insert({
-                  user_id: referrerId,
-                  balance: referralReward
-                })
-              console.log("[Register] Created trust points and awarded", referralReward, "points to referrer:", referrerId)
-            }
-            
-            // Create notification for referrer
-            const { data: referrerProfile } = await serviceClient
-              .from("profiles")
-              .select("username")
-              .eq("id", referrerId)
-              .maybeSingle()
-            
-            const referrerUsername = referrerProfile?.username || "User"
-            
-            await serviceClient
-              .from("notifications")
-              .insert({
-                user_id: referrerId,
-                type: "referral_reward",
-                title: "New User Onboarded! 🎉",
-                message: `You've earned 1 trust point for onboarding a new user with your referral code.`,
-                read: false
+            // Mark referral as used
+            const { error: updateError } = await serviceClient
+              .from("referrals")
+              .update({
+                referred_user_id: authData.user.id,
+                used: true,
+                used_at: new Date().toISOString(),
               })
-            
-            console.log("[Register] Created notification for referrer:", referrerId)
-            
-            // Award 1 point to new user for using a referral code (their first point)
-            const { data: newUserTrust } = await serviceClient
-              .from("trust_points")
-              .select("balance")
-              .eq("user_id", authData.user.id)
-              .maybeSingle()
-            
-            if (newUserTrust) {
-              const newUserBalance = (newUserTrust.balance || 0) + 1
-              await serviceClient
+              .eq("referral_code", referralCode)
+              .eq("used", false)
+
+            if (updateError) {
+              console.error("[Register] Error updating referral:", updateError)
+            } else {
+              console.log("[Register] Referral marked as used")
+              
+              // Award trust points to referrer
+              // First, get current balance
+              const { data: currentPoints, error: selectError } = await serviceClient
                 .from("trust_points")
-                .update({ 
-                  balance: newUserBalance,
-                  updated_at: new Date().toISOString()
+                .select("balance")
+                .eq("user_id", referral.referrer_id)
+                .single()
+
+              if (selectError) {
+                console.error("[Register] Error getting current trust points:", selectError)
+              } else if (currentPoints) {
+                const newBalance = (currentPoints.balance || 0) + (referral.trust_points_awarded || 1)
+                const { error: updatePointsError } = await serviceClient
+                  .from("trust_points")
+                  .update({
+                    balance: newBalance,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq("user_id", referral.referrer_id)
+
+                if (updatePointsError) {
+                  console.error("[Register] Error awarding trust points:", updatePointsError)
+                } else {
+                  console.log("[Register] ✅ Trust points awarded to referrer:", {
+                    referrer_id: referral.referrer_id,
+                    points_awarded: referral.trust_points_awarded || 1,
+                    old_balance: currentPoints.balance || 0,
+                    new_balance: newBalance,
+                  })
+                }
+              } else {
+                console.error("[Register] No trust_points record found for referrer:", referral.referrer_id)
+              }
+
+              // Create notification for referrer
+              const { data: referrerProfile } = await serviceClient
+                .from("profiles")
+                .select("username")
+                .eq("id", referral.referrer_id)
+                .maybeSingle()
+              
+              const referrerUsername = referrerProfile?.username || "User"
+              
+              await serviceClient
+                .from("notifications")
+                .insert({
+                  user_id: referral.referrer_id,
+                  type: "referral_reward",
+                  title: "New User Onboarded! 🎉",
+                  message: `You've earned ${referral.trust_points_awarded || 1} trust point(s) for onboarding a new user with your referral code.`,
+                  read: false
                 })
+              
+              console.log("[Register] Created notification for referrer:", referral.referrer_id)
+              
+              // Award 1 point to new user for using a referral code (their first point)
+              const { data: newUserTrust } = await serviceClient
+                .from("trust_points")
+                .select("balance")
                 .eq("user_id", authData.user.id)
-              console.log("[Register] Awarded 1 trust point to new user for using referral code")
+                .maybeSingle()
+              
+              if (newUserTrust) {
+                const newUserBalance = (newUserTrust.balance || 0) + 1
+                await serviceClient
+                  .from("trust_points")
+                  .update({ 
+                    balance: newUserBalance,
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq("user_id", authData.user.id)
+                console.log("[Register] Awarded 1 trust point to new user for using referral code")
+              }
             }
           } else {
-            console.log("[Register] Referrer not found for code:", referralCode)
+            console.log("[Register] Referral is already used or invalid:", {
+              used: referral.used,
+              referrer_id: referral.referrer_id,
+              new_user_id: authData.user.id,
+            })
           }
+        } else {
+          console.log("[Register] Referral code not found in database:", referralCode)
         }
-      } catch (referralError) {
+      } catch (referralProcessError) {
+        console.error("[Register] Error processing referral:", referralProcessError)
         // Don't fail registration if referral processing fails
-        console.error("[Register] Error processing referral code:", referralError)
       }
     }
 
