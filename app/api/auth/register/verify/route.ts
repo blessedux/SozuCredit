@@ -12,7 +12,7 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { username, credential, challenge } = await request.json()
+    const { username, credential, challenge, referralCode } = await request.json()
 
     // Try to verify challenge from store (for security)
     // If challenge store doesn't have it (e.g., in serverless environments), 
@@ -86,6 +86,7 @@ export async function POST(request: NextRequest) {
       options: {
         data: {
           username,
+          referral_code: referralCode || null, // Pass referral code to trigger
         },
         emailRedirectTo: undefined, // Disable email redirect
       },
@@ -240,7 +241,7 @@ export async function POST(request: NextRequest) {
       console.log("[Register] Trust points don't exist, creating manually")
       const { error: trustError } = await supabase.from("trust_points").insert({
         user_id: authData.user.id,
-        balance: 5,
+        balance: 0, // New users start with 0 points (only get points from referrals)
       })
 
       if (trustError) {

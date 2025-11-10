@@ -99,7 +99,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Error al obtener puntos del receptor" }, { status: 500 })
       }
       
-      const newBalance = (receiverTrust?.balance || 5) + points
+      const newBalance = (receiverTrust?.balance || 0) + points
       
       const { error: addError } = await serviceClient
         .from("trust_points")

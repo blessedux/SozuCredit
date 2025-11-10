@@ -138,8 +138,8 @@ export default async function TrustPointsPage() {
               <div className="space-y-2">
                 <h3 className="font-semibold">Earning Points</h3>
                 <ul className="space-y-1 text-sm text-muted-foreground">
-                  <li>• Receive 5 trust points every 24 hours</li>
-                  <li>• Starting balance of 5 TP when you join</li>
+                  <li>• Get 1 trust point when someone signs up using your referral code</li>
+                  <li>• Starting balance of 0 TP when you join</li>
                   <li>• Check back daily to claim your points</li>
                   <li>• Points accumulate over time</li>
                 </ul>

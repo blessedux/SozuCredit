@@ -41,6 +41,11 @@ export default function WalletPage() {
   const [vouchPoints, setVouchPoints] = useState("1")
   const [vouchLoading, setVouchLoading] = useState(false)
   const [inviteCode, setInviteCode] = useState("")
+  const [referralLoading, setReferralLoading] = useState(false)
+  const [referralStats, setReferralStats] = useState<{
+    totalReferrals: number
+    totalPointsEarned: number
+  } | null>(null)
   
   // EVM Address state
   const [evmAddress, setEvmAddress] = useState<string | null>(null)
@@ -183,7 +188,7 @@ export default function WalletPage() {
       vouchForUser: "Apoyar un Proyecto",
       // Invite Code
       yourInviteCode: "Tu Código de Invitación",
-      inviteCodeDesc: "Comparte este código con nuevos usuarios. Cuando se registren, ambos recibirán puntos adicionales.",
+      inviteCodeDesc: "Comparte este código con nuevos usuarios. Cuando se registren usando tu código, recibirás 1 punto de confianza.",
       copyCode: "Copiar Código",
       codeCopied: "Código copiado al portapapeles",
       back: "Volver",
@@ -264,7 +269,7 @@ export default function WalletPage() {
       vouchForUser: "Vouch for Project",
       // Invite Code
       yourInviteCode: "Your Invite Code",
-      inviteCodeDesc: "Share this code with new users. When they register, both of you will receive additional points.",
+      inviteCodeDesc: "Share this code with new users. When they register using your code, you'll receive 1 trust point.",
       copyCode: "Copy Code",
       codeCopied: "Code copied to clipboard",
       back: "Back",
@@ -416,13 +421,82 @@ export default function WalletPage() {
             const trustData = await trustResponse.json()
             setTrustPoints(trustData.trustPoints)
           } else {
-            // Default to 5 trust points if fetch fails
-            setTrustPoints({ balance: 5, last_daily_credit: null })
+            // Default to 0 trust points if fetch fails (new users start with 0)
+            setTrustPoints({ balance: 0, last_daily_credit: null })
           }
           
-          // Generate invite code from user ID
-          const code = userId.substring(0, 8).toUpperCase()
-          setInviteCode(code)
+          // Fetch referral code and stats
+          try {
+            setReferralLoading(true)
+            const referralStatusResponse = await fetch("/api/wallet/referral/status", {
+              headers: {
+                "x-user-id": userId,
+              },
+            })
+            
+            if (referralStatusResponse.ok) {
+              const referralData = await referralStatusResponse.json()
+              if (referralData.success) {
+                const code = referralData.referralCode || ""
+                setInviteCode(code)
+                setReferralStats({
+                  totalReferrals: referralData.totalReferrals || 0,
+                  totalPointsEarned: referralData.totalPointsEarned || 0,
+                })
+                
+                // If no referral code exists, generate one
+                if (!code) {
+                  const generateResponse = await fetch("/api/wallet/referral/generate", {
+                    method: "POST",
+                    headers: {
+                      "x-user-id": userId,
+                    },
+                  })
+                  
+                  if (generateResponse.ok) {
+                    const generateData = await generateResponse.json()
+                    if (generateData.success && generateData.referralCode) {
+                      setInviteCode(generateData.referralCode)
+                    }
+                  }
+                }
+              } else {
+                // If status fetch failed, try to generate
+                const generateResponse = await fetch("/api/wallet/referral/generate", {
+                  method: "POST",
+                  headers: {
+                    "x-user-id": userId,
+                  },
+                })
+                
+                if (generateResponse.ok) {
+                  const generateData = await generateResponse.json()
+                  if (generateData.success && generateData.referralCode) {
+                    setInviteCode(generateData.referralCode)
+                  }
+                }
+              }
+            } else {
+              // If status fetch failed, try to generate
+              const generateResponse = await fetch("/api/wallet/referral/generate", {
+                method: "POST",
+                headers: {
+                  "x-user-id": userId,
+                },
+              })
+              
+              if (generateResponse.ok) {
+                const generateData = await generateResponse.json()
+                if (generateData.success && generateData.referralCode) {
+                  setInviteCode(generateData.referralCode)
+                }
+              }
+            }
+          } catch (referralError) {
+            console.error("[Wallet] Error fetching referral data:", referralError)
+          } finally {
+            setReferralLoading(false)
+          }
           
           // Fetch profile data from API
           const profileResponse = await fetch("/api/wallet/profile", {
@@ -1384,7 +1458,7 @@ export default function WalletPage() {
           <div className="px-5 py-3 md:px-4 md:py-2 flex items-center gap-2 md:gap-2 transition-colors cursor-pointer">
             <Award className="w-6 h-6 md:w-5 md:h-5 text-white" />
             <span className="text-white font-semibold text-base md:text-sm">
-              {trustPoints?.balance || 5} TRUST
+              {trustPoints?.balance ?? 0} TRUST
             </span>
           </div>
         </button>
@@ -1407,7 +1481,7 @@ export default function WalletPage() {
           <DialogHeader>
             <DialogTitle className="text-white text-2xl">{t.trustPointsTitle}</DialogTitle>
             <DialogDescription className="text-white/60">
-              {t.currentBalance} <span className="font-bold text-white">{trustPoints?.balance || 5} TRUST</span>
+              {t.currentBalance} <span className="font-bold text-white">{trustPoints?.balance ?? 0} TRUST</span>
             </DialogDescription>
           </DialogHeader>
 
@@ -1423,10 +1497,15 @@ export default function WalletPage() {
               <div className="space-y-2">
                 <h3 className="text-lg font-semibold text-white">{t.howToGetMore}</h3>
                 <ul className="text-sm text-white/80 space-y-1 list-disc list-inside">
-                  <li>{t.waitForDaily}</li>
                   <li>{t.inviteUsers}</li>
                   <li>{t.receivePoints}</li>
                 </ul>
+                {referralStats && (
+                  <div className="mt-4 p-3 bg-white/5 border border-white/10 rounded-lg">
+                    <div className="text-sm text-white/60">Referidos exitosos: <span className="text-white font-semibold">{referralStats.totalReferrals}</span></div>
+                    <div className="text-sm text-white/60">Puntos ganados: <span className="text-white font-semibold">{referralStats.totalPointsEarned}</span></div>
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-col gap-2 pt-4">
@@ -1457,11 +1536,21 @@ export default function WalletPage() {
                 </p>
               </div>
 
-              <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
-                <code className="text-xl font-bold text-white font-mono tracking-wider">
-                  {inviteCode}
-                </code>
-              </div>
+              {referralLoading ? (
+                <div className="p-4 bg-white/5 border border-white/10 rounded-lg text-white/60 text-center">
+                  Cargando código de referido...
+                </div>
+              ) : inviteCode ? (
+                <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
+                  <code className="text-xl font-bold text-white font-mono tracking-wider">
+                    {inviteCode}
+                  </code>
+                </div>
+              ) : (
+                <div className="p-4 bg-white/5 border border-white/10 rounded-lg text-white/60 text-center">
+                  No se pudo cargar el código de referido
+                </div>
+              )}
 
               <Button
                 onClick={async () => {
@@ -1527,14 +1616,14 @@ export default function WalletPage() {
                     id="points"
                     type="number"
                     min="1"
-                    max={trustPoints?.balance || 5}
+                    max={trustPoints?.balance ?? 0}
                     value={vouchPoints}
                     onChange={(e) => setVouchPoints(e.target.value)}
                     className="bg-black border-white/20 text-white"
                     placeholder="1"
                   />
                   <p className="text-xs text-white/60">
-                    {t.available} {trustPoints?.balance || 5} TRUST
+                    {t.available} {trustPoints?.balance ?? 0} TRUST
                   </p>
                 </div>
 

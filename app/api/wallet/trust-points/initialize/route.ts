@@ -108,7 +108,9 @@ export async function POST(request: Request) {
     }
     
     // Calculate initial trust points based on trust score
-    let initialPoints = 5 // Default
+    // NOTE: This is optional - users can still get points from referrals
+    // MaxFlow initialization is an additional way to get initial points
+    let initialPoints = 0 // Default (no free points)
     
     if (trustScore >= 1.5) {
       initialPoints = 15

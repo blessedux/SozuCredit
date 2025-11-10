@@ -42,20 +42,20 @@ export async function GET(request: Request) {
         
         if (trustError) {
           console.error("[Trust Points API] Error fetching trust points:", trustError)
-          // Return default trust points
+          // Return default trust points (0 for new users)
           return NextResponse.json({ 
             trustPoints: {
-              balance: 5,
+              balance: 0,
               last_daily_credit: null
             }
           })
         }
         
         if (!trustPoints) {
-          // Return default trust points for new users
+          // Return default trust points for new users (0)
           return NextResponse.json({ 
             trustPoints: {
-              balance: 5,
+              balance: 0,
               last_daily_credit: null
             }
           })
@@ -87,7 +87,7 @@ export async function GET(request: Request) {
         // Return default trust points
         return NextResponse.json({ 
           trustPoints: {
-            balance: 5,
+            balance: 0,
             last_daily_credit: null,
             vouchesGiven: 0,
             vouchesReceived: 0
@@ -125,14 +125,14 @@ export async function GET(request: Request) {
     const vouchesGiven = vouchesGivenError ? 0 : (vouchesGivenCount || 0)
     const vouchesReceived = vouchesReceivedError ? 0 : (vouchesReceivedCount || 0)
     
-    // If trust points don't exist, return default
+    // If trust points don't exist, return default (0 for new users)
     if (!trustPoints) {
       return NextResponse.json({ 
         trustPoints: {
-          balance: 5,
+          balance: 0,
           last_daily_credit: null,
-          vouchesGiven: vouchesGivenCount,
-          vouchesReceived: vouchesReceivedCount
+          vouchesGiven: vouchesGiven,
+          vouchesReceived: vouchesReceived
         }
       })
     }

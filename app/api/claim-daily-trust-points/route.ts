@@ -37,21 +37,15 @@ export async function POST() {
       )
     }
 
-    // Update trust points
-    const { error: updateError } = await supabase
-      .from("trust_points")
-      .update({
-        balance: trustPoints.balance + 5,
-        last_daily_credit: now.toISOString(),
-        updated_at: now.toISOString(),
-      })
-      .eq("user_id", user.id)
-
-    if (updateError) {
-      throw updateError
-    }
-
-    return NextResponse.json({ success: true, newBalance: trustPoints.balance + 5 })
+    // NOTE: Daily trust points are disabled - users only get points from referrals
+    // This endpoint is kept for backward compatibility but returns an error
+    return NextResponse.json(
+      { 
+        error: "Daily trust points are no longer available. Get points by referring new users!",
+        message: "Trust points are now only earned through referrals. Share your referral code to earn points when others sign up."
+      },
+      { status: 400 }
+    )
   } catch (error) {
     console.error("Error claiming daily trust points:", error)
     return NextResponse.json({ error: "Failed to claim daily trust points" }, { status: 500 })
