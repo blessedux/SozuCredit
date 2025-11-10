@@ -77,6 +77,25 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "No puedes apoyarte a ti mismo" }, { status: 400 })
       }
       
+      // Check if user has already vouched for this user (by user_id, not username)
+      const { data: existingVouch, error: existingVouchError } = await serviceClient
+        .from("user_vouches")
+        .select("id")
+        .eq("voucher_id", userId)
+        .eq("vouched_user_id", targetProfile.id)
+        .maybeSingle()
+      
+      if (existingVouchError) {
+        console.error("[Vouch API] Error checking existing vouch:", existingVouchError)
+        return NextResponse.json({ error: "Error al verificar vouch existente" }, { status: 500 })
+      }
+      
+      if (existingVouch) {
+        return NextResponse.json({ 
+          error: "Ya has enviado puntos de confianza a este usuario. Solo puedes enviar una vez por usuario." 
+        }, { status: 400 })
+      }
+      
       // Transfer trust points using a transaction
       // Deduct from sender
       const { error: deductError } = await serviceClient

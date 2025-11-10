@@ -87,8 +87,14 @@ export function AnimatedARSBalance({
   const arsBalance = displayBalance * usdToArsRate;
 
   // Format number with commas and more decimals
-  // Show consistent 4 decimal places for all amounts
+  // Show no decimals if amount is 0, otherwise show 4 decimal places
   const formatARS = (amount: number) => {
+    if (amount === 0) {
+      return new Intl.NumberFormat('es-AR', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(amount);
+    }
     return new Intl.NumberFormat('es-AR', {
       minimumFractionDigits: 4,
       maximumFractionDigits: 4,
@@ -98,6 +104,9 @@ export function AnimatedARSBalance({
   // Split formatted number into integer and decimal parts
   const formatARSWithSmallDecimals = (amount: number) => {
     const formatted = formatARS(amount);
+    if (amount === 0) {
+      return { integerPart: formatted, decimalPart: "" };
+    }
     const [integerPart, decimalPart] = formatted.split(',');
 
     return { integerPart, decimalPart };
@@ -111,9 +120,11 @@ export function AnimatedARSBalance({
           <span className="text-6xl font-bold text-white tabular-nums leading-none">
             {integerPart}
           </span>
-          <span className="text-2xl font-bold text-white tabular-nums leading-none align-bottom">
-            ,{decimalPart}
-          </span>
+          {decimalPart && (
+            <span className="text-2xl font-bold text-white tabular-nums leading-none align-bottom">
+              ,{decimalPart}
+            </span>
+          )}
         </div>
       </div>
     );
@@ -132,9 +143,11 @@ export function AnimatedARSBalance({
       >
         <div className="flex items-end">
           <span className="leading-none">{integerPart}</span>
-          <span className="text-2xl font-bold text-white tabular-nums leading-none align-bottom">
-            ,{decimalPart}
-          </span>
+          {decimalPart && (
+            <span className="text-2xl font-bold text-white tabular-nums leading-none align-bottom">
+              ,{decimalPart}
+            </span>
+          )}
         </div>
       </motion.div>
     </div>

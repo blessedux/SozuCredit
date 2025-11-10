@@ -569,9 +569,22 @@ export default function WalletPage() {
           
           if (notificationsResponse.ok) {
             const notificationsData = await notificationsResponse.json()
-            setNotifications(notificationsData.notifications || [])
-            const unread = (notificationsData.notifications || []).filter((n: any) => !n.read).length
+            const newNotifications = notificationsData.notifications || []
+            const previousUnreadCount = unreadCount
+            setNotifications(newNotifications)
+            const unread = newNotifications.filter((n: any) => !n.read).length
             setUnreadCount(unread)
+            
+            // Play notification sound if there are new unread notifications
+            if (unread > previousUnreadCount && typeof window !== "undefined") {
+              try {
+                const audio = new Audio("/sound/KREAEM_percussion_one_shot_falling_wood.wav")
+                audio.volume = 0.3
+                audio.play().catch(err => console.log("[Wallet] Could not play notification sound:", err))
+              } catch (err) {
+                console.log("[Wallet] Error creating notification sound:", err)
+              }
+            }
           }
           
           // Fetch APY
@@ -603,6 +616,10 @@ export default function WalletPage() {
             } else {
               // Fallback to user ID substring if no username found
               setUsername(userId.substring(0, 8))
+            }
+            // Load profile picture from database
+            if (profileData.profile && profileData.profile.profile_picture) {
+              setProfilePic(profileData.profile.profile_picture)
             }
           } else {
             // Fallback to user ID substring if profile fetch fails
@@ -934,8 +951,15 @@ export default function WalletPage() {
     return () => clearInterval(interval)
   }, [baseBalance])
 
-  // Format balance to 4 decimals
-  const balance = animatedBalance.toFixed(4)
+  // Format balance - show no decimals if balance is 0
+  const formatBalance = (value: number, decimals: number = 4) => {
+    if (value === 0) {
+      return "0"
+    }
+    return value.toFixed(decimals)
+  }
+  
+  const balance = formatBalance(animatedBalance, 4)
   const maskedBalance = balance.replace(/\d/g, "*")
   
   // Get currency symbol for display
@@ -1004,8 +1028,42 @@ export default function WalletPage() {
   }
 
   const handleSaveProfile = async () => {
-    // TODO: Save profile changes to backend
-    console.log("Saving profile:", { username, language, profilePic })
+    try {
+      const userId = sessionStorage.getItem("dev_username")
+      if (!userId) return
+      
+      const response = await fetch("/api/wallet/profile", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": userId,
+        },
+        body: JSON.stringify({
+          username,
+          display_name: username,
+          profile_picture: profilePic,
+        }),
+      })
+      
+      const data = await response.json()
+      
+      if (response.ok && data.profile) {
+        // Update profile picture if saved
+        if (data.profile.profile_picture) {
+          setProfilePic(data.profile.profile_picture)
+        }
+        alert(t.language === "es" ? "Perfil guardado exitosamente" : "Profile saved successfully")
+        setIsProfileSheetOpen(false)
+      } else {
+        alert(t.language === "es" 
+          ? `Error al guardar perfil: ${data.error || "Error desconocido"}` 
+          : `Error saving profile: ${data.error || "Unknown error"}`
+        )
+      }
+    } catch (error) {
+      console.error("[Wallet] Error saving profile:", error)
+      alert(t.language === "es" ? "Error al guardar perfil" : "Error saving profile")
+    }
   }
 
   const handleAutoDeposit = async () => {
@@ -1574,8 +1632,13 @@ export default function WalletPage() {
           className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-10"
           aria-label={t.openProfile}
         >
-          <div className="w-16 h-16 md:w-14 md:h-14 flex items-center justify-center transition-colors cursor-pointer">
+          <div className="w-16 h-16 md:w-14 md:h-14 flex items-center justify-center transition-colors cursor-pointer relative">
             <Wallet className="w-7 h-7 md:w-6 md:h-6 text-white" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-xs text-white font-bold">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
           </div>
         </button>
       </div>
@@ -1657,9 +1720,15 @@ export default function WalletPage() {
                           : `https://sozucredit.com/auth?invite=${inviteCode}`
                         
                         // Create social media ready message with invite code and URL
-                        const inviteMessage = t.inviteMessage
+                        // Replace {code} and {link} placeholders, then append link only if {link} wasn't in template
+                        let inviteMessage = t.inviteMessage
                           .replace("{code}", inviteCode)
-                          .replace("{link}", inviteLink) + `\n\n${inviteLink}`
+                          .replace("{link}", inviteLink)
+                        
+                        // Only append link if {link} placeholder wasn't in the original template
+                        if (!t.inviteMessage.includes("{link}")) {
+                          inviteMessage += `\n\n${inviteLink}`
+                        }
                         
                         // Copy combined message and URL to clipboard
                         await navigator.clipboard.writeText(inviteMessage)
@@ -2173,7 +2242,7 @@ export default function WalletPage() {
                       {t.language === "es" ? "Billetera" : "Wallet"}:
                     </span>
                     <span className="text-white font-medium text-lg">
-                      ${defindexBalance.walletBalance.toFixed(2)} USDC
+                      ${defindexBalance.walletBalance === 0 ? "0" : defindexBalance.walletBalance.toFixed(2)} USDC
                     </span>
                   </div>
 
@@ -2183,7 +2252,7 @@ export default function WalletPage() {
                       {t.language === "es" ? "Estrategia DeFi" : "DeFi Strategy"}:
                     </span>
                     <span className="text-green-400 font-medium text-lg">
-                      ${defindexBalance.strategyBalance.toFixed(2)} USDC
+                      ${defindexBalance.strategyBalance === 0 ? "0" : defindexBalance.strategyBalance.toFixed(2)} USDC
                     </span>
                   </div>
 
@@ -2193,7 +2262,7 @@ export default function WalletPage() {
                       {t.language === "es" ? "Total" : "Total"}:
                     </span>
                     <span className="text-white font-bold text-xl">
-                      ${defindexBalance.totalBalance.toFixed(2)} USDC
+                      ${defindexBalance.totalBalance === 0 ? "0" : defindexBalance.totalBalance.toFixed(2)} USDC
                     </span>
                   </div>
 

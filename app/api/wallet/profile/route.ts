@@ -36,7 +36,7 @@ export async function GET(request: Request) {
         
         const { data: profile, error: profileError } = await serviceClient
           .from("profiles")
-          .select("username, display_name")
+          .select("username, display_name, profile_picture")
           .eq("id", userId)
           .maybeSingle()
         
@@ -77,7 +77,7 @@ export async function GET(request: Request) {
     // Normal Supabase auth flow
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("username, display_name")
+      .select("username, display_name, profile_picture")
       .eq("id", userId)
       .maybeSingle()
     
@@ -111,7 +111,7 @@ export async function GET(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const { username, display_name } = await request.json()
+    const { username, display_name, profile_picture } = await request.json()
     
     if (!username || typeof username !== "string" || username.trim().length === 0) {
       return NextResponse.json({ error: "Username is required" }, { status: 400 })
@@ -172,7 +172,7 @@ export async function PUT(request: Request) {
       }
       
       // Update profile
-      const updateData: { username: string; display_name?: string } = {
+      const updateData: { username: string; display_name?: string; profile_picture?: string } = {
         username: trimmedUsername,
       }
       
@@ -182,11 +182,15 @@ export async function PUT(request: Request) {
         updateData.display_name = trimmedUsername
       }
       
+      if (profile_picture && typeof profile_picture === "string") {
+        updateData.profile_picture = profile_picture
+      }
+      
       const { data: updatedProfile, error: updateError } = await serviceClient
         .from("profiles")
         .update(updateData)
         .eq("id", userId)
-        .select("username, display_name")
+        .select("username, display_name, profile_picture")
         .maybeSingle()
       
       if (updateError) {
@@ -230,9 +234,10 @@ export async function PUT(request: Request) {
           .insert({
             id: userId,
             username: trimmedUsername,
-            display_name: display_name?.trim() || trimmedUsername
+            display_name: display_name?.trim() || trimmedUsername,
+            profile_picture: profile_picture || null
           })
-          .select("username, display_name")
+          .select("username, display_name, profile_picture")
           .maybeSingle()
         
         if (createError) {
@@ -257,14 +262,20 @@ export async function PUT(request: Request) {
     }
     
     // Fallback: try with regular client
+    const updateData: { username: string; display_name: string; profile_picture?: string } = {
+      username: trimmedUsername,
+      display_name: display_name?.trim() || trimmedUsername
+    }
+    
+    if (profile_picture && typeof profile_picture === "string") {
+      updateData.profile_picture = profile_picture
+    }
+    
     const { data: updatedProfile, error: updateError } = await supabase
       .from("profiles")
-      .update({
-        username: trimmedUsername,
-        display_name: display_name?.trim() || trimmedUsername
-      })
+      .update(updateData)
       .eq("id", userId)
-      .select("username, display_name")
+      .select("username, display_name, profile_picture")
       .single()
     
     if (updateError) {
