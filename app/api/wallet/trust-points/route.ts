@@ -61,14 +61,36 @@ export async function GET(request: Request) {
           })
         }
         
-        return NextResponse.json({ trustPoints })
+        // Get vouch statistics
+        const { count: vouchesGivenCount, error: vouchesGivenError } = await serviceClient
+          .from("user_vouches")
+          .select("*", { count: "exact", head: true })
+          .eq("voucher_id", userId)
+        
+        const { count: vouchesReceivedCount, error: vouchesReceivedError } = await serviceClient
+          .from("user_vouches")
+          .select("*", { count: "exact", head: true })
+          .eq("vouched_user_id", userId)
+        
+        const vouchesGiven = vouchesGivenError ? 0 : (vouchesGivenCount || 0)
+        const vouchesReceived = vouchesReceivedError ? 0 : (vouchesReceivedCount || 0)
+        
+        return NextResponse.json({ 
+          trustPoints: {
+            ...trustPoints,
+            vouchesGiven: vouchesGiven,
+            vouchesReceived: vouchesReceived
+          }
+        })
       } catch (serviceError) {
         console.error("[Trust Points API] Service client error:", serviceError)
         // Return default trust points
         return NextResponse.json({ 
           trustPoints: {
             balance: 5,
-            last_daily_credit: null
+            last_daily_credit: null,
+            vouchesGiven: 0,
+            vouchesReceived: 0
           }
         })
       }
@@ -89,17 +111,39 @@ export async function GET(request: Request) {
       }, { status: 500 })
     }
     
+    // Get vouch statistics
+    const { count: vouchesGivenCount, error: vouchesGivenError } = await supabase
+      .from("user_vouches")
+      .select("*", { count: "exact", head: true })
+      .eq("voucher_id", userId)
+    
+    const { count: vouchesReceivedCount, error: vouchesReceivedError } = await supabase
+      .from("user_vouches")
+      .select("*", { count: "exact", head: true })
+      .eq("vouched_user_id", userId)
+    
+    const vouchesGiven = vouchesGivenError ? 0 : (vouchesGivenCount || 0)
+    const vouchesReceived = vouchesReceivedError ? 0 : (vouchesReceivedCount || 0)
+    
     // If trust points don't exist, return default
     if (!trustPoints) {
       return NextResponse.json({ 
         trustPoints: {
           balance: 5,
-          last_daily_credit: null
+          last_daily_credit: null,
+          vouchesGiven: vouchesGivenCount,
+          vouchesReceived: vouchesReceivedCount
         }
       })
     }
     
-    return NextResponse.json({ trustPoints })
+    return NextResponse.json({ 
+      trustPoints: {
+        ...trustPoints,
+        vouchesGiven: vouchesGiven,
+        vouchesReceived: vouchesReceived
+      }
+    })
   } catch (error) {
     console.error("[Trust Points API] Unexpected error:", error)
     return NextResponse.json({ 

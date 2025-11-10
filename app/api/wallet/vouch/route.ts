@@ -61,8 +61,20 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Error al obtener tus puntos de confianza" }, { status: 500 })
       }
       
+      // Enforce: Cannot vouch if balance is 0
+      if (senderTrust.balance === 0) {
+        return NextResponse.json({ 
+          error: "No puedes apoyar a otros usuarios sin puntos de confianza. Necesitas al menos 1 punto." 
+        }, { status: 400 })
+      }
+      
       if (senderTrust.balance < points) {
         return NextResponse.json({ error: "No tienes suficientes puntos de confianza" }, { status: 400 })
+      }
+      
+      // Prevent self-vouching
+      if (userId === targetProfile.id) {
+        return NextResponse.json({ error: "No puedes apoyarte a ti mismo" }, { status: 400 })
       }
       
       // Transfer trust points using a transaction
@@ -103,7 +115,80 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Error al agregar puntos al receptor" }, { status: 500 })
       }
       
-      return NextResponse.json({ success: true, message: "Puntos de confianza enviados" })
+      // Record the vouch in user_vouches table
+      // IMPORTANT: Service client should bypass RLS, but we need to ensure it works
+      console.log("[Vouch API] Attempting to insert vouch record...")
+      console.log("[Vouch API] Voucher ID:", userId)
+      console.log("[Vouch API] Vouched User ID:", targetProfile.id)
+      console.log("[Vouch API] Trust Points:", points)
+      
+      const { data: vouchRecord, error: vouchError } = await serviceClient
+        .from("user_vouches")
+        .insert({
+          voucher_id: userId,
+          vouched_user_id: targetProfile.id,
+          trust_points_transferred: points,
+          message: null // Can be extended later to accept messages
+        })
+        .select()
+        .single()
+      
+      if (vouchError) {
+        console.error("[Vouch API] ❌ Error recording vouch:", vouchError)
+        console.error("[Vouch API] Error code:", vouchError.code)
+        console.error("[Vouch API] Error message:", vouchError.message)
+        console.error("[Vouch API] Error details:", vouchError.details)
+        console.error("[Vouch API] Error hint:", vouchError.hint)
+        console.error("[Vouch API] Full error object:", JSON.stringify(vouchError, null, 2))
+        
+        // Try to insert without .single() to see if that's the issue
+        console.log("[Vouch API] Retrying insert without .single()...")
+        const { data: vouchRecordRetry, error: vouchErrorRetry } = await serviceClient
+          .from("user_vouches")
+          .insert({
+            voucher_id: userId,
+            vouched_user_id: targetProfile.id,
+            trust_points_transferred: points,
+            message: null
+          })
+          .select()
+        
+        if (vouchErrorRetry) {
+          console.error("[Vouch API] ❌ Retry also failed:", vouchErrorRetry)
+        } else {
+          console.log("[Vouch API] ✅ Retry succeeded:", vouchRecordRetry)
+          // Use the retry result
+          const finalRecord = Array.isArray(vouchRecordRetry) ? vouchRecordRetry[0] : vouchRecordRetry
+          return NextResponse.json({ 
+            success: true, 
+            message: "Puntos de confianza enviados",
+            vouch: finalRecord ? {
+              id: finalRecord.id,
+              voucher_id: finalRecord.voucher_id,
+              vouched_user_id: finalRecord.vouched_user_id,
+              trust_points_transferred: finalRecord.trust_points_transferred,
+              created_at: finalRecord.created_at
+            } : null
+          })
+        }
+        
+        // Don't fail the request if vouch recording fails, but log it
+        // The points transfer already succeeded, so we continue
+      } else {
+        console.log("[Vouch API] ✅ Vouch recorded successfully:", vouchRecord?.id)
+      }
+      
+      return NextResponse.json({ 
+        success: true, 
+        message: "Puntos de confianza enviados",
+        vouch: vouchRecord ? {
+          id: vouchRecord.id,
+          voucher_id: vouchRecord.voucher_id,
+          vouched_user_id: vouchRecord.vouched_user_id,
+          trust_points_transferred: vouchRecord.trust_points_transferred,
+          created_at: vouchRecord.created_at
+        } : null
+      })
     }
     
     return NextResponse.json({ error: "Service not available" }, { status: 500 })
