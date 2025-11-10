@@ -178,16 +178,20 @@ export async function POST(request: Request) {
         console.log("[Vouch API] ✅ Vouch recorded successfully:", vouchRecord?.id)
       }
       
+      // Get the trustworthiness status if available
+      const vouchWithTrustworthiness = vouchRecord ? {
+        id: vouchRecord.id,
+        voucher_id: vouchRecord.voucher_id,
+        vouched_user_id: vouchRecord.vouched_user_id,
+        trust_points_transferred: vouchRecord.trust_points_transferred,
+        is_trustworthy: (vouchRecord as any).is_trustworthy,
+        created_at: vouchRecord.created_at
+      } : null
+      
       return NextResponse.json({ 
         success: true, 
         message: "Puntos de confianza enviados",
-        vouch: vouchRecord ? {
-          id: vouchRecord.id,
-          voucher_id: vouchRecord.voucher_id,
-          vouched_user_id: vouchRecord.vouched_user_id,
-          trust_points_transferred: vouchRecord.trust_points_transferred,
-          created_at: vouchRecord.created_at
-        } : null
+        vouch: vouchWithTrustworthiness
       })
     }
     
