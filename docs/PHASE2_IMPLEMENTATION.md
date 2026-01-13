@@ -1,327 +1,300 @@
-# Phase 2 Implementation Summary - Database Schema for Strategy Positions
+# Phase 2 Implementation: Client-Side Transaction Signing
 
-## Overview
+## ✅ Completed Tasks
 
-Phase 2 implements database tracking for user positions in DeFindex strategies and all transactions (deposits, withdrawals, harvests). This provides a complete audit trail and enables position management features.
+### 1. Client-Side Transaction Signing (`lib/stellar/client-signing.ts`)
 
----
+**Created:** Browser-based transaction signing using Stellar SDK
 
-## Database Schema
+**Features:**
+- ✅ Sign transactions using browser-stored keys
+- ✅ No server-side key access required
+- ✅ Supports both regular and Soroban transactions
+- ✅ Automatic keypair retrieval by credential ID or public key
+- ✅ Public key verification before signing
 
-### Tables Created
+**Key Functions:**
+- `signTransactionClientSide()` - Sign any Stellar transaction
+- `signSorobanTransactionClientSide()` - Sign Soroban transactions
+- `hasKeypair()` - Check if keypair exists
+- `getPublicKey()` - Get public key for credential ID
 
-#### 1. `defindex_positions` Table
-
-Tracks user's position (shares) in each DeFindex strategy.
-
-**Columns:**
-
-- `id` - UUID primary key
-- `user_id` - References auth.users
-- `strategy_address` - Strategy contract address
-- `shares` - Number of shares user owns
-- `total_deposited` - Total amount deposited over time
-- `total_withdrawn` - Total amount withdrawn over time
-- `last_deposit_at` - Timestamp of last deposit
-- `last_withdrawal_at` - Timestamp of last withdrawal
-- `created_at` - Position creation timestamp
-- `updated_at` - Last update timestamp
-
-**Unique Constraint:** `(user_id, strategy_address)` - One position per user per strategy
-
-#### 2. `defindex_transactions` Table
-
-Tracks all transactions (deposits, withdrawals, harvests) for audit and history.
-
-**Columns:**
-
-- `id` - UUID primary key
-- `user_id` - References auth.users
-- `position_id` - References defindex_positions (optional)
-- `transaction_hash` - Unique Stellar transaction hash
-- `transaction_type` - Type: 'deposit', 'withdraw', or 'harvest'
-- `amount` - Transaction amount
-- `shares` - Shares received/spent (for deposits/withdrawals)
-- `strategy_address` - Strategy contract address
-- `status` - Status: 'pending', 'confirmed', or 'failed'
-- `created_at` - Transaction creation timestamp
-- `confirmed_at` - Transaction confirmation timestamp
-- `error_message` - Error message if failed
-
-**Unique Constraint:** `transaction_hash` - One transaction per hash
+**Security:**
+- Keys never leave the browser
+- Transaction source verification
+- Keypair validation before signing
 
 ---
 
-## Database Functions
+### 2. Updated Soroban Signing (`lib/turnkey/soroban-signing.ts`)
 
-### `update_position_on_deposit()`
+**Updated:** Hybrid signing approach with client-side priority
 
-Updates or creates position after a deposit.
-
-**Parameters:**
-
-- `p_user_id` - User ID
-- `p_strategy_address` - Strategy address
-- `p_amount` - Deposit amount
-- `p_shares` - Shares received
-
-**Returns:** Position ID
-
-**Functionality:**
-
-- Creates position if it doesn't exist
-- Updates existing position with new shares and amount
-- Updates `last_deposit_at` timestamp
-
-### `update_position_on_withdrawal()`
-
-Updates position after a withdrawal.
-
-**Parameters:**
-
-- `p_user_id` - User ID
-- `p_strategy_address` - Strategy address
-- `p_amount` - Withdrawal amount
-- `p_shares` - Shares spent
-
-**Returns:** Position ID
-
-**Functionality:**
-
-- Decrements shares
-- Increments total_withdrawn
-- Updates `last_withdrawal_at` timestamp
-
----
-
-## Code Implementation
-
-### New Module: `lib/defindex/positions.ts`
-
-**Functions:**
-
-1. **`getOrCreatePosition()`** - Get or create position for user/strategy
-2. **`updatePositionOnDeposit()`** - Update position after deposit
-3. **`saveTransaction()`** - Save transaction record
-4. **`updateTransactionStatus()`** - Update transaction status
-5. **`getUserPosition()`** - Get user's position for a strategy
-6. **`getUserTransactions()`** - Get user's transaction history
-
-### Updated: `lib/defindex/vault.ts`
-
-**Changes to `depositToStrategy()`:**
-
-- ✅ Saves transaction record after submission (even if failed)
-- ✅ Updates position after successful deposit
-- ✅ Links transaction to position
-- ✅ Handles errors gracefully (doesn't fail deposit if DB save fails)
-- ✅ Updates transaction status when confirmed
+**Changes:**
+- ✅ Attempts client-side signing first (non-custodial)
+- ✅ Falls back to Turnkey signing if client-side unavailable
+- ✅ Backward compatible with existing code
+- ✅ Accepts optional `credentialId` parameter
 
 **Flow:**
-
 ```
-1. Submit transaction to network
-   ↓
-2. If failed → Save failed transaction record
-   ↓
-3. If succeeded → Update position
-   ↓
-4. Save transaction record (confirmed)
-   ↓
-5. Link transaction to position
+1. Check if credentialId provided and browser available
+2. Try client-side signing
+3. If fails, fall back to Turnkey signing
+4. Return signed transaction
 ```
 
 ---
 
-## Integration Points
+### 3. Key Utilities (`lib/storage/key-utils.ts`)
 
-### 1. Deposit Flow
+**Created:** Helper functions for credential ID management
 
-**File:** `lib/defindex/vault.ts`
+**Features:**
+- ✅ Get credential ID by public key lookup
+- ✅ Get credential ID from sessionStorage
+- ✅ Store credential ID in sessionStorage
+- ✅ Comprehensive credential ID retrieval
 
-When `depositToStrategy()` succeeds:
-
-1. Transaction submitted to network
-2. Transaction record saved (status: pending/failed/confirmed)
-3. Position updated (shares + amount)
-4. Transaction linked to position
-
-### 2. Auto-Deposit Flow
-
-**File:** `lib/defindex/auto-deposit.ts`
-
-When auto-deposit triggers:
-
-1. Calls `depositToStrategy()`
-2. Position and transaction automatically saved by `depositToStrategy()`
-3. No additional changes needed
+**Key Functions:**
+- `getCredentialIdByPublicKey()` - Lookup by public key
+- `getCredentialIdFromSession()` - Get from sessionStorage
+- `getCurrentCredentialId()` - Multi-method retrieval
+- `storeCredentialIdInSession()` - Store for quick access
 
 ---
 
-## Security Features
+### 4. Client-Side Wallet Creation (`lib/stellar/client-wallet.ts`)
 
-### Row Level Security (RLS)
+**Created:** Non-custodial wallet creation in browser
 
-**`defindex_positions` policies:**
+**Features:**
+- ✅ Create wallet from passkey credential ID
+- ✅ Automatic USDC trustline creation
+- ✅ Account existence checking
+- ✅ Network support (testnet/mainnet)
 
-- Users can view/insert/update their own positions
-- Service role can manage all positions (for background jobs)
+**Key Functions:**
+- `createWalletClientSide()` - Create wallet from credential ID
+- `createUSDCTrustlineClientSide()` - Create trustline client-side
+- `getOrCreateWalletClientSide()` - Get existing or create new
 
-**`defindex_transactions` policies:**
-
-- Users can view/insert their own transactions
-- Service role can manage all transactions (for background jobs)
-
-### Indexes
-
-**Performance indexes created:**
-
-- `idx_defindex_positions_user_id` - Fast user lookups
-- `idx_defindex_positions_strategy` - Fast strategy lookups
-- `idx_defindex_positions_user_strategy` - Fast user+strategy lookups
-- `idx_defindex_transactions_user_id` - Fast user transaction lookups
-- `idx_defindex_transactions_hash` - Fast transaction hash lookups
-- `idx_defindex_transactions_status` - Fast status filtering
-- `idx_defindex_transactions_type` - Fast type filtering
-- `idx_defindex_transactions_created_at` - Fast date sorting
-
----
-
-## Migration Script
-
-**File:** `scripts/008_add_defindex_positions.sql`
-
-**To Run:**
-
-```sql
--- In Supabase SQL Editor:
--- Copy and paste contents of scripts/008_add_defindex_positions.sql
+**Flow:**
+```
+1. Derive keypair from credential ID
+2. Check if account exists on Stellar
+3. Create USDC trustline if account exists
+4. Return wallet information
 ```
 
-**What It Does:**
+---
 
-1. Creates `defindex_positions` table
-2. Creates `defindex_transactions` table
-3. Adds RLS policies
-4. Creates indexes
-5. Creates database functions
-6. Grants permissions
+### 5. Updated Vault Service (`lib/defindex/vault.ts`)
+
+**Updated:** Transaction signing to use client-side when available
+
+**Changes:**
+- ✅ Automatically detects credential ID
+- ✅ Uses client-side signing when available
+- ✅ Falls back to Turnkey if needed
+- ✅ No breaking changes to API
 
 ---
 
-## Testing
+### 6. Updated Authentication Flow (`app/auth/page.tsx`)
 
-### Test Endpoints
+**Updated:** Store credential ID for later use
 
-**Position Management:**
+**Changes:**
+- ✅ Stores credential ID in sessionStorage after auth
+- ✅ Enables client-side signing for all transactions
+- ✅ Works for both registration and login
 
-- Functions in `lib/defindex/positions.ts` can be tested via API calls
-- Deposit endpoint automatically tests position tracking
+---
 
-**Verify in Database:**
+## 📁 Files Created
 
-```sql
--- Check positions
-SELECT * FROM defindex_positions
-WHERE user_id = '<user_id>';
+1. `lib/stellar/client-signing.ts` - Client-side transaction signing
+2. `lib/storage/key-utils.ts` - Credential ID utilities
+3. `lib/stellar/client-wallet.ts` - Client-side wallet creation
 
--- Check transactions
-SELECT * FROM defindex_transactions
-WHERE user_id = '<user_id>'
-ORDER BY created_at DESC;
+## 📝 Files Modified
+
+1. `lib/turnkey/soroban-signing.ts` - Hybrid signing (client-side + Turnkey fallback)
+2. `lib/defindex/vault.ts` - Auto-detect credential ID for signing
+3. `app/auth/page.tsx` - Store credential ID in sessionStorage
+
+---
+
+## 🔐 Security Features
+
+### Client-Side Signing
+- ✅ Keys never sent to server
+- ✅ Transaction signing in browser only
+- ✅ Source account verification
+- ✅ Keypair validation
+
+### Fallback Mechanism
+- ✅ Graceful fallback to Turnkey
+- ✅ Backward compatible
+- ✅ No breaking changes
+
+---
+
+## 🧪 Testing Guide
+
+### Test 1: Key Derivation (Phase 1)
+1. Register a new user with passkey
+2. Check browser console for key derivation logs
+3. Verify keypair stored in IndexedDB
+4. Check sessionStorage for credential ID and public key
+
+**Expected:**
+- ✅ Keypair derived successfully
+- ✅ Keys stored encrypted in IndexedDB
+- ✅ Credential ID in sessionStorage
+- ✅ Public key in sessionStorage
+
+---
+
+### Test 2: Client-Side Transaction Signing (Phase 2)
+1. Login with existing passkey
+2. Navigate to wallet page
+3. Attempt a deposit transaction (if DeFindex is configured)
+4. Check browser console for signing logs
+
+**Expected:**
+- ✅ Credential ID found
+- ✅ Client-side signing attempted
+- ✅ Transaction signed successfully
+- ✅ Transaction submitted to network
+
+---
+
+### Test 3: Wallet Creation
+1. Register new user
+2. Check if wallet is created automatically
+3. Verify public key matches derived keypair
+4. Check if USDC trustline is created (if account funded)
+
+**Expected:**
+- ✅ Wallet created from passkey
+- ✅ Public key matches derived keypair
+- ✅ Trustline created if account funded
+
+---
+
+### Test 4: Key Consistency
+1. Login with passkey
+2. Note the derived public key
+3. Logout and clear sessionStorage (keep IndexedDB)
+4. Login again with same passkey
+5. Verify same public key is derived
+
+**Expected:**
+- ✅ Same public key derived (deterministic)
+- ✅ Keys retrieved from IndexedDB
+- ✅ No new key derivation needed
+
+---
+
+### Test 5: Fallback to Turnkey
+1. Clear IndexedDB (simulate no browser keys)
+2. Attempt transaction
+3. Verify fallback to Turnkey signing
+
+**Expected:**
+- ✅ Client-side signing fails gracefully
+- ✅ Falls back to Turnkey signing
+- ✅ Transaction still succeeds
+
+---
+
+## 🔍 Debugging
+
+### Check Key Storage
+```javascript
+// In browser console
+const { getAllStoredPublicKeys } = await import('/lib/storage/browser-keys')
+const keys = await getAllStoredPublicKeys()
+console.log('Stored keys:', keys)
 ```
 
-### Test Flow
+### Check Credential ID
+```javascript
+// In browser console
+const credentialId = sessionStorage.getItem('credential_id')
+console.log('Credential ID:', credentialId)
+```
 
-1. **Make a deposit:**
+### Check Public Key
+```javascript
+// In browser console
+const publicKey = sessionStorage.getItem('stellar_public_key')
+console.log('Public Key:', publicKey)
+```
 
-   ```bash
-   POST /api/wallet/defindex/deposit
-   Body: { "amount": 10.0 }
+### Verify Key Derivation
+```javascript
+// In browser console
+const { deriveStellarKeypair } = await import('/lib/webauthn/key-derivation')
+const credentialId = sessionStorage.getItem('credential_id')
+const keypair = await deriveStellarKeypair(credentialId)
+console.log('Derived public key:', keypair.publicKey())
    ```
 
-2. **Verify position created:**
+---
 
-   ```sql
-   SELECT * FROM defindex_positions
-   WHERE user_id = '<user_id>';
-   ```
+## 🚀 Next Steps (Phase 3)
 
-3. **Verify transaction saved:**
-   ```sql
-   SELECT * FROM defindex_transactions
-   WHERE user_id = '<user_id>'
-   AND transaction_type = 'deposit';
-   ```
+1. **Automatic Trustline Creation**
+   - Integrate into wallet creation flow
+   - Handle account funding requirements
+   - Test on mainnet
+
+2. **Remove Turnkey Dependency**
+   - Make client-side signing default
+   - Remove Turnkey fallback (optional)
+   - Update all transaction flows
+
+3. **Mainnet Support**
+   - Test wallet creation on mainnet
+   - Test transaction signing on mainnet
+   - Test trustline creation on mainnet
 
 ---
 
-## Benefits
+## 📊 Current Status
 
-### ✅ Complete Audit Trail
+**Phase 1:** ✅ **COMPLETED**
+**Phase 2:** ✅ **COMPLETED**
 
-- All transactions recorded with full details
-- Transaction status tracking
-- Error message logging
+- Client-side signing: ✅ Implemented
+- Turnkey fallback: ✅ Implemented
+- Wallet creation: ✅ Implemented
+- Key utilities: ✅ Implemented
 
-### ✅ Position Tracking
-
-- User shares tracked per strategy
-- Total deposited/withdrawn tracked
-- Historical position data
-
-### ✅ Performance
-
-- Indexed queries for fast lookups
-- Optimized for common queries
-- Efficient position updates
-
-### ✅ Production Ready
-
-- RLS policies for security
-- Error handling for database failures
-- Non-blocking database saves (doesn't fail deposits)
+**Ready for:** Phase 3 (Automatic Trustline Creation) or Testing
 
 ---
 
-## Next Steps
+## 🔍 Known Limitations
 
-### Completed
+1. **Credential ID Lookup**
+   - Currently requires public key match
+   - Future: Store credential ID mapping in IndexedDB
 
-- ✅ Database schema created
-- ✅ Position management functions
-- ✅ Transaction tracking
-- ✅ Integration with deposit flow
-- ✅ Error handling
+2. **Account Funding**
+   - Trustline creation requires funded account
+   - User must fund account before trustline creation
+   - Future: Integrate funding flow
 
-### Future Enhancements
-
-- [ ] Withdrawal position tracking
-- [ ] Harvest transaction tracking
-- [ ] Position history/analytics
-- [ ] Transaction retry logic
-- [ ] Webhook for transaction confirmations
+3. **Turnkey Fallback**
+   - Still uses Turnkey for backward compatibility
+   - Future: Make client-side default, Turnkey optional
 
 ---
 
-## Files Summary
-
-### New Files
-
-- `scripts/008_add_defindex_positions.sql` - Migration script
-- `lib/defindex/positions.ts` - Position management module
-
-### Modified Files
-
-- `lib/defindex/vault.ts` - Added position/transaction tracking
-
-### Total Changes
-
-- **2 new files** created
-- **1 file** modified
-- **~500 lines** of new code
-
----
-
-**Status:** ✅ Phase 2 Complete - Ready for Testing  
+**Document Version:** 1.0  
 **Last Updated:** 2025-01-06
+**Status:** Phase 2 Complete ✅

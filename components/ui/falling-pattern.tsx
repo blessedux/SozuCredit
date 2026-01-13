@@ -33,21 +33,17 @@ export function FallingPattern({
 	useVideoFallback = false,
 	videoSrc,
 }: FallingPatternProps) {
-	// Detect mobile immediately on render (client-side only)
-	const isMobileDevice = typeof window !== 'undefined' && (
-		/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
-		window.innerWidth < 768
-	);
-	
-	const [isMobile, setIsMobile] = useState(isMobileDevice);
-	const [shouldUseVideo, setShouldUseVideo] = useState(isMobileDevice && useVideoFallback && !!videoSrc);
+	// Initialize with false to match server-side render (prevents hydration mismatch)
+	const [isMobile, setIsMobile] = useState(false);
+	const [shouldUseVideo, setShouldUseVideo] = useState(false);
 	const [videoError, setVideoError] = useState(false);
 	const prefersReducedMotion = useReducedMotion();
 
-	// Detect mobile device and performance capabilities
+	// Detect mobile device and performance capabilities (client-side only)
 	useEffect(() => {
+		if (typeof window === 'undefined') return;
+		
 		const checkDevice = () => {
-			if (typeof window === 'undefined') return;
 			
 			const detectedMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
 				(window.innerWidth < 768); // Mobile breakpoint
@@ -281,7 +277,9 @@ export function FallingPattern({
 	const finalStartPositions = useMobileOptimized ? mobileStartPositions : startPositions;
 	const finalEndPositions = useMobileOptimized ? mobileEndPositions : endPositions;
 	const finalDuration = useMobileOptimized ? duration * 0.6 : duration; // Faster on mobile
-	const finalBlurIntensity = isMobile ? '0.5em' : blurIntensity; // Less blur on mobile
+	// Use blurIntensity by default to prevent hydration mismatch
+	// isMobile will be set in useEffect, but we need consistent initial render
+	const finalBlurIntensity = blurIntensity;
 
 	return (
 		<div className={cn('relative h-full w-full overflow-hidden', className)}>
@@ -327,7 +325,9 @@ export function FallingPattern({
 			<div
 				className="absolute inset-0 z-10 dark:brightness-[0.98]"
 				style={{
-					backdropFilter: `blur(${finalBlurIntensity})`,
+					// Use consistent blur to prevent hydration mismatch
+					// Mobile optimization happens via CSS media queries if needed
+					backdropFilter: `blur(${blurIntensity})`,
 					backgroundImage: `radial-gradient(circle at 50% 50%, transparent 0, transparent 2px, ${backgroundColor} 2px)`,
 					backgroundSize: `${8 * density}px ${8 * density}px`,
 					// Performance: reduce repaints

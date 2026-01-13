@@ -57,7 +57,12 @@ export async function generateRegistrationChallenge(username: string): Promise<P
 
     if (!response.ok) {
       const error = await response.json()
-      throw new Error(error.error || "Failed to generate registration challenge")
+      const errorMessage = error.error || "Failed to generate registration challenge"
+      const errorToThrow = new Error(errorMessage)
+      // Preserve status code and usernameExists flag for handling
+      ;(errorToThrow as any).status = response.status
+      ;(errorToThrow as any).usernameExists = error.usernameExists || false
+      throw errorToThrow
     }
 
     const data = await response.json()
@@ -213,12 +218,29 @@ export async function verifyAuthentication(
 
 /**
  * Create WebAuthn credential (browser API wrapper)
+ * 
+ * @param challenge - Passkey challenge from server
+ * @param userId - User ID to store in userHandle (optional but recommended for decentralized auth)
+ * @param displayName - Display name for the passkey (optional, defaults to challenge.user.displayName or "User")
  */
-export async function createPasskey(challenge: PasskeyChallenge): Promise<PasskeyCredential | null> {
+export async function createPasskey(
+  challenge: PasskeyChallenge,
+  userId?: string,
+  displayName?: string
+): Promise<PasskeyCredential | null> {
   try {
     if (!window.PublicKeyCredential) {
       throw new Error("WebAuthn is not supported in this browser")
     }
+
+    // Prepare user ID for userHandle
+    // userHandle will be returned during authentication and can be used to identify the user
+    // without database lookup (decentralized authentication)
+    const userHandleBytes = userId 
+      ? new TextEncoder().encode(userId)
+      : challenge.user?.id 
+        ? new TextEncoder().encode(challenge.user.id)
+        : new TextEncoder().encode("user")
 
     const publicKeyOptions: PublicKeyCredentialCreationOptions = {
       challenge: base64URLToArrayBuffer(challenge.challenge),
@@ -227,13 +249,13 @@ export async function createPasskey(challenge: PasskeyChallenge): Promise<Passke
         id: challenge.rpId,
       },
       user: challenge.user ? {
-        id: new TextEncoder().encode(challenge.user.id),
+        id: userHandleBytes, // Store userId in user.id (will be available as userHandle during auth)
         name: challenge.user.name,
-        displayName: challenge.user.displayName,
+        displayName: displayName || challenge.user.displayName || challenge.user.name || "User",
       } : {
-        id: new TextEncoder().encode("user"),
-        name: "user",
-        displayName: "User",
+        id: userHandleBytes,
+        name: displayName || "user",
+        displayName: displayName || "User",
       },
       pubKeyCredParams: [
         { alg: -7, type: "public-key" }, // ES256
@@ -267,11 +289,23 @@ export async function createPasskey(challenge: PasskeyChallenge): Promise<Passke
       first_20: credential.id.substring(0, 20),
       last_20: credential.id.substring(credential.id.length - 20),
       type: typeof credential.id,
-      rawId_length: credential.rawId.byteLength
+      rawId_length: credential.rawId.byteLength,
+      userId: userId || challenge.user?.id || "not provided",
     })
 
-    // userHandle is typically not available in registration response
+    // Extract userHandle from response if available
+    // Note: userHandle may not be available in registration response for all authenticators
     // It will be available during authentication
+    let userHandle: string | null = null
+    if (response.userHandle) {
+      userHandle = new TextDecoder().decode(response.userHandle)
+      console.log("[createPasskey] UserHandle in response:", userHandle)
+    } else {
+      // Use the userId we provided (it's stored in user.id)
+      userHandle = userId || challenge.user?.id || null
+      console.log("[createPasskey] UserHandle from userId:", userHandle)
+    }
+
     return {
       id: credential.id,
       rawId: arrayBufferToBase64URL(credential.rawId),
@@ -279,7 +313,7 @@ export async function createPasskey(challenge: PasskeyChallenge): Promise<Passke
       response: {
         clientDataJSON: arrayBufferToBase64URL(response.clientDataJSON),
         attestationObject: arrayBufferToBase64URL(response.attestationObject),
-        userHandle: null,
+        userHandle: userHandle,
       },
     }
   } catch (error) {
@@ -352,6 +386,16 @@ export async function getPasskey(challenge: PasskeyChallenge): Promise<PasskeyCr
       rawId_length: credential.rawId.byteLength
     })
 
+    // Extract userHandle from response (contains user ID for decentralized auth)
+    let userHandle: string | null = null
+    if (response.userHandle) {
+      // Decode userHandle from ArrayBuffer to string
+      userHandle = new TextDecoder().decode(response.userHandle)
+      console.log("[getPasskey] UserHandle extracted:", userHandle)
+    } else {
+      console.log("[getPasskey] No userHandle in response (may not be supported by authenticator)")
+    }
+
     return {
       id: credential.id,
       rawId: arrayBufferToBase64URL(credential.rawId),
@@ -360,7 +404,7 @@ export async function getPasskey(challenge: PasskeyChallenge): Promise<PasskeyCr
         clientDataJSON: arrayBufferToBase64URL(response.clientDataJSON),
         authenticatorData: arrayBufferToBase64URL(response.authenticatorData),
         signature: arrayBufferToBase64URL(response.signature),
-        userHandle: response.userHandle ? arrayBufferToBase64URL(response.userHandle) : null,
+        userHandle: userHandle, // Store decoded userHandle as string
       },
     }
   } catch (error) {

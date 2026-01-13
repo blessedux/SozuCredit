@@ -37,7 +37,7 @@ function Digit({ value, place, isDecimal = false }: { value: number; place: numb
   }, [animatedValue, valueRoundedToPlace]);
 
   return (
-    <div className={`relative inline-block w-[1ch] overflow-hidden leading-none tabular-nums ${isDecimal ? 'text-[0.5em]' : ''}`}>
+    <div className={`relative inline-block w-[1ch] overflow-hidden leading-none tabular-nums`}>
       <div className='invisible'>0</div>
       <div className={`absolute inset-0 overflow-hidden ${isDecimal ? 'flex items-end' : ''}`}>
         {Array.from({ length: 10 }, (_, i) => (
@@ -88,7 +88,7 @@ function Number({ mv, number, isDecimal = false }: { mv: MotionValue<number>; nu
     <motion.span
       style={{ y }}
       layoutId={`${uniqueId}-${number}`}
-      className={`absolute inset-0 flex ${isDecimal ? 'items-end justify-center' : 'items-center justify-center'} ${isDecimal ? 'text-[0.5em]' : ''}`}
+      className={`absolute inset-0 flex ${isDecimal ? 'items-end justify-center' : 'items-center justify-center'}`}
       transition={transition}
       ref={ref}
     >
@@ -109,11 +109,29 @@ export function SlidingNumber({
   decimalSeparator = '.',
 }: SlidingNumberProps) {
   const absValue = Math.abs(value);
-  const [integerPart, decimalPart] = absValue.toString().split('.');
-
-  // Ensure 4 decimal places
-  const formattedValue = absValue.toFixed(4);
-  const [formattedInteger, formattedDecimal] = formattedValue.split('.');
+  
+  // Format value to remove trailing zeros
+  // First, convert to string to preserve significant decimals
+  const valueStr = absValue.toString();
+  const [integerPart, decimalPart] = valueStr.split('.');
+  
+  // If there's a decimal part, remove trailing zeros
+  let formattedDecimal = '';
+  if (decimalPart) {
+    // Remove trailing zeros
+    formattedDecimal = decimalPart.replace(/0+$/, '');
+    // If all decimals were zeros, don't show decimal point
+    if (formattedDecimal === '') {
+      formattedDecimal = '';
+    }
+  }
+  
+  // Build the formatted value string
+  const formattedValue = formattedDecimal 
+    ? `${integerPart}.${formattedDecimal}`
+    : integerPart;
+  
+  const [formattedInteger, finalDecimal] = formattedValue.split('.');
 
   const integerValue = parseInt(formattedInteger, 10);
   const paddedInteger =
@@ -134,14 +152,14 @@ export function SlidingNumber({
           place={integerPlaces[index]}
         />
       ))}
-      {formattedDecimal && (
+      {finalDecimal && finalDecimal.length > 0 && (
         <>
-          <span className='text-[0.5em] align-bottom leading-none' style={{ lineHeight: '1' }}>{decimalSeparator}</span>
-          {formattedDecimal.split('').map((_, index) => (
+          <span className='align-bottom leading-none' style={{ lineHeight: '1' }}>{decimalSeparator}</span>
+          {finalDecimal.split('').map((_, index) => (
             <Digit
               key={`decimal-${index}`}
-              value={parseInt(formattedDecimal, 10)}
-              place={Math.pow(10, formattedDecimal.length - index - 1)}
+              value={parseInt(finalDecimal, 10)}
+              place={Math.pow(10, finalDecimal.length - index - 1)}
               isDecimal={true}
             />
           ))}

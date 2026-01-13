@@ -19,17 +19,50 @@ export interface SignedTransaction {
 }
 
 /**
- * Sign a Soroban transaction using Turnkey
+ * Sign a Soroban transaction
+ * 
+ * PHASE 2: Attempts client-side signing first (non-custodial), falls back to Turnkey if needed
+ * 
+ * @param userId - User ID
+ * @param transaction - Transaction to sign
+ * @param credentialId - Optional credential ID for client-side signing
+ * @returns Signed transaction
  */
 export async function signSorobanTransaction(
   userId: string,
-  transaction: Transaction
+  transaction: Transaction,
+  credentialId?: string
 ): Promise<SignedTransaction> {
-  console.log("[Turnkey Soroban Signing] Starting transaction signing for user:", userId)
+  console.log("[Soroban Signing] Starting transaction signing for user:", userId)
+  
+  // PHASE 2: Try client-side signing first (non-custodial)
+  if (typeof window !== "undefined" && credentialId) {
+    try {
+      console.log("[Soroban Signing] Attempting client-side signing (non-custodial)...")
+      const { signSorobanTransactionClientSide } = await import("../stellar/client-signing")
+      const publicKey = transaction.source
+      
+      const signedTx = await signSorobanTransactionClientSide(
+        transaction,
+        credentialId,
+        publicKey,
+        userId // Pass userId for key verification
+      )
+      
+      console.log("[Soroban Signing] ✅ Transaction signed client-side (non-custodial)")
+      return signedTx
+    } catch (clientSideError: any) {
+      console.warn("[Soroban Signing] Client-side signing failed, falling back to Turnkey:", clientSideError.message)
+      // Fall through to Turnkey signing
+    }
+  }
+  
+  // Fallback to Turnkey signing (for backward compatibility or if client-side fails)
+  console.log("[Soroban Signing] Using Turnkey signing (fallback)...")
   
   const turnkeyConfig = getTurnkeyConfig()
   if (!turnkeyConfig) {
-    throw new Error("Turnkey configuration not found")
+    throw new Error("Turnkey configuration not found and client-side signing unavailable")
   }
   
   // Get user's Stellar wallet (which contains the Turnkey wallet ID)

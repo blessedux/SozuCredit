@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
-import { getStellarWallet, createUSDCTrustline } from "@/lib/turnkey/stellar-wallet"
+import { getStellarWallet } from "@/lib/turnkey/stellar-wallet"
+import { createUSDCTrustlineServerSide, submitTrustlineTransaction } from "@/lib/stellar/trustline-server"
 
 export async function OPTIONS(request: Request) {
   return handleOPTIONS(request as any)
@@ -48,8 +49,21 @@ export async function POST(request: Request) {
 
     console.log("[Trustline API] Creating USDC trustline for user:", userId, "publicKey:", wallet.publicKey.substring(0, 10) + "...")
 
-    // Create USDC trustline
-    const result = await createUSDCTrustline(userId, wallet.publicKey)
+    // Get request body to check if client sent a signed transaction
+    let signedTransactionXdr: string | undefined
+    try {
+      const body = await request.json().catch(() => ({}))
+      signedTransactionXdr = body.signedTransactionXdr
+    } catch {
+      // No body or invalid JSON, continue without signed transaction
+    }
+
+    // Create USDC trustline (with or without signed transaction)
+    const result = await createUSDCTrustlineServerSide(
+      userId,
+      wallet.publicKey,
+      signedTransactionXdr
+    )
 
     if (result.success) {
       return NextResponse.json(
@@ -57,6 +71,17 @@ export async function POST(request: Request) {
           success: true,
           message: "USDC trustline created successfully",
           transactionHash: result.transactionHash,
+        },
+        { headers: corsHeaders(request as any) }
+      )
+    } else if (result.unsignedXdr) {
+      // Return unsigned transaction XDR for client-side signing
+      return NextResponse.json(
+        {
+          success: false,
+          needsSigning: true,
+          unsignedXdr: result.unsignedXdr,
+          message: "Transaction built, requires client-side signing",
         },
         { headers: corsHeaders(request as any) }
       )

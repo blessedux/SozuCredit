@@ -3,7 +3,8 @@ import { challengeStore } from "@/lib/webauthn/config"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
-import { createStellarWallet, storeStellarWallet, getStellarWallet } from "@/lib/turnkey/stellar-wallet"
+import { getStellarWallet } from "@/lib/turnkey/stellar-wallet"
+import { createStellarWalletServerSide } from "@/lib/stellar/wallet-server"
 import { base64URLToBuffer } from "@/lib/webauthn/utils"
 
 export async function OPTIONS(request: NextRequest) {
@@ -111,10 +112,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Normalize credential ID - remove whitespace and ensure consistent format
+    const normalizeCredentialId = (id: string): string => {
+      if (!id) return ""
+      // Remove all whitespace, trim, and ensure it's a string
+      return String(id).replace(/\s+/g, '').trim()
+    }
+    
+    const normalizedCredentialId = normalizeCredentialId(credential.id)
+    
     console.log("[Login] Looking up passkey by credential_id")
     console.log("[Login] Credential ID details:", {
       id: credential.id,
+      normalized: normalizedCredentialId,
       length: credential.id.length,
+      normalized_length: normalizedCredentialId.length,
       first_20: credential.id.substring(0, 20),
       last_20: credential.id.substring(credential.id.length - 20),
       type: typeof credential.id
@@ -128,6 +140,7 @@ export async function POST(request: NextRequest) {
     
     console.log("[Login] DEBUG: All passkeys in database (first 10):", allPasskeysDebug?.map((p: { credential_id: string | null; user_id: string; created_at: string }) => ({
       credential_id: p.credential_id ? `${p.credential_id.substring(0, 20)}...${p.credential_id.substring(p.credential_id.length - 10)}` : "NULL",
+      credential_id_normalized: p.credential_id ? normalizeCredentialId(p.credential_id) : "NULL",
       credential_id_length: p.credential_id?.length || 0,
       credential_id_full: p.credential_id, // Log full ID for comparison
       user_id: p.user_id,
@@ -136,7 +149,9 @@ export async function POST(request: NextRequest) {
     
     console.log("[Login] DEBUG: Searching for credential_id:", {
       full: credential.id,
+      normalized: normalizedCredentialId,
       length: credential.id.length,
+      normalized_length: normalizedCredentialId.length,
       first_50: credential.id.substring(0, 50),
       last_50: credential.id.substring(Math.max(0, credential.id.length - 50))
     })
@@ -144,12 +159,27 @@ export async function POST(request: NextRequest) {
     // First, try to find the passkey by credential_id to get the user
     // This ensures we match the correct user even if username is wrong
     // Use service client to bypass RLS
-    // Try exact match first - query passkey first, then get profile separately
+    // Try exact match first (with normalized ID), then try original ID
     let { data: passkeyByCredential, error: passkeyError } = await serviceClient
       .from("passkeys")
       .select("*")
-      .eq("credential_id", credential.id)
+      .eq("credential_id", normalizedCredentialId)
       .maybeSingle()
+    
+    // If normalized match fails, try with original credential ID
+    if (!passkeyByCredential && !passkeyError && normalizedCredentialId !== credential.id) {
+      console.log("[Login] Normalized match failed, trying original credential ID...")
+      const { data: passkeyByOriginal } = await serviceClient
+        .from("passkeys")
+        .select("*")
+        .eq("credential_id", credential.id)
+        .maybeSingle()
+      
+      if (passkeyByOriginal) {
+        console.log("[Login] ✅ Found passkey with original credential ID")
+        passkeyByCredential = passkeyByOriginal
+      }
+    }
     
     // If passkey found, get the profile separately
     if (passkeyByCredential && !passkeyError) {
@@ -203,16 +233,15 @@ export async function POST(request: NextRequest) {
       }
       
       if (!allPasskeysError && allPasskeysWithProfiles && allPasskeysWithProfiles.length > 0) {
-        // Try exact match first
+        // Try exact match first (with original ID)
         const exactMatch = allPasskeysWithProfiles.find((p: any) => p.credential_id === credential.id)
         if (exactMatch) {
-          console.log("[Login] ✅ Found exact match in memory")
+          console.log("[Login] ✅ Found exact match in memory (original ID)")
           passkeyByCredential = exactMatch
         } else {
           // Try normalized match
-          const normalizedSearch = credential.id.replace(/\s+/g, '').trim()
           const normalizedMatch = allPasskeysWithProfiles.find((p: any) => 
-            p.credential_id && p.credential_id.replace(/\s+/g, '').trim() === normalizedSearch
+            p.credential_id && normalizeCredentialId(p.credential_id) === normalizedCredentialId
           )
           if (normalizedMatch) {
             console.log("[Login] ✅ Found normalized match in memory")
@@ -244,32 +273,48 @@ export async function POST(request: NextRequest) {
     if (!passkeyByCredential && !passkeyError && allPasskeysDebug && allPasskeysDebug.length > 0) {
       console.log("[Login] Exact match failed, trying alternative matching strategies...")
       
-      // Strategy 1: Try with trimmed whitespace
-      const trimmedCredentialId = credential.id.trim()
-      if (trimmedCredentialId !== credential.id) {
-        const { data: passkeyByCredentialTrimmed } = await serviceClient
+      // Strategy 1: Try with normalized ID (already tried above, but try again with different query)
+      if (normalizedCredentialId !== credential.id) {
+        const { data: passkeyByNormalized } = await serviceClient
           .from("passkeys")
-          .select("*, profiles!inner(id, username)")
-          .eq("credential_id", trimmedCredentialId)
+          .select("*")
+          .eq("credential_id", normalizedCredentialId)
           .maybeSingle()
         
-        if (passkeyByCredentialTrimmed) {
-          console.log("[Login] ✅ Found passkey with trimmed credential_id")
-          passkeyByCredential = passkeyByCredentialTrimmed
+        if (passkeyByNormalized) {
+          console.log("[Login] ✅ Found passkey with normalized credential_id")
+          // Get profile for this passkey
+          const { data: profileData } = await serviceClient
+            .from("profiles")
+            .select("id, username")
+            .eq("id", passkeyByNormalized.user_id)
+            .maybeSingle()
+          
+          if (profileData) {
+            passkeyByCredential = {
+              ...passkeyByNormalized,
+              profiles: profileData
+            }
+          } else {
+            passkeyByCredential = passkeyByNormalized
+          }
         }
       }
       
       // Strategy 2: Find by matching length and prefix, then try to find the exact match
       if (!passkeyByCredential) {
         const matchingLength = allPasskeysDebug.filter((p: { credential_id: string | null }) => 
-          p.credential_id && p.credential_id.length === credential.id.length
+          p.credential_id && (p.credential_id.length === credential.id.length || normalizeCredentialId(p.credential_id).length === normalizedCredentialId.length)
         )
         console.log("[Login] DEBUG: Passkeys with matching length:", matchingLength.length)
         
         if (matchingLength.length > 0) {
-          const prefixMatches = matchingLength.filter((p: { credential_id: string | null }) => 
-            p.credential_id && p.credential_id.substring(0, 20) === credential.id.substring(0, 20)
-          )
+          const prefixMatches = matchingLength.filter((p: { credential_id: string | null }) => {
+            if (!p.credential_id) return false
+            const storedNormalized = normalizeCredentialId(p.credential_id)
+            return storedNormalized.substring(0, 20) === normalizedCredentialId.substring(0, 20) ||
+                   p.credential_id.substring(0, 20) === credential.id.substring(0, 20)
+          })
           console.log("[Login] DEBUG: Passkeys with matching prefix (first 20 chars):", prefixMatches.length)
           
           if (prefixMatches.length > 0) {
@@ -279,19 +324,44 @@ export async function POST(request: NextRequest) {
               if (!storedCredentialId) continue
               
               // Try direct comparison with normalization
-              const normalizedStored = storedCredentialId.replace(/\s+/g, '').trim()
-              const normalizedSearched = credential.id.replace(/\s+/g, '').trim()
+              const normalizedStored = normalizeCredentialId(storedCredentialId)
               
-              if (normalizedStored === normalizedSearched) {
+              if (normalizedStored === normalizedCredentialId) {
                 console.log("[Login] DEBUG: ✅ Found match after normalization - using stored credential_id")
-                // Use the stored credential_id for lookup
+                // Use the stored credential_id for lookup (may be original or normalized)
                 const { data: normalizedMatchPasskey } = await serviceClient
                   .from("passkeys")
                   .select("*")
                   .eq("credential_id", storedCredentialId)
                   .maybeSingle()
                 
-                if (normalizedMatchPasskey) {
+                if (!normalizedMatchPasskey) {
+                  // Try with normalized version
+                  const { data: normalizedMatchPasskey2 } = await serviceClient
+                    .from("passkeys")
+                    .select("*")
+                    .eq("credential_id", normalizedStored)
+                    .maybeSingle()
+                  
+                  if (normalizedMatchPasskey2) {
+                    // Get profile for this passkey
+                    const { data: normalizedProfile } = await serviceClient
+                      .from("profiles")
+                      .select("id, username")
+                      .eq("id", normalizedMatchPasskey2.user_id)
+                      .maybeSingle()
+                    
+                    const normalizedMatch = normalizedProfile ? {
+                      ...normalizedMatchPasskey2,
+                      profiles: normalizedProfile
+                    } : normalizedMatchPasskey2
+                    
+                    if (normalizedMatch) {
+                      passkeyByCredential = normalizedMatch
+                      break
+                    }
+                  }
+                } else {
                   // Get profile for this passkey
                   const { data: normalizedProfile } = await serviceClient
                     .from("profiles")
@@ -312,7 +382,7 @@ export async function POST(request: NextRequest) {
               }
             }
             
-            // If still not found, try character-by-character comparison
+            // If still not found, try character-by-character comparison with original IDs
             if (!passkeyByCredential) {
               for (const match of prefixMatches) {
                 const storedCredentialId = match.credential_id
@@ -323,11 +393,26 @@ export async function POST(request: NextRequest) {
                   console.log("[Login] DEBUG: ✅ Found exact match on retry")
                   const { data: exactMatch } = await serviceClient
                     .from("passkeys")
-                    .select("*, profiles!inner(id, username)")
+                    .select("*")
                     .eq("credential_id", storedCredentialId)
                     .maybeSingle()
+                  
                   if (exactMatch) {
-                    passkeyByCredential = exactMatch
+                    // Get profile
+                    const { data: profileData } = await serviceClient
+                      .from("profiles")
+                      .select("id, username")
+                      .eq("id", exactMatch.user_id)
+                      .maybeSingle()
+                    
+                    if (profileData) {
+                      passkeyByCredential = {
+                        ...exactMatch,
+                        profiles: profileData
+                      }
+                    } else {
+                      passkeyByCredential = exactMatch
+                    }
                     break
                   }
                 }
@@ -389,7 +474,8 @@ export async function POST(request: NextRequest) {
       // If no username provided in discovery mode, we can't use username fallback
       if (!username || username === "") {
         console.error("[Login] ❌ Passkey not found by credential_id and no username provided for fallback")
-        console.error("[Login] Credential ID searched:", credential.id)
+        console.error("[Login] Credential ID searched (original):", credential.id)
+        console.error("[Login] Credential ID searched (normalized):", normalizedCredentialId)
         
         // Debug: List all passkeys to see what's in the database
         const { data: allPasskeys } = await serviceClient
@@ -399,17 +485,40 @@ export async function POST(request: NextRequest) {
         
         console.log("[Login] DEBUG: Sample passkeys in database:", allPasskeys?.map((p: { credential_id: string | null; user_id: string }) => ({
           credential_id: p.credential_id ? `${p.credential_id.substring(0, 20)}...` : "NULL",
+          credential_id_normalized: p.credential_id ? normalizeCredentialId(p.credential_id) : "NULL",
           credential_id_length: p.credential_id?.length || 0,
-          user_id: p.user_id
+          user_id: p.user_id,
+          matches_normalized: p.credential_id ? normalizeCredentialId(p.credential_id) === normalizedCredentialId : false,
+          matches_original: p.credential_id === credential.id
         })))
         console.log("[Login] DEBUG: Credential ID being searched:", {
           id: credential.id,
+          normalized: normalizedCredentialId,
           length: credential.id.length,
-          first_20: credential.id.substring(0, 20)
+          normalized_length: normalizedCredentialId.length,
+          first_20: credential.id.substring(0, 20),
+          first_20_normalized: normalizedCredentialId.substring(0, 20)
         })
         
+        // Check if any passkeys match after normalization
+        const hasNormalizedMatch = allPasskeys?.some((p: { credential_id: string | null }) => 
+          p.credential_id && normalizeCredentialId(p.credential_id) === normalizedCredentialId
+        )
+        
+        if (hasNormalizedMatch) {
+          console.error("[Login] ⚠️ Found normalized match but database query failed - possible database encoding issue")
+        }
+        
         return NextResponse.json(
-          { error: "Passkey not found. Please register a new passkey." },
+          { 
+            error: "Passkey not found. Please register a new passkey.",
+            debug: process.env.NODE_ENV === "development" ? {
+              searched_credential_id: credential.id,
+              normalized_credential_id: normalizedCredentialId,
+              total_passkeys_in_db: allPasskeys?.length || 0,
+              has_normalized_match: hasNormalizedMatch
+            } : undefined
+          },
           { status: 401, headers: corsHeaders(request) }
         )
       }
@@ -432,17 +541,31 @@ export async function POST(request: NextRequest) {
 
       profile = profileByUsername
 
-      // Try to find passkey for this user
+      // Try to find passkey for this user - try both normalized and original credential IDs
       // Use service client to bypass RLS
-      const { data: passkeyByUser } = await serviceClient
+      let { data: passkeyByUser } = await serviceClient
         .from("passkeys")
         .select("*")
         .eq("user_id", profile.id)
-        .eq("credential_id", credential.id)
+        .eq("credential_id", normalizedCredentialId)
         .maybeSingle()
 
+      // If normalized doesn't match, try original
+      if (!passkeyByUser && normalizedCredentialId !== credential.id) {
+        const { data: passkeyByUserOriginal } = await serviceClient
+          .from("passkeys")
+          .select("*")
+          .eq("user_id", profile.id)
+          .eq("credential_id", credential.id)
+          .maybeSingle()
+        
+        if (passkeyByUserOriginal) {
+          passkeyByUser = passkeyByUserOriginal
+        }
+      }
+
       if (!passkeyByUser) {
-        console.error("[Login] Passkey not found for user:", profile.id, "credential_id:", credential.id)
+        console.error("[Login] Passkey not found for user:", profile.id, "credential_id (normalized):", normalizedCredentialId, "credential_id (original):", credential.id)
         return NextResponse.json(
           { error: "Invalid passkey" },
           { status: 401, headers: corsHeaders(request) }
@@ -536,16 +659,18 @@ export async function POST(request: NextRequest) {
       if (!existingWallet) {
         console.log("[Login] ⚠️ No Stellar wallet found for userId:", profile.id, "- creating new wallet")
         console.log("[Login] This might indicate a new user OR a wallet lookup issue")
-        const wallet = await createStellarWallet(profile.id)
-        console.log("[Login] Created wallet with Turnkey, storing in database...")
+        const wallet = await createStellarWalletServerSide(profile.id)
+        console.log("[Login] Created wallet with Stellar SDK, stored in database...")
         console.log("[Login] New wallet publicKey:", wallet.publicKey ? `${wallet.publicKey.substring(0, 10)}...` : "NULL")
-        const storedWallet = await storeStellarWallet(profile.id, wallet.turnkeyWalletId, wallet.publicKey, true) // Use service client
-        console.log("[Login] ✅ Stellar wallet created and stored successfully:", {
-          userId: profile.id,
-          publicKey: storedWallet.publicKey ? `${storedWallet.publicKey.substring(0, 10)}...` : "NULL",
-          turnkeyWalletId: storedWallet.turnkeyWalletId,
-          wallet_id: storedWallet.id,
-        })
+        const storedWallet = await getStellarWallet(profile.id, true) // Get the stored wallet
+        if (storedWallet) {
+          console.log("[Login] ✅ Stellar wallet created and stored successfully:", {
+            userId: profile.id,
+            publicKey: storedWallet.publicKey ? `${storedWallet.publicKey.substring(0, 10)}...` : "NULL",
+            walletId: storedWallet.turnkeyWalletId || storedWallet.publicKey,
+            wallet_id: storedWallet.id,
+          })
+        }
       } else {
         console.log("[Login] ✅ Stellar wallet already exists for userId:", profile.id, "publicKey:", existingWallet.publicKey ? `${existingWallet.publicKey.substring(0, 10)}...` : "NULL", "wallet_id:", existingWallet.id)
       }

@@ -113,17 +113,12 @@ export async function PUT(request: Request) {
   try {
     const { username, display_name, profile_picture } = await request.json()
     
-    if (!username || typeof username !== "string" || username.trim().length === 0) {
-      return NextResponse.json({ error: "Username is required" }, { status: 400 })
-    }
-    
-    const trimmedUsername = username.trim()
-    
-    // Validate username format (alphanumeric and underscore, 3-30 chars)
-    if (!/^[a-zA-Z0-9_]{3,30}$/.test(trimmedUsername)) {
+    // Username is immutable - cannot be changed after registration
+    // This ensures 1 passkey = 1 tag = 1 wallet address mapping
+    if (username) {
       return NextResponse.json({ 
-        error: "Username must be 3-30 characters and contain only letters, numbers, and underscores" 
-      }, { status: 400 })
+        error: "Username (Sozu tag) cannot be changed. It is permanently linked to your passkey and wallet address." 
+      }, { status: 403 })
     }
     
     const supabase = await createClient()
@@ -153,37 +148,22 @@ export async function PUT(request: Request) {
     if (supabaseServiceKey && supabaseUrl) {
       const serviceClient = createServiceClient(supabaseUrl, supabaseServiceKey)
       
-      // Check if username is already taken by another user
-      const { data: existingProfile, error: checkError } = await serviceClient
-        .from("profiles")
-        .select("id")
-        .eq("username", trimmedUsername)
-        .neq("id", userId)
-        .maybeSingle()
-      
-      if (checkError && checkError.code !== "PGRST116") {
-        // PGRST116 means no rows found, which is what we want
-        console.error("[Profile API] Error checking username:", checkError)
-        return NextResponse.json({ error: "Error checking username availability" }, { status: 500 })
-      }
-      
-      if (existingProfile) {
-        return NextResponse.json({ error: "Username is already taken" }, { status: 409 })
-      }
-      
-      // Update profile
-      const updateData: { username: string; display_name?: string; profile_picture?: string } = {
-        username: trimmedUsername,
-      }
+      // Update profile (username is immutable, only allow display_name and profile_picture)
+      const updateData: { display_name?: string; profile_picture?: string } = {}
       
       if (display_name && typeof display_name === "string") {
         updateData.display_name = display_name.trim()
-      } else {
-        updateData.display_name = trimmedUsername
       }
       
       if (profile_picture && typeof profile_picture === "string") {
         updateData.profile_picture = profile_picture
+      }
+      
+      // If no fields to update, return error
+      if (Object.keys(updateData).length === 0) {
+        return NextResponse.json({ 
+          error: "No valid fields to update. Username cannot be changed." 
+        }, { status: 400 })
       }
       
       const { data: updatedProfile, error: updateError } = await serviceClient

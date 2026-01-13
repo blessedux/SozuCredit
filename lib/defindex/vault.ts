@@ -248,9 +248,26 @@ export async function depositToStrategy(
       strategyAddress: strategyAddr,
     })
     
-    // Sign transaction with Turnkey
-    console.log("[DeFindex] Signing transaction with Turnkey...")
-    const signedTransaction = await signSorobanTransaction(userId, transaction)
+    // PHASE 2: Sign transaction (client-side if credentialId available, otherwise Turnkey)
+    console.log("[DeFindex] Signing transaction...")
+    
+    // Try to get credentialId for client-side signing
+    let credentialId: string | undefined
+    if (typeof window !== "undefined") {
+      try {
+        const { getCurrentCredentialId } = await import("../storage/key-utils")
+        credentialId = (await getCurrentCredentialId(userWalletAddress)) || undefined
+        if (credentialId) {
+          console.log("[DeFindex] Found credentialId for client-side signing:", credentialId.substring(0, 20) + "...")
+        } else {
+          console.log("[DeFindex] No credentialId found, will use Turnkey signing")
+        }
+      } catch (error) {
+        console.warn("[DeFindex] Could not get credentialId for client-side signing:", error)
+      }
+    }
+    
+    const signedTransaction = await signSorobanTransaction(userId, transaction, credentialId)
     
     // Submit transaction to network
     console.log("[DeFindex] Submitting transaction to Soroban network...")

@@ -4,7 +4,8 @@ import { challengeStore } from "@/lib/webauthn/config"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
-import { createStellarWallet, storeStellarWallet, getStellarWallet } from "@/lib/turnkey/stellar-wallet"
+import { getStellarWallet } from "@/lib/turnkey/stellar-wallet"
+import { createStellarWalletServerSide } from "@/lib/stellar/wallet-server"
 
 export async function OPTIONS(request: NextRequest) {
   return handleOPTIONS(request)
@@ -311,18 +312,30 @@ export async function POST(request: NextRequest) {
     
     const serviceClient = createServiceClient(supabaseUrl, supabaseServiceKey)
     
+    // Normalize credential ID - remove whitespace and ensure consistent format
+    const normalizeCredentialId = (id: string): string => {
+      if (!id) return ""
+      // Remove all whitespace, trim, and ensure it's a string
+      return String(id).replace(/\s+/g, '').trim()
+    }
+    
+    const normalizedCredentialId = normalizeCredentialId(credential.id)
+    
     console.log("[Register] Storing passkey for user:", authData.user.id)
     console.log("[Register] Credential ID being stored:", {
       id: credential.id,
+      normalized: normalizedCredentialId,
       length: credential.id.length,
+      normalized_length: normalizedCredentialId.length,
       first_20: credential.id.substring(0, 20),
       last_20: credential.id.substring(credential.id.length - 20),
       type: typeof credential.id
     })
     
+    // Store normalized credential ID to ensure consistency
     const { error: passkeyError, data: insertedPasskey } = await serviceClient.from("passkeys").insert({
       user_id: authData.user.id,
-      credential_id: credential.id,
+      credential_id: normalizedCredentialId,
       public_key: publicKey,
       counter: 0,
       transports: credential.response.transports || [],
@@ -380,14 +393,16 @@ export async function POST(request: NextRequest) {
       const existingWallet = await getStellarWallet(authData.user.id, true) // Use service client
       if (!existingWallet) {
         console.log("[Register] No Stellar wallet found for userId:", authData.user.id, "- creating new wallet")
-      const wallet = await createStellarWallet(authData.user.id)
-        console.log("[Register] Created wallet with Turnkey, storing in database...")
-        const storedWallet = await storeStellarWallet(authData.user.id, wallet.turnkeyWalletId, wallet.publicKey, true) // Use service client
-        console.log("[Register] ✅ Stellar wallet created and stored successfully:", {
-          userId: authData.user.id,
-          publicKey: storedWallet.publicKey ? `${storedWallet.publicKey.substring(0, 10)}...` : "NULL",
-          turnkeyWalletId: storedWallet.turnkeyWalletId,
-        })
+        const wallet = await createStellarWalletServerSide(authData.user.id)
+        console.log("[Register] Created wallet with Stellar SDK, stored in database...")
+        const storedWallet = await getStellarWallet(authData.user.id, true) // Get the stored wallet
+        if (storedWallet) {
+          console.log("[Register] ✅ Stellar wallet created and stored successfully:", {
+            userId: authData.user.id,
+            publicKey: storedWallet.publicKey ? `${storedWallet.publicKey.substring(0, 10)}...` : "NULL",
+            walletId: storedWallet.turnkeyWalletId || storedWallet.publicKey,
+          })
+        }
       } else {
         console.log("[Register] ✅ Stellar wallet already exists for userId:", authData.user.id, "publicKey:", existingWallet.publicKey ? `${existingWallet.publicKey.substring(0, 10)}...` : "NULL")
       }

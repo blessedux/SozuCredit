@@ -25,9 +25,10 @@ export function SearchUserForm() {
 
     try {
       // Search for users by email or display name
+      // Exclude username for privacy - usernames are private identifiers
       const { data: profiles } = await supabase
         .from("profiles")
-        .select("*")
+        .select("id, display_name, email, profile_picture, created_at, updated_at")
         .or(`email.ilike.%${searchTerm}%,display_name.ilike.%${searchTerm}%`)
         .limit(10)
 

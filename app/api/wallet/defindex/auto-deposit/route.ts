@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
       currentBalance,
       {
         minDepositAmount: 10.0, // $10 minimum
-        networkFeeBuffer: 1.0,  // Keep $1 for fees
+        networkFeeBuffer: 0.4,  // Always keep $0.4 in wallet (never deposit 100%)
       }
     )
 

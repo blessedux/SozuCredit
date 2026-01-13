@@ -9,23 +9,23 @@ import { SharedBackground } from "@/components/shared-background"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "SozuCredit",
-  description: "Community-powered micro-credit for entrepreneurs",
+  title: "Sozu Wallet",
+  description: "Self-custodial Stellar wallet with DeFindex integration",
   generator: "v0.app",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "SozuCredit",
+    title: "Sozu Wallet",
   },
   icons: {
     apple: [
-      { url: "/sozucredit_logo.png", sizes: "152x152", type: "image/png" },
-      { url: "/sozucredit_logo.png", sizes: "192x192", type: "image/png" },
+      { url: "/sozucapital_logo_tb.png", sizes: "152x152", type: "image/png" },
+      { url: "/sozucapital_logo_tb.png", sizes: "192x192", type: "image/png" },
     ],
     icon: [
-      { url: "/sozucredit_logo.png", sizes: "192x192", type: "image/png" },
-      { url: "/sozucredit_logo.png", sizes: "512x512", type: "image/png" },
+      { url: "/sozucapital_logo_tb.png", sizes: "192x192", type: "image/png" },
+      { url: "/sozucapital_logo_tb.png", sizes: "512x512", type: "image/png" },
     ],
   },
   other: {

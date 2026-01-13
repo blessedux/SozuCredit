@@ -34,20 +34,25 @@ export async function GET(request: Request) {
     }
 
     // Get wallet from database (use service client if no authenticated user)
+    console.log("[Stellar Address API] Getting wallet for userId:", userId)
     const wallet = await getStellarWallet(userId, !user)
 
     if (!wallet) {
+      console.error("[Stellar Address API] ❌ Wallet not found for userId:", userId)
       return NextResponse.json(
         { error: "Wallet not found. Please create a wallet first." },
         { status: 404, headers: corsHeaders(request as any) }
       )
     }
 
-    console.log("[Stellar Address API] Wallet found:", {
+    console.log("[Stellar Address API] ✅ Wallet found:", {
       id: wallet.id,
       userId: wallet.userId,
-      publicKey: wallet.publicKey ? `${wallet.publicKey.substring(0, 10)}...` : "NULL/EMPTY",
+      publicKey: wallet.publicKey ? `${wallet.publicKey.substring(0, 10)}...${wallet.publicKey.substring(wallet.publicKey.length - 10)}` : "NULL/EMPTY",
+      fullPublicKey: wallet.publicKey, // Log full key for debugging
       network: wallet.network,
+      createdAt: wallet.createdAt,
+      updatedAt: wallet.updatedAt
     })
 
     // Check if publicKey is missing or null

@@ -2,9 +2,15 @@ import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
 export async function updateSession(request: NextRequest) {
-  // CRITICAL: Check for wallet route at the VERY START - before creating NextResponse
-  // This ensures /wallet is allowed before any other processing
+  // CRITICAL: Check for allowed routes at the VERY START - before creating NextResponse
+  // This ensures these routes are allowed before any other processing
   const pathname = request.nextUrl.pathname
+  
+  // Allow test-keys route (for Phase 1 & 2 testing)
+  if (pathname === "/test-keys") {
+    console.log("[Middleware] ✅ /test-keys route detected - ALLOWING immediately")
+    return NextResponse.next()
+  }
   
   if (pathname === "/wallet") {
     // Log immediately to verify this code path is being hit
@@ -20,9 +26,16 @@ export async function updateSession(request: NextRequest) {
   // CRITICAL: Check routes FIRST before any Supabase calls
   // This prevents unnecessary Supabase client creation for routes that don't need it
   const isWalletRoute = pathname === "/wallet"
+  const isTestKeysRoute = pathname === "/test-keys"
   const isAuthRoute = pathname.startsWith("/auth")
   const isApiRoute = pathname.startsWith("/api")
   const isDevMode = process.env.NODE_ENV === "development"
+  
+  // Always allow test-keys route - it's a testing page that doesn't need auth
+  if (isTestKeysRoute) {
+    console.log("[Middleware] ✅ ALLOWING /test-keys route (testing page)")
+    return supabaseResponse
+  }
   
   // Always allow wallet route FIRST - it handles its own auth via sessionStorage
   // Skip all Supabase checks for wallet route (this is a backup check)
@@ -88,8 +101,8 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
   
-  // Redirect to login if not authenticated and not on auth pages or wallet
-  if (!user && !isAuthRoute && request.nextUrl.pathname !== "/" && !isWalletRoute) {
+  // Redirect to login if not authenticated and not on auth pages, wallet, or test-keys
+  if (!user && !isAuthRoute && request.nextUrl.pathname !== "/" && !isWalletRoute && !isTestKeysRoute) {
     const url = request.nextUrl.clone()
     url.pathname = "/auth"
     return NextResponse.redirect(url)

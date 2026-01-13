@@ -8,7 +8,7 @@ import { createClient as createServiceClient } from "@supabase/supabase-js"
 export interface StellarWallet {
   id: string
   userId: string
-  turnkeyWalletId: string
+  turnkeyWalletId?: string | null // Optional: null for wallets created with Stellar SDK
   publicKey: string
   network: "testnet" | "mainnet"
   createdAt: string
@@ -277,11 +277,79 @@ export async function getStellarWallet(userId: string, useServiceClient = false)
 
   console.log("[getStellarWallet] Querying wallet for userId:", userId, "userId type:", typeof userId, "userId length:", userId?.length)
   
+  // First, check if there are multiple wallets (shouldn't happen due to unique constraint, but let's verify)
+  // Order by updated_at first (most recently updated), then created_at (most recently created)
+  const { data: allWallets, error: checkError } = await supabase
+    .from("stellar_wallets")
+    .select("id, public_key, user_id, created_at, updated_at, network, turnkey_wallet_id")
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false })
+  
+  if (checkError) {
+    console.error("[getStellarWallet] Error checking wallets:", checkError)
+  } else if (allWallets && allWallets.length > 1) {
+    console.warn("[getStellarWallet] ⚠️ Multiple wallets found for userId:", userId, "Count:", allWallets.length)
+    // Sort by updated_at DESC, then created_at DESC (client-side since Supabase doesn't support multiple orderings)
+    allWallets.sort((a, b) => {
+      const updatedDiff = new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+      if (updatedDiff !== 0) return updatedDiff
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    })
+    allWallets.forEach((w, i) => {
+      console.warn(`[getStellarWallet]   Wallet ${i + 1}:`, {
+        id: w.id,
+        publicKey: w.public_key ? w.public_key.substring(0, 10) + "..." + w.public_key.substring(w.public_key.length - 10) : "NULL",
+        fullPublicKey: w.public_key, // Log full key for debugging
+        createdAt: w.created_at,
+        updatedAt: w.updated_at,
+        network: w.network,
+        turnkeyWalletId: w.turnkey_wallet_id ? w.turnkey_wallet_id.substring(0, 20) + "..." : null
+      })
+    })
+  }
+  
+  // Get the most recent wallet (by updated_at DESC, then created_at DESC)
+  // This ensures we always get the actual current wallet, not an old one
+  // Note: We order by updated_at first since it reflects the most recent activity
   const { data, error } = await supabase
     .from("stellar_wallets")
     .select("*")
     .eq("user_id", userId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
     .maybeSingle() // Use maybeSingle instead of single to avoid errors when no row found
+  
+  // If we got a result, but there are multiple wallets, verify we got the most recent one
+  if (data && allWallets && allWallets.length > 1) {
+    // Sort all wallets by updated_at DESC, then created_at DESC
+    allWallets.sort((a, b) => {
+      const updatedDiff = new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+      if (updatedDiff !== 0) return updatedDiff
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    })
+    const mostRecent = allWallets[0]
+    if (mostRecent.id !== data.id) {
+      console.warn("[getStellarWallet] ⚠️ Query returned wallet that's not the most recent! Using most recent instead.")
+      // Use the most recent wallet instead
+      const { data: correctWallet } = await supabase
+        .from("stellar_wallets")
+        .select("*")
+        .eq("id", mostRecent.id)
+        .single()
+      if (correctWallet) {
+        return {
+          id: correctWallet.id,
+          userId: correctWallet.user_id,
+          turnkeyWalletId: correctWallet.turnkey_wallet_id || null,
+          publicKey: correctWallet.public_key,
+          network: correctWallet.network,
+          createdAt: correctWallet.created_at,
+          updatedAt: correctWallet.updated_at,
+          previousUsdcBalance: correctWallet.previous_usdc_balance ? Number(correctWallet.previous_usdc_balance) : null,
+        } as StellarWallet
+      }
+    }
+  }
 
   if (error) {
     console.error("[getStellarWallet] Error querying wallet for userId:", userId, "Error:", error)
@@ -294,13 +362,30 @@ export async function getStellarWallet(userId: string, useServiceClient = false)
     return null
   }
   
-  console.log("[getStellarWallet] ✅ Wallet found for userId:", userId, "publicKey:", data.public_key ? `${data.public_key.substring(0, 10)}...` : "NULL", "wallet_id:", data.id)
+  // Validate wallet data
+  if (!data.public_key || data.public_key.length !== 56 || !data.public_key.startsWith("G")) {
+    console.error("[getStellarWallet] ❌ Invalid wallet public_key format:", {
+      publicKey: data.public_key ? data.public_key.substring(0, 20) + "..." : "NULL",
+      length: data.public_key?.length
+    })
+    return null
+  }
+
+  console.log("[getStellarWallet] ✅ Wallet found for userId:", userId, {
+    publicKey: data.public_key ? `${data.public_key.substring(0, 10)}...${data.public_key.substring(data.public_key.length - 10)}` : "NULL",
+    fullPublicKey: data.public_key, // Log full key for debugging
+    wallet_id: data.id,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+    network: data.network,
+    turnkeyWalletId: data.turnkey_wallet_id ? `${data.turnkey_wallet_id.substring(0, 20)}...` : null
+  })
 
   // Map database column names to TypeScript property names
   return {
     id: data.id,
     userId: data.user_id,
-    turnkeyWalletId: data.turnkey_wallet_id,
+    turnkeyWalletId: data.turnkey_wallet_id || null, // Handle null values
     publicKey: data.public_key,
     network: data.network,
     createdAt: data.created_at,
@@ -315,7 +400,7 @@ export async function getStellarWallet(userId: string, useServiceClient = false)
  */
 export async function storeStellarWallet(
   userId: string,
-  turnkeyWalletId: string,
+  turnkeyWalletId: string | null,
   publicKey: string,
   useServiceClient = false
 ): Promise<StellarWallet> {
@@ -383,15 +468,21 @@ export async function storeStellarWallet(
 
   // Use upsert to ensure one wallet per user (handles both create and update)
   // If wallet exists for this user, update it; otherwise, create new one
-  const { data, error } = await supabase
-    .from("stellar_wallets")
-    .upsert({
+  const upsertData: any = {
       user_id: userId,
-      turnkey_wallet_id: turnkeyWalletId,
       public_key: publicKey,
       network: stellarConfig.network,
       updated_at: new Date().toISOString(),
-    }, {
+    }
+  
+  // Only include turnkey_wallet_id if it's not null
+  if (turnkeyWalletId !== null) {
+    upsertData.turnkey_wallet_id = turnkeyWalletId
+  }
+
+  const { data, error } = await supabase
+    .from("stellar_wallets")
+    .upsert(upsertData, {
       onConflict: "user_id",
       ignoreDuplicates: false, // Update existing wallet
     })
@@ -410,7 +501,7 @@ export async function storeStellarWallet(
 
   console.log("[storeStellarWallet] Wallet stored successfully:", {
     id: data.id,
-    turnkeyWalletId: data.turnkey_wallet_id,
+    turnkeyWalletId: data.turnkey_wallet_id || "null",
     publicKey: data.public_key ? `${data.public_key.substring(0, 10)}...` : null,
     publicKeyLength: data.public_key?.length || 0,
     network: data.network,
@@ -420,7 +511,7 @@ export async function storeStellarWallet(
   return {
     id: data.id,
     userId: data.user_id,
-    turnkeyWalletId: data.turnkey_wallet_id,
+    turnkeyWalletId: data.turnkey_wallet_id || null, // Handle null values
     publicKey: data.public_key,
     network: data.network,
     createdAt: data.created_at,
@@ -495,6 +586,19 @@ export async function getWalletBalance(
     // Load account from Stellar network
     const account = await server.loadAccount(publicKey)
 
+    // Log all balances for debugging (especially for USDC)
+    if (assetCode === "USDC") {
+      console.log(`[getWalletBalance] 🔍 Checking USDC balance for ${publicKey.substring(0, 10)}...`)
+      console.log(`[getWalletBalance] Network: ${stellarConfig.network}`)
+      console.log(`[getWalletBalance] Looking for issuer: ${assetIssuer ? assetIssuer.substring(0, 20) + "..." : "ANY"}`)
+      console.log(`[getWalletBalance] All account balances:`, account.balances.map((b: any) => ({
+        asset_type: b.asset_type,
+        asset_code: b.asset_code,
+        asset_issuer: b.asset_issuer ? b.asset_issuer.substring(0, 20) + "..." : undefined,
+        balance: b.balance,
+      })))
+    }
+
     // Find the balance for the requested asset
     let balance
     
@@ -505,19 +609,49 @@ export async function getWalletBalance(
       )
     } else {
       // Get balance for specific asset (e.g., USDC)
-      balance = account.balances.find(
-        (bal: any) => 
-          bal.asset_type !== "native" &&
-          bal.asset_code === assetCode &&
-          (!assetIssuer || bal.asset_issuer === assetIssuer)
-      )
+      if (assetIssuer) {
+        // Try exact match with issuer first
+        balance = account.balances.find(
+          (bal: any) => 
+            bal.asset_type !== "native" &&
+            bal.asset_code === assetCode &&
+            bal.asset_issuer === assetIssuer
+        )
+        
+        if (!balance && assetCode === "USDC") {
+          console.warn(`[getWalletBalance] ⚠️ No USDC balance found with issuer ${assetIssuer.substring(0, 20)}...`)
+          console.warn(`[getWalletBalance] Available non-native assets:`, account.balances
+            .filter((b: any) => b.asset_type !== "native")
+            .map((b: any) => `${b.asset_code}:${b.asset_issuer ? b.asset_issuer.substring(0, 20) + "..." : "N/A"}`))
+        }
+      } else {
+        // Try without issuer (match any asset with this code)
+        balance = account.balances.find(
+          (bal: any) => 
+            bal.asset_type !== "native" &&
+            bal.asset_code === assetCode
+        )
+        
+        if (balance && assetCode === "USDC") {
+          const issuer = (balance as any).asset_issuer
+          console.log(`[getWalletBalance] ✅ Found USDC without issuer check:`, balance.balance, `(issuer: ${issuer ? issuer.substring(0, 20) + "..." : "N/A"})`)
+        }
+      }
     }
 
     if (!balance) {
+      if (assetCode === "USDC") {
+        console.warn(`[getWalletBalance] ❌ No ${assetCode} balance found${assetIssuer ? ` with issuer ${assetIssuer.substring(0, 20)}...` : ''}`)
+      }
       return 0
     }
 
-    return parseFloat(balance.balance)
+    const balanceValue = parseFloat(balance.balance)
+    if (assetCode === "USDC") {
+      const issuer = (balance as any).asset_issuer
+      console.log(`[getWalletBalance] ✅ Found ${assetCode} balance:`, balanceValue, assetIssuer ? `(issuer: ${assetIssuer.substring(0, 20)}...)` : `(issuer: ${issuer ? issuer.substring(0, 20) + "..." : "N/A"})`)
+    }
+    return balanceValue
   } catch (error: any) {
     // If account doesn't exist or has no balance, return 0
     if (error?.response?.status === 404) {
@@ -534,20 +668,30 @@ export async function getWalletBalance(
  */
 export async function getUSDCBalance(publicKey: string): Promise<number> {
   const stellarConfig = getStellarConfig()
+  const usdcIssuer = USDC_ISSUERS[stellarConfig.network]
   
-  // USDC issuers for Stellar
-  // Testnet: Typically issued by testnet issuer or we might need to find/create one
-  // Mainnet: Circle USDC issuer: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
-  // For testnet, we'll try to find USDC with code "USDC" without specifying issuer first
+  console.log("[getUSDCBalance] Fetching USDC balance:", {
+    publicKey: publicKey.substring(0, 10) + "...",
+    network: stellarConfig.network,
+    issuer: usdcIssuer,
+  })
   
-  // Common testnet USDC asset: USDC with code "USDC"
-  // If no testnet-specific issuer, we'll search for any USDC asset
   try {
-    const usdcBalance = await getWalletBalance(publicKey, "USDC")
+    // Try with specific issuer first
+    const usdcBalance = await getWalletBalance(publicKey, "USDC", usdcIssuer)
+    console.log("[getUSDCBalance] ✅ USDC balance found:", usdcBalance, "with issuer:", usdcIssuer)
     return usdcBalance
   } catch (error) {
-    console.warn("[getUSDCBalance] Could not find USDC balance, returning 0:", error)
-    return 0
+    console.warn("[getUSDCBalance] Could not find USDC balance with issuer, trying without issuer:", error)
+    // Fallback: try without issuer (in case there's a different USDC asset)
+    try {
+      const usdcBalance = await getWalletBalance(publicKey, "USDC")
+      console.log("[getUSDCBalance] ✅ USDC balance found (without issuer):", usdcBalance)
+      return usdcBalance
+    } catch (fallbackError) {
+      console.warn("[getUSDCBalance] Could not find USDC balance, returning 0:", fallbackError)
+      return 0
+    }
   }
 }
 
@@ -701,8 +845,8 @@ export async function saveBalanceSnapshot(
  * USDC issuers for Stellar network
  */
 const USDC_ISSUERS = {
-  testnet: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN", // Circle testnet USDC
-  mainnet: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN", // Circle mainnet USDC
+  testnet: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5", // Stellar testnet USDC issuer
+  mainnet: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN", // Circle mainnet USDC issuer
 }
 
 /**

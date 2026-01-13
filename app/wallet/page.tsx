@@ -1,18 +1,21 @@
 "use client"
 
 import { useEffect, useState, useRef } from "react"
-import { Wallet, Award, ArrowLeft, Globe, LogOut, Bell, FileText, Link2, ExternalLink, X, TrendingUp, MessageCircle, Send, Copy, Check } from "lucide-react"
+import { motion } from "framer-motion"
+import { QRCodeSVG } from "qrcode.react"
+import { Wallet, Award, ArrowLeft, Globe, LogOut, Bell, FileText, Link2, ExternalLink, X, TrendingUp, MessageCircle, Send, Copy, Check, Eye, Key, ArrowUp, QrCode } from "lucide-react"
 import { FallingPattern } from "@/components/ui/falling-pattern"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { Sheet, SheetContent } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { SlidingNumber } from "@/components/ui/sliding-number"
-import { AnimatedARSBalance } from "@/components/ui/animated-ars-balance"
 import { APYDisplay, APYBadge } from "@/components/defindex/apy-display"
+import { WalletCreator } from "@/components/wallet-creator"
+import { WalletSkeleton } from "@/components/ui/wallet-skeleton"
 
 interface Vault {
   id: string
@@ -26,6 +29,21 @@ interface TrustPoints {
   last_daily_credit: string | null
 }
 
+// QR Code Component
+function QRCodeComponent({ walletAddress, walletNetwork }: { walletAddress: string; walletNetwork: "testnet" | "mainnet" }) {
+  const userId = typeof window !== "undefined" ? sessionStorage.getItem("dev_username") || "" : ""
+  // Format: Stellar payment URL with memo
+  // Using web+stellar:pay format with memo
+  const network = walletNetwork || "testnet"
+  const usdcIssuer = network === "testnet" 
+    ? "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5" 
+    : "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+  // Format: web+stellar:pay?destination=ADDRESS&memo=MEMO&memo_type=text&asset_code=USDC&asset_issuer=ISSUER
+  const paymentUrl = `web+stellar:pay?destination=${encodeURIComponent(walletAddress)}&memo=${encodeURIComponent(userId)}&memo_type=text&asset_code=USDC&asset_issuer=${encodeURIComponent(usdcIssuer)}`
+  
+  return <QRCodeSVG value={paymentUrl} size={256} level="H" />
+}
+
 export default function WalletPage() {
   const [vault, setVault] = useState<Vault | null>(null)
   const [trustPoints, setTrustPoints] = useState<TrustPoints | null>(null)
@@ -35,7 +53,19 @@ export default function WalletPage() {
   const [xlmBalance, setXlmBalance] = useState<number | null>(null)
   const [isBalanceLoading, setIsBalanceLoading] = useState(true)
   const [isTrustModalOpen, setIsTrustModalOpen] = useState(false)
+  const [isQRCodeOpen, setIsQRCodeOpen] = useState(false)
   const [isProfileSheetOpen, setIsProfileSheetOpen] = useState(false)
+  const [isSendModalOpen, setIsSendModalOpen] = useState(false)
+  const [sendRecipient, setSendRecipient] = useState("")
+  const [sendAmount, setSendAmount] = useState("")
+  const [isSending, setIsSending] = useState(false)
+  const [sendStep, setSendStep] = useState<"recipient" | "amount">("recipient")
+  const [resolvedRecipientAddress, setResolvedRecipientAddress] = useState<string | null>(null)
+  const [isResolvingRecipient, setIsResolvingRecipient] = useState(false)
+  const [isManualMode, setIsManualMode] = useState(false)
+  const [sendMemo, setSendMemo] = useState("")
+  const [showSuccessModal, setShowSuccessModal] = useState(false)
+  const [transactionHash, setTransactionHash] = useState<string | null>(null)
   const [modalView, setModalView] = useState<"main" | "invite" | "vouch">("main")
   const [vouchUsername, setVouchUsername] = useState("")
   const [vouchPoints, setVouchPoints] = useState("1")
@@ -65,26 +95,29 @@ export default function WalletPage() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
   
-  // EVM Address state (from main)
-  const [evmAddress, setEvmAddress] = useState<string | null>(null)
-  const [isEvmDialogOpen, setIsEvmDialogOpen] = useState(false)
-  const [evmInput, setEvmInput] = useState("")
-  const [evmLoading, setEvmLoading] = useState(false)
-  const [maxflowEgoScore, setMaxflowEgoScore] = useState<any | null>(null)
-  const [maxflowLoading, setMaxflowLoading] = useState(false)
-  
   // Profile state
   const [username, setUsername] = useState("")
   const [walletAddress, setWalletAddress] = useState("")
   const [walletNetwork, setWalletNetwork] = useState<"testnet" | "mainnet">("testnet")
-  const [language, setLanguage] = useState<"es" | "en">("es")
-  const [profilePic, setProfilePic] = useState<string | null>("/capybara_pfp.png")
   const [walletCopied, setWalletCopied] = useState(false)
   
-  // Currency state
-  const [currency, setCurrency] = useState<"XLM" | "USD" | "ARS">("ARS")
+  // Secret key state
+  const [secretKey, setSecretKey] = useState<string | null>(null)
+  const [isSecretKeyExposed, setIsSecretKeyExposed] = useState(false)
+  const [secretKeyCopied, setSecretKeyCopied] = useState(false)
+  
+  // Account diagnostics state
+  const [accountDiagnostics, setAccountDiagnostics] = useState<{
+    xlmBalance: number | null
+    hasTrustline: boolean
+    network: "testnet" | "mainnet" | null
+    usdcIssuer: string | null
+  } | null>(null)
+  const [loadingDiagnostics, setLoadingDiagnostics] = useState(false)
+  
+  // Currency state - USDC only (fixed)
+  const [currency] = useState<"USDC">("USDC")
   const [xlmPriceUSD, setXlmPriceUSD] = useState<number | null>(null)
-  const [usdToArsRate, setUsdToArsRate] = useState<number | null>(null)
   const [animatedBalance, setAnimatedBalance] = useState<number>(0)
   const [defindexBalance, setDefindexBalance] = useState<{
     walletBalance: number
@@ -104,6 +137,51 @@ export default function WalletPage() {
   // Swipe gesture state
 
   // Function to fetch DeFindex balance
+  const fetchWalletUSDCBalance = async (publicKey: string) => {
+    if (!publicKey) {
+      console.warn("[Wallet] No public key provided for USDC balance fetch")
+      return
+    }
+    
+    try {
+      console.log("[Wallet] 🔍 Fetching USDC balance directly from Stellar wallet:", publicKey.substring(0, 10) + "...")
+      const { getUSDCBalanceClientSide } = await import("@/lib/stellar/client-wallet")
+      const balance = await getUSDCBalanceClientSide(publicKey)
+      console.log("[Wallet] ✅ USDC wallet balance fetched from Stellar:", balance)
+      
+      // Update defindexBalance with the actual wallet USDC balance
+      // This takes precedence over the API's wallet balance
+      setDefindexBalance((prev) => {
+        if (prev) {
+          const updated = {
+            ...prev,
+            walletBalance: balance, // Update with actual wallet balance from Stellar
+            totalBalance: balance + (prev.strategyBalance || 0), // Recalculate total
+          }
+          console.log("[Wallet] 📊 Updated balance state:", {
+            walletBalance: updated.walletBalance,
+            strategyBalance: updated.strategyBalance,
+            totalBalance: updated.totalBalance,
+          })
+          return updated
+        } else {
+          // If defindexBalance doesn't exist yet, set it with wallet balance
+          const newBalance = {
+            walletBalance: balance,
+            strategyBalance: 0,
+            totalBalance: balance,
+            strategyShares: 0,
+            apy: 15.5,
+          }
+          console.log("[Wallet] 📊 Created new balance state:", newBalance)
+          return newBalance
+        }
+      })
+    } catch (error) {
+      console.error("[Wallet] ❌ Error fetching USDC wallet balance:", error)
+    }
+  }
+
   const fetchDefindexBalance = async (userId: string) => {
     try {
       console.log("[Wallet] Fetching DeFindex balance")
@@ -116,18 +194,40 @@ export default function WalletPage() {
       if (defindexResponse.ok) {
         const defindexData = await defindexResponse.json()
         console.log("[Wallet] DeFindex balance received:", defindexData)
+        console.log("[Wallet] DeFindex walletBalance:", defindexData.walletBalance)
+        console.log("[Wallet] DeFindex strategyBalance:", defindexData.strategyBalance)
+        console.log("[Wallet] DeFindex totalBalance:", defindexData.balance)
+        
         if (defindexData.success) {
           // Ensure APY is a number
           const apyNumber = typeof defindexData.apy === 'number' 
             ? defindexData.apy 
             : Number(defindexData.apy) || 15.5
           
-          setDefindexBalance({
-            walletBalance: defindexData.walletBalance,
-            strategyBalance: defindexData.strategyBalance,
-            totalBalance: defindexData.balance,
-            strategyShares: defindexData.strategyShares,
-            apy: apyNumber,
+          // Update balance, but preserve walletBalance if it was already set by fetchWalletUSDCBalance
+          setDefindexBalance((prev) => {
+            const walletBalance = prev?.walletBalance !== undefined && prev.walletBalance > 0 
+              ? prev.walletBalance // Use already-fetched wallet balance if available
+              : (defindexData.walletBalance || 0) // Otherwise use API value
+            
+            const strategyBalance = defindexData.strategyBalance || 0
+            const totalBalance = walletBalance + strategyBalance
+            
+            console.log("[Wallet] 📊 Setting DeFindex balance:", {
+              walletBalance: walletBalance.toFixed(2) + " USDC (in wallet - available for sending)",
+              strategyBalance: strategyBalance.toFixed(2) + " USDC (in DeFindex strategy - locked)",
+              totalBalance: totalBalance.toFixed(2) + " USDC (total)",
+              usingDirectFetch: prev?.walletBalance !== undefined && prev.walletBalance > 0,
+              note: "Only wallet balance can be used for sending. Strategy balance is locked in DeFindex."
+            })
+            
+            return {
+              walletBalance,
+              strategyBalance,
+              totalBalance,
+              strategyShares: defindexData.strategyShares || 0,
+              apy: apyNumber,
+            }
           })
           // Set APY value for balance audit modal
           if (apyNumber) {
@@ -135,11 +235,17 @@ export default function WalletPage() {
             setApyLoading(false)
           }
         }
+        // Mark balance loading as complete (even if no balance data)
+        setIsBalanceLoading(false)
       } else {
         console.warn("[Wallet] Failed to fetch DeFindex balance:", defindexResponse.status)
+        // Mark balance loading as complete even on error (so skeleton doesn't persist)
+        setIsBalanceLoading(false)
       }
     } catch (error) {
       console.error("[Wallet] Error fetching DeFindex balance:", error)
+      // Mark balance loading as complete even on error (so skeleton doesn't persist)
+      setIsBalanceLoading(false)
     }
   }
 
@@ -230,7 +336,6 @@ export default function WalletPage() {
       changePicture: "Cambiar Foto",
       xlm: "XLM",
       usd: "USD",
-      ars: "ARS",
       // Balance
       totalBalance: "Saldo Total",
       todayAPY: "APY de Hoy",
@@ -312,7 +417,6 @@ export default function WalletPage() {
       changePicture: "Change Picture",
       xlm: "XLM",
       usd: "USD",
-      ars: "ARS",
       // Balance
       totalBalance: "Total Balance",
       todayAPY: "Today's APY",
@@ -374,19 +478,19 @@ export default function WalletPage() {
     },
   }
   
-  const t = texts[language]
+  // Use English as default (language selection removed)
+  const t = texts.en
 
-  // Load currency preference from localStorage
+  // Reset secret key exposure when profile sheet closes
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const savedCurrency = localStorage.getItem("sozu_currency") as "XLM" | "USD" | "ARS" | null
-      if (savedCurrency && ["XLM", "USD", "ARS"].includes(savedCurrency)) {
-        setCurrency(savedCurrency)
-      }
+    if (!isProfileSheetOpen) {
+      setSecretKey(null)
+      setIsSecretKeyExposed(false)
+      setSecretKeyCopied(false)
     }
-  }, [])
+  }, [isProfileSheetOpen])
 
-  // Fetch XLM price in USD and USD to ARS exchange rate
+  // Fetch XLM price in USD (for reference, not used for USDC balance)
   useEffect(() => {
     const fetchPrices = async () => {
       try {
@@ -397,17 +501,11 @@ export default function WalletPage() {
           setXlmPriceUSD(xlmData.stellar?.usd || null)
         }
 
-        // Fetch USD to ARS exchange rate (using exchangerate-api)
-        const arsResponse = await fetch("https://api.exchangerate-api.com/v4/latest/USD")
-        if (arsResponse.ok) {
-          const arsData = await arsResponse.json()
-          setUsdToArsRate(arsData.rates?.ARS || null)
-        }
+        // USDC is always 1:1 with USD, no conversion needed
       } catch (error) {
         console.error("[Wallet] Error fetching prices:", error)
-        // Set fallback rates if API fails
+        // Set fallback rate if API fails
         setXlmPriceUSD(0.11) // Approximate XLM price in USD
-        setUsdToArsRate(900.0) // Approximate USD to ARS rate
       }
     }
 
@@ -428,8 +526,27 @@ export default function WalletPage() {
         sessionStorage.removeItem("redirect_to_wallet")
       }
       
+      // TEMPORARY: Bypass authentication in development mode
+      const isDevMode = process.env.NODE_ENV === "development"
+      
       const checkAuth = () => {
         const isAuthenticated = sessionStorage.getItem("dev_authenticated") === "true"
+        
+        // In dev mode, bypass auth check and set default userId if not present
+        if (isDevMode) {
+          console.log("[Wallet] 🚧 DEV MODE: Bypassing authentication")
+          const existingUserId = sessionStorage.getItem("dev_username")
+          if (!existingUserId) {
+            // Set a default mock userId for dev mode
+            const mockUserId = "dev-user-" + Date.now()
+            sessionStorage.setItem("dev_username", mockUserId)
+            sessionStorage.setItem("dev_authenticated", "true")
+            console.log("[Wallet] 🚧 DEV MODE: Set mock userId:", mockUserId)
+          }
+          // Fetch vault data immediately in dev mode
+          fetchVaultData()
+          return
+        }
         
         if (!isAuthenticated) {
           // Wait to ensure we're not in the middle of setting sessionStorage
@@ -450,9 +567,27 @@ export default function WalletPage() {
       
       const fetchVaultData = async () => {
         try {
-          const userId = sessionStorage.getItem("dev_username")
+          let userId = sessionStorage.getItem("dev_username")
           
           if (!userId) {
+            // In dev mode, create a default userId if missing
+            if (isDevMode) {
+              const mockUserId = "dev-user-" + Date.now()
+              sessionStorage.setItem("dev_username", mockUserId)
+              sessionStorage.setItem("dev_authenticated", "true")
+              console.log("[Wallet] 🚧 DEV MODE: Created mock userId:", mockUserId)
+              userId = mockUserId
+            } else {
+              setError("User ID not found")
+              setIsLoading(false)
+              return
+            }
+          }
+          
+          // Use userId (either from sessionStorage or newly created mock)
+          const finalUserId = userId
+          
+          if (!finalUserId) {
             setError("User ID not found")
             setIsLoading(false)
             return
@@ -461,7 +596,7 @@ export default function WalletPage() {
           // Fetch vault data from API
           const vaultResponse = await fetch("/api/wallet/vault", {
             headers: {
-              "x-user-id": userId,
+              "x-user-id": finalUserId,
             },
           })
           
@@ -475,7 +610,7 @@ export default function WalletPage() {
           // Fetch trust points from API
           const trustResponse = await fetch("/api/wallet/trust-points", {
             headers: {
-              "x-user-id": userId,
+              "x-user-id": finalUserId,
             },
           })
           
@@ -487,75 +622,24 @@ export default function WalletPage() {
             setTrustPoints({ balance: 0, last_daily_credit: null })
           }
           
-          // Fetch referral code and stats
+          // Generate referral code if needed
           try {
             setReferralLoading(true)
-            const referralStatusResponse = await fetch("/api/wallet/referral/status", {
+            const generateResponse = await fetch("/api/wallet/referral/generate", {
+              method: "POST",
               headers: {
-                "x-user-id": userId,
+                "x-user-id": finalUserId,
               },
             })
             
-            if (referralStatusResponse.ok) {
-              const referralData = await referralStatusResponse.json()
-              if (referralData.success) {
-                const code = referralData.referralCode || ""
-                setInviteCode(code)
-                setReferralStats({
-                  totalReferrals: referralData.totalReferrals || 0,
-                  totalPointsEarned: referralData.totalPointsEarned || 0,
-                })
-                
-                // If no referral code exists, generate one
-                if (!code) {
-                  const generateResponse = await fetch("/api/wallet/referral/generate", {
-                    method: "POST",
-                    headers: {
-                      "x-user-id": userId,
-                    },
-                  })
-                  
-                  if (generateResponse.ok) {
-                    const generateData = await generateResponse.json()
-                    if (generateData.success && generateData.referralCode) {
-                      setInviteCode(generateData.referralCode)
-                    }
-                  }
-                }
-              } else {
-                // If status fetch failed, try to generate
-                const generateResponse = await fetch("/api/wallet/referral/generate", {
-                  method: "POST",
-                  headers: {
-                    "x-user-id": userId,
-                  },
-                })
-                
-                if (generateResponse.ok) {
-                  const generateData = await generateResponse.json()
-                  if (generateData.success && generateData.referralCode) {
-                    setInviteCode(generateData.referralCode)
-                  }
-                }
-              }
-            } else {
-              // If status fetch failed, try to generate
-              const generateResponse = await fetch("/api/wallet/referral/generate", {
-                method: "POST",
-                headers: {
-                  "x-user-id": userId,
-                },
-              })
-              
-              if (generateResponse.ok) {
-                const generateData = await generateResponse.json()
-                if (generateData.success && generateData.referralCode) {
-                  setInviteCode(generateData.referralCode)
-                }
+            if (generateResponse.ok) {
+              const generateData = await generateResponse.json()
+              if (generateData.success && generateData.referralCode) {
+                setInviteCode(generateData.referralCode)
               }
             }
           } catch (referralError) {
-            console.error("[Wallet] Error fetching referral data:", referralError)
+            console.error("[Wallet] Error generating referral code:", referralError)
           } finally {
             setReferralLoading(false)
           }
@@ -563,7 +647,7 @@ export default function WalletPage() {
           // Fetch notifications
           const notificationsResponse = await fetch("/api/wallet/notifications", {
             headers: {
-              "x-user-id": userId,
+              "x-user-id": finalUserId,
             },
           })
           
@@ -590,7 +674,7 @@ export default function WalletPage() {
           // Fetch APY
           const apyResponse = await fetch("/api/wallet/defindex/apy", {
             headers: {
-              "x-user-id": userId,
+              "x-user-id": finalUserId,
             },
           })
           
@@ -602,28 +686,13 @@ export default function WalletPage() {
           }
           setApyLoading(false)
           
-          // Fetch profile data from API
-          const profileResponse = await fetch("/api/wallet/profile", {
-            headers: {
-              "x-user-id": userId,
-            },
-          })
-          
-          if (profileResponse.ok) {
-            const profileData = await profileResponse.json()
-            if (profileData.profile && profileData.profile.username) {
-              setUsername(profileData.profile.username)
-            } else {
-              // Fallback to user ID substring if no username found
-              setUsername(userId.substring(0, 8))
-            }
-            // Load profile picture from database
-            if (profileData.profile && profileData.profile.profile_picture) {
-              setProfilePic(profileData.profile.profile_picture)
-            }
+          // Get username from localStorage (set during auth)
+          const storedUsername = localStorage.getItem("sozu_username")
+          if (storedUsername) {
+            setUsername(storedUsername)
           } else {
-            // Fallback to user ID substring if profile fetch fails
-            setUsername(userId.substring(0, 8))
+            // Fallback to user ID substring if no username found
+            setUsername(finalUserId.substring(0, 8))
           }
           
           // Function to fetch XLM balance from Stellar wallet
@@ -633,7 +702,7 @@ export default function WalletPage() {
               console.log("[Wallet] Fetching XLM balance for wallet:", publicKey)
               const balanceResponse = await fetch("/api/wallet/stellar/balance", {
                 headers: {
-                  "x-user-id": userId,
+                  "x-user-id": finalUserId,
                 },
               })
 
@@ -658,13 +727,13 @@ export default function WalletPage() {
           // Fetch real Stellar wallet address from API
           // Retry up to 5 times with delay to account for wallet creation during login
           const fetchWalletAddress = async (retryCount = 0) => {
-            console.log(`[Wallet] Fetching wallet address for userId: ${userId} (attempt ${retryCount + 1})`)
+            console.log(`[Wallet] Fetching wallet address for userId: ${finalUserId} (attempt ${retryCount + 1})`)
             try {
               const walletAddressResponse = await fetch("/api/wallet/stellar/address", {
                 method: "GET",
                 headers: {
                   "Content-Type": "application/json",
-                  "x-user-id": userId, // Include userId for authentication in dev mode
+                  "x-user-id": finalUserId, // Include userId for authentication in dev mode
                 },
               })
               
@@ -673,20 +742,43 @@ export default function WalletPage() {
               if (walletAddressResponse.ok) {
                 const walletData = await walletAddressResponse.json()
                 console.log("[Wallet] Wallet data received:", walletData)
-                if (walletData.publicKey) {
-                  console.log("[Wallet] ✅ Stellar wallet address loaded:", walletData.publicKey)
-                  setWalletAddress(walletData.publicKey)
+                
+                // Check if we have a derived keypair public key in sessionStorage
+                // This takes precedence over database wallet address for non-custodial wallets
+                const derivedPublicKey = sessionStorage.getItem("stellar_public_key")
+                
+                let publicKeyToUse = walletData.publicKey
+                
+                if (derivedPublicKey) {
+                  console.log("[Wallet] Found derived public key in sessionStorage:", derivedPublicKey.substring(0, 10) + "...")
+                  console.log("[Wallet] Database wallet address:", walletData.publicKey?.substring(0, 10) + "...")
+                  
+                  // Use derived public key if it exists (non-custodial wallet)
+                  if (derivedPublicKey !== walletData.publicKey) {
+                    console.log("[Wallet] ⚠️ Mismatch detected: Using derived keypair public key instead of database address")
+                    console.log("[Wallet] Derived keypair:", derivedPublicKey)
+                    console.log("[Wallet] Database address:", walletData.publicKey)
+                    publicKeyToUse = derivedPublicKey
+                  } else {
+                    console.log("[Wallet] ✅ Public keys match")
+                  }
+                }
+                
+                if (publicKeyToUse) {
+                  console.log("[Wallet] ✅ Stellar wallet address loaded:", publicKeyToUse)
+                  setWalletAddress(publicKeyToUse)
                   if (walletData.network) {
                     setWalletNetwork(walletData.network)
                   }
                   
-                  // Fetch XLM balance for this wallet
-                  fetchXLMBalance(walletData.publicKey)
+                  // Fetch balances for this wallet
+                  fetchXLMBalance(publicKeyToUse)
+                  fetchWalletUSDCBalance(publicKeyToUse) // Fetch USDC directly from Stellar
 
                   // Fetch DeFindex balance, auto-deposit status, and APY
-                  fetchDefindexBalance(userId)
-                  fetchAutoDepositStatus(userId)
-                  fetchAPY(userId)
+                  fetchDefindexBalance(finalUserId)
+                  fetchAutoDepositStatus(finalUserId)
+                  fetchAPY(finalUserId)
                   
                   return // Success, no need to retry
                 } else {
@@ -700,7 +792,7 @@ export default function WalletPage() {
                         method: "POST",
                         headers: {
                           "Content-Type": "application/json",
-                          "x-user-id": userId,
+                          "x-user-id": finalUserId,
                         },
                       })
                       
@@ -712,12 +804,13 @@ export default function WalletPage() {
                           if (createData.network) {
                             setWalletNetwork(createData.network)
                           }
-                          // Fetch XLM balance for this wallet
+                          // Fetch balances for this wallet
                           fetchXLMBalance(createData.publicKey)
+                          fetchWalletUSDCBalance(createData.publicKey)
 
                           // Fetch DeFindex balance and auto-deposit status
-                          fetchDefindexBalance(userId)
-                          fetchAutoDepositStatus(userId)
+                          fetchDefindexBalance(finalUserId)
+                          fetchAutoDepositStatus(finalUserId)
                           return
                         }
                       }
@@ -743,7 +836,7 @@ export default function WalletPage() {
                       method: "POST",
                       headers: {
                         "Content-Type": "application/json",
-                        "x-user-id": userId,
+                        "x-user-id": finalUserId,
                       },
                     })
                     
@@ -758,8 +851,9 @@ export default function WalletPage() {
                         if (createData.network) {
                           setWalletNetwork(createData.network)
                         }
-                        // Fetch XLM balance for this wallet
+                        // Fetch balances for this wallet
                         fetchXLMBalance(createData.publicKey)
+                        fetchWalletUSDCBalance(createData.publicKey)
                         return
                       }
                     } else {
@@ -777,6 +871,11 @@ export default function WalletPage() {
                     if (retryCount < 3) {
                       setTimeout(() => fetchWalletAddress(retryCount + 1), 2000)
                       return
+                    } else {
+                      // After retries exhausted, stop loading and fetch balance anyway
+                      console.log("[Wallet] Retries exhausted, stopping wallet fetch")
+                      setIsBalanceLoading(false)
+                      fetchDefindexBalance(finalUserId)
                     }
                   }
                 } else {
@@ -785,12 +884,13 @@ export default function WalletPage() {
                     console.log(`[Wallet] Retrying address fetch (attempt ${retryCount + 1}/3)...`)
                     setTimeout(() => fetchWalletAddress(retryCount + 1), 2000)
                     return
+                  } else {
+                    // After retries exhausted, stop loading and fetch balance
+                    console.log("[Wallet] Retries exhausted, stopping wallet fetch")
+                    setWalletAddress("") // Empty if wallet not created yet
+                    setIsBalanceLoading(false) // Stop showing skeleton
+                    fetchDefindexBalance(finalUserId) // Fetch balance anyway (might be 0)
                   }
-                }
-                
-                if (retryCount >= 3) {
-                  console.log("[Wallet] Wallet not found after retries")
-                  setWalletAddress("") // Empty if wallet not created yet
                 }
               } else if (walletAddressResponse.status === 500) {
                 // 500 error - log and retry a few times, but don't recreate wallet
@@ -802,8 +902,10 @@ export default function WalletPage() {
                   console.log(`[Wallet] Retrying after error (attempt ${retryCount + 1}/3)...`)
                   setTimeout(() => fetchWalletAddress(retryCount + 1), 2000)
                 } else {
-                  console.error("[Wallet] Failed to fetch wallet address after retries")
+                  console.error("[Wallet] Failed to fetch wallet address after retries - stopping loading")
                   setWalletAddress("") // Empty on error after retries
+                  setIsBalanceLoading(false) // Stop showing skeleton
+                  fetchDefindexBalance(finalUserId) // Fetch balance anyway (might be 0)
                 }
               } else {
                 const errorData = await walletAddressResponse.json().catch(() => ({}))
@@ -828,17 +930,6 @@ export default function WalletPage() {
           
           // Start fetching wallet address
           fetchWalletAddress()
-
-          // Fetch EVM address
-          const evmResponse = await fetch("/api/wallet/evm-address", {
-            headers: {
-              "x-user-id": userId,
-            },
-          })
-          if (evmResponse.ok) {
-            const evmData = await evmResponse.json()
-            setEvmAddress(evmData.evmAddress || null)
-          }
         } catch (err) {
           console.error("[Wallet] Error fetching data:", err)
           setError(err instanceof Error ? err.message : "Failed to load data")
@@ -852,64 +943,16 @@ export default function WalletPage() {
     }
   }, [])
 
-  // Fetch MaxFlow ego score when EVM address is available
-  useEffect(() => {
-    const fetchMaxFlowScore = async () => {
-      if (!evmAddress) {
-        setMaxflowEgoScore(null)
-        return
-      }
-
-      setMaxflowLoading(true)
-      try {
-        const userId = sessionStorage.getItem("dev_username")
-        if (!userId) return
-
-        const response = await fetch(`/api/maxflow/ego/${evmAddress}/score`, {
-          headers: {
-            "x-user-id": userId,
-          },
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          setMaxflowEgoScore(data.egoScore)
-        } else {
-          console.error("[Wallet] Error fetching MaxFlow score:", response.status)
-          setMaxflowEgoScore(null)
-        }
-      } catch (error) {
-        console.error("[Wallet] Error fetching MaxFlow score:", error)
-        setMaxflowEgoScore(null)
-      } finally {
-        setMaxflowLoading(false)
-      }
-    }
-
-    fetchMaxFlowScore()
-  }, [evmAddress])
 
 
-  // Convert balance based on selected currency
+  // Get USDC balance (from DeFindex vault balance)
   const getBaseBalance = () => {
-    const xlmBalanceNum = xlmBalance !== null ? Number(xlmBalance) : Number(vault?.balance || 0)
-    
-    if (currency === "XLM") {
-      return xlmBalanceNum
-    } else if (currency === "USD") {
-      // Convert XLM to USD
-      if (xlmPriceUSD) {
-        return xlmBalanceNum * xlmPriceUSD
-      }
-      return xlmBalanceNum * 0.11 // Fallback
-    } else if (currency === "ARS") {
-      // Convert XLM to ARS (via USD)
-      if (xlmPriceUSD && usdToArsRate) {
-        return xlmBalanceNum * xlmPriceUSD * usdToArsRate
-      }
-      return xlmBalanceNum * 0.11 * 900.0 // Fallback
+    // Use USDC balance from DeFindex vault (wallet + strategy balance)
+    if (defindexBalance) {
+      return defindexBalance.totalBalance // Total USDC balance (wallet + strategy)
     }
-    return xlmBalanceNum
+    // Fallback to vault balance if defindexBalance not loaded yet
+    return Number(vault?.balance || 0)
   }
 
   const baseBalance = getBaseBalance()
@@ -918,60 +961,86 @@ export default function WalletPage() {
   const animatedBalanceRef = useRef(0)
   const baseBalanceRef = useRef(0)
   
-  // Simple balance animation (no APY growth for now)
+  // Simple balance animation - triggers on load and when balance changes
   useEffect(() => {
     // Check if base balance changed significantly (new funds received or currency changed)
     const baseChanged = Math.abs(baseBalance - baseBalanceRef.current) / (baseBalanceRef.current || 1) > 0.001
 
     // If we have a balance (even if it's 0) and we're still loading, mark as loaded
-    if (xlmBalance !== null && isBalanceLoading) {
+    if (defindexBalance !== null && isBalanceLoading) {
       setIsBalanceLoading(false)
+      
+      // On initial load, animate from 0 to the actual balance
+      if (baseBalance > 0 && animatedBalanceRef.current === 0) {
+        animatedBalanceRef.current = 0
+        setAnimatedBalance(0)
+        // Animate to the actual balance after a short delay
+        setTimeout(() => {
+          animatedBalanceRef.current = baseBalance
+          baseBalanceRef.current = baseBalance
+          setAnimatedBalance(baseBalance)
+        }, 100)
+        return
+      }
     }
 
-    if (baseChanged || animatedBalanceRef.current === 0) {
-      // Reset to new base balance if it changed significantly or is initializing
+    if (baseChanged) {
+      // Balance changed significantly - animate to new value
+      const previousBalance = animatedBalanceRef.current
+      animatedBalanceRef.current = baseBalance
+      baseBalanceRef.current = baseBalance
+      setAnimatedBalance(baseBalance)
+    } else if (animatedBalanceRef.current === 0 && baseBalance > 0) {
+      // Initial load with balance - animate from 0
+      setTimeout(() => {
+        animatedBalanceRef.current = baseBalance
+        baseBalanceRef.current = baseBalance
+        setAnimatedBalance(baseBalance)
+      }, 100)
+    } else if (animatedBalanceRef.current === 0) {
+      // Just set it if it's 0
       animatedBalanceRef.current = baseBalance
       baseBalanceRef.current = baseBalance
       setAnimatedBalance(baseBalance)
     }
+  }, [baseBalance, defindexBalance, isBalanceLoading])
 
-    // Update balance every 100ms for smooth animation (without growth)
-    const interval = setInterval(() => {
-      // Check if base balance changed during interval
-      if (Math.abs(baseBalance - baseBalanceRef.current) / (baseBalanceRef.current || 1) > 0.001) {
-        // Base changed significantly, reset to it
-        animatedBalanceRef.current = baseBalance
-        baseBalanceRef.current = baseBalance
-      }
-
-      // For now, just keep the balance static (no growth animation)
-      setAnimatedBalance(animatedBalanceRef.current)
-    }, 100)
-
-    return () => clearInterval(interval)
-  }, [baseBalance])
-
-  // Format balance - show no decimals if balance is 0
-  const formatBalance = (value: number, decimals: number = 4) => {
+  // Format balance - remove trailing zeros, only show decimals if needed
+  const formatBalance = (value: number) => {
     if (value === 0) {
       return "0"
     }
-    return value.toFixed(decimals)
+    // Convert to string and remove trailing zeros
+    const formatted = value.toString()
+    // If it has a decimal point, remove trailing zeros and the decimal point if not needed
+    if (formatted.includes('.')) {
+      return formatted.replace(/\.?0+$/, '')
+    }
+    return formatted
   }
   
-  const balance = formatBalance(animatedBalance, 4)
+  const balance = formatBalance(animatedBalance)
   const maskedBalance = balance.replace(/\d/g, "*")
   
   // Get currency symbol for display
   const getCurrencySymbol = () => {
-    if (currency === "XLM") return "XLM"
-    if (currency === "USD") return "USD"
-    if (currency === "ARS") return "ARS"
-    return "ARS"
+    return "USDC"
   }
 
   const toggleBalanceVisibility = () => {
-    setIsBalanceVisible(!isBalanceVisible)
+    const newVisibility = !isBalanceVisible
+    setIsBalanceVisible(newVisibility)
+    
+    // If toggling to visible, reset animated balance to 0 to trigger animation
+    if (newVisibility && baseBalance > 0) {
+      animatedBalanceRef.current = 0
+      setAnimatedBalance(0)
+      // Then animate to the actual balance
+      setTimeout(() => {
+        animatedBalanceRef.current = baseBalance
+        setAnimatedBalance(baseBalance)
+      }, 50)
+    }
   }
 
   const handleVouch = async () => {
@@ -1027,44 +1096,6 @@ export default function WalletPage() {
     }
   }
 
-  const handleSaveProfile = async () => {
-    try {
-      const userId = sessionStorage.getItem("dev_username")
-      if (!userId) return
-      
-      const response = await fetch("/api/wallet/profile", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "x-user-id": userId,
-        },
-        body: JSON.stringify({
-          username,
-          display_name: username,
-          profile_picture: profilePic,
-        }),
-      })
-      
-      const data = await response.json()
-      
-      if (response.ok && data.profile) {
-        // Update profile picture if saved
-        if (data.profile.profile_picture) {
-          setProfilePic(data.profile.profile_picture)
-        }
-        alert(t.language === "es" ? "Perfil guardado exitosamente" : "Profile saved successfully")
-        setIsProfileSheetOpen(false)
-      } else {
-        alert(t.language === "es" 
-          ? `Error al guardar perfil: ${data.error || "Error desconocido"}` 
-          : `Error saving profile: ${data.error || "Unknown error"}`
-        )
-      }
-    } catch (error) {
-      console.error("[Wallet] Error saving profile:", error)
-      alert(t.language === "es" ? "Error al guardar perfil" : "Error saving profile")
-    }
-  }
 
   const handleAutoDeposit = async () => {
     if (!autoDepositStatus?.wouldTrigger) return
@@ -1082,10 +1113,7 @@ export default function WalletPage() {
 
       if (data.success) {
         if (data.triggered) {
-          alert(t.language === "es"
-            ? `✅ Depósito automático exitoso: $${data.depositAmount} USDC depositados`
-            : `✅ Auto-deposit successful: $${data.depositAmount} USDC deposited`
-          )
+          alert(`✅ Auto-deposit successful: $${data.depositAmount} USDC deposited`)
           // Refresh balances
           const userId = sessionStorage.getItem("dev_username")
           if (userId) {
@@ -1093,209 +1121,35 @@ export default function WalletPage() {
             fetchAutoDepositStatus(userId)
           }
         } else {
-          alert(t.language === "es"
-            ? "ℹ️ Depósito automático no activado"
-            : "ℹ️ Auto-deposit not triggered"
-          )
+          alert("ℹ️ Auto-deposit not triggered")
         }
       } else {
-        alert(t.language === "es"
-          ? `❌ Error en depósito automático: ${data.error}`
-          : `❌ Auto-deposit error: ${data.error}`
-        )
+        alert(`❌ Auto-deposit error: ${data.error}`)
       }
     } catch (error) {
       console.error("[Wallet] Error triggering auto-deposit:", error)
-      alert(t.language === "es"
-        ? "❌ Error al procesar depósito automático"
-        : "❌ Error processing auto-deposit"
-      )
+      alert("❌ Error processing auto-deposit")
     } finally {
       setIsAutoDepositing(false)
     }
   }
 
-  // Auto-save when profile sheet closes
-  useEffect(() => {
-    if (!isProfileSheetOpen && username.trim()) {
-      // Sheet just closed, save username to backend
-      const saveUsername = async () => {
-        try {
-          const userId = sessionStorage.getItem("dev_username")
-          if (!userId) {
-            console.warn("[Profile] Cannot save: user ID not found")
-            return
-          }
-
-          const response = await fetch("/api/wallet/profile", {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-              "x-user-id": userId,
-            },
-            body: JSON.stringify({
-              username: username.trim(),
-              display_name: username.trim(),
-            }),
-          })
-
-          if (!response.ok) {
-            const error = await response.json()
-            console.error("[Profile] Error saving username:", error)
-            // Show error message to user
-            if (error.error && error.error.includes("already taken")) {
-              alert(t.language === "es" 
-                ? "Este nombre de usuario ya está en uso" 
-                : "This username is already taken")
-              // Revert to previous username
-              const profileResponse = await fetch("/api/wallet/profile", {
-                headers: { "x-user-id": userId },
-              })
-              if (profileResponse.ok) {
-                const profileData = await profileResponse.json()
-                if (profileData.profile && profileData.profile.username) {
-                  setUsername(profileData.profile.username)
-                }
-              }
-            }
-          } else {
-            console.log("[Profile] Username saved successfully")
-          }
-        } catch (err) {
-          console.error("[Profile] Error saving username:", err)
-        }
-      }
-
-      saveUsername()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isProfileSheetOpen])
-
-  const handleLanguageChange = (lang: "es" | "en") => {
-    setLanguage(lang)
-    // TODO: Save language preference
-  }
-
-  const handleCurrencyChange = (curr: "XLM" | "USD" | "ARS") => {
-    setCurrency(curr)
-    // Save currency preference to localStorage
-    if (typeof window !== "undefined") {
-      localStorage.setItem("sozu_currency", curr)
-    }
-  }
 
 
-  const handleProfilePictureChange = () => {
-    // Create a file input element
-    const input = document.createElement("input")
-    input.type = "file"
-    input.accept = "image/*"
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0]
-      if (file) {
-        // Create a preview URL for the selected image
-        const reader = new FileReader()
-        reader.onloadend = () => {
-          setProfilePic(reader.result as string)
-        }
-        reader.readAsDataURL(file)
-      }
-    }
-    input.click()
-  }
 
   const handleLogout = () => {
-    if (window.confirm(t.logoutConfirm)) {
-      // Clear all session storage
-      sessionStorage.clear()
-      localStorage.removeItem("sozu_username")
-      
-      // Close profile sheet
-      setIsProfileSheetOpen(false)
-      
-      // Redirect to auth page
-      window.location.href = "/auth"
-    }
+    // Clear all session storage
+    sessionStorage.clear()
+    // Note: We keep sozu_username in localStorage so user can log back in easily
+    // Only clear it if user explicitly wants to remove their account
+    
+    // Close profile sheet
+    setIsProfileSheetOpen(false)
+    
+    // Redirect to auth page
+    window.location.href = "/auth"
   }
 
-  const handleLinkEvmAddress = async () => {
-    if (!evmInput.trim()) {
-      alert(t.language === "es" ? "Por favor ingresa una dirección EVM" : "Please enter an EVM address")
-      return
-    }
-
-    setEvmLoading(true)
-    try {
-      const userId = sessionStorage.getItem("dev_username")
-      if (!userId) {
-        throw new Error(t.notAuthenticated)
-      }
-
-      const response = await fetch("/api/wallet/evm-address", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-user-id": userId,
-        },
-        body: JSON.stringify({
-          evmAddress: evmInput.trim(),
-        }),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || t.errorLoadingScore)
-      }
-
-      const data = await response.json()
-      setEvmAddress(data.evmAddress)
-      setEvmInput("")
-      setIsEvmDialogOpen(false)
-    } catch (error) {
-      alert(error instanceof Error ? error.message : t.errorLoadingScore)
-    } finally {
-      setEvmLoading(false)
-    }
-  }
-
-  const handleUnlinkEvmAddress = async () => {
-    if (!window.confirm(t.language === "es" ? "¿Estás seguro de que quieres desvincular esta dirección?" : "Are you sure you want to unlink this address?")) {
-      return
-    }
-
-    setEvmLoading(true)
-    try {
-      const userId = sessionStorage.getItem("dev_username")
-      if (!userId) {
-        throw new Error(t.notAuthenticated)
-      }
-
-      const response = await fetch("/api/wallet/evm-address", {
-        method: "DELETE",
-        headers: {
-          "x-user-id": userId,
-        },
-      })
-
-      if (!response.ok) {
-        throw new Error(t.errorLoadingScore)
-      }
-
-      setEvmAddress(null)
-      setMaxflowEgoScore(null)
-    } catch (error) {
-      alert(error instanceof Error ? error.message : t.errorLoadingScore)
-    } finally {
-      setEvmLoading(false)
-    }
-  }
-
-  const handleCopyEvmAddress = () => {
-    if (evmAddress) {
-      navigator.clipboard.writeText(evmAddress)
-      alert(t.evmAddressCopied)
-    }
-  }
 
   const handleCopyWalletAddress = async () => {
     if (!walletAddress) {
@@ -1318,7 +1172,7 @@ export default function WalletPage() {
       return
     }
     
-    // Establish USDC trustline first
+    // Establish USDC trustline first (with client-side signing)
     setIsEstablishingTrustline(true)
     try {
       const userId = sessionStorage.getItem("dev_username")
@@ -1330,7 +1184,9 @@ export default function WalletPage() {
         return
       }
 
-      console.log("[Wallet] Establishing USDC trustline...")
+      console.log("[Wallet] Establishing USDC trustline with client-side signing...")
+      
+      // Step 1: Get unsigned transaction from server
       const response = await fetch("/api/wallet/stellar/trustline", {
         method: "POST",
         headers: {
@@ -1348,16 +1204,77 @@ export default function WalletPage() {
       const result = await response.json()
       
       if (result.success) {
+        // Trustline already exists or was created successfully
         console.log("[Wallet] ✅ USDC trustline established successfully")
         if (result.transactionHash) {
           console.log("[Wallet] Transaction hash:", result.transactionHash)
-          // Show success message to user
-          alert(t.language === "es" 
-            ? `✅ Trustline USDC establecido exitosamente\nHash: ${result.transactionHash.substring(0, 8)}...`
-            : `✅ USDC trustline established successfully\nHash: ${result.transactionHash.substring(0, 8)}...`
-          )
+          alert(`✅ USDC trustline established successfully\nHash: ${result.transactionHash.substring(0, 8)}...`)
         } else {
           console.log("[Wallet] Trustline already exists")
+        }
+      } else if (result.needsSigning && result.unsignedXdr) {
+        // Step 2: Sign transaction client-side
+        console.log("[Wallet] Signing transaction client-side...")
+        const { retrieveKeypair, getKeypairByPublicKey } = await import("@/lib/storage/browser-keys")
+        const { TransactionBuilder, Networks } = await import("@stellar/stellar-sdk")
+        const { getCurrentCredentialId } = await import("@/lib/storage/key-utils")
+        
+        // Get keypair from browser storage
+        const credentialId = await getCurrentCredentialId()
+        let keypair = null
+        
+        if (credentialId) {
+          keypair = await retrieveKeypair(credentialId, userId)
+        }
+        
+        if (!keypair) {
+          // Fallback: try to get by public key
+          keypair = await getKeypairByPublicKey(walletAddress)
+        }
+        
+        if (!keypair) {
+          throw new Error("Keypair not found in browser storage. Please authenticate with a passkey first.")
+        }
+        
+        // Verify public key matches
+        if (keypair.publicKey() !== walletAddress) {
+          throw new Error("Keypair public key doesn't match wallet address")
+        }
+        
+        // Parse and sign transaction
+        const networkPassphrase = walletNetwork === "mainnet" ? Networks.PUBLIC : Networks.TESTNET
+        const transaction = TransactionBuilder.fromXDR(result.unsignedXdr, networkPassphrase)
+        transaction.sign(keypair)
+        
+        const signedXdr = transaction.toXDR()
+        
+        // Step 3: Submit signed transaction
+        console.log("[Wallet] Submitting signed transaction...")
+        const submitResponse = await fetch("/api/wallet/stellar/trustline", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-id": userId,
+          },
+          body: JSON.stringify({
+            signedTransactionXdr: signedXdr,
+          }),
+        })
+        
+        if (!submitResponse.ok) {
+          const errorData = await submitResponse.json().catch(() => ({ error: "Unknown error" }))
+          throw new Error(errorData.error || "Failed to submit signed transaction")
+        }
+        
+        const submitResult = await submitResponse.json()
+        
+        if (submitResult.success) {
+          console.log("[Wallet] ✅ USDC trustline created successfully")
+          if (submitResult.transactionHash) {
+            alert(`✅ USDC trustline established successfully\nHash: ${submitResult.transactionHash.substring(0, 8)}...`)
+          }
+        } else {
+          throw new Error(submitResult.error || "Failed to create trustline")
         }
       } else {
         console.error("[Wallet] Trustline establishment failed:", result.error)
@@ -1366,15 +1283,348 @@ export default function WalletPage() {
     } catch (error: any) {
       console.error("[Wallet] Error establishing trustline:", error)
       // Show error message to user
-      alert(t.language === "es"
-        ? `❌ Error al establecer trustline USDC: ${error.message || "Error desconocido"}\n\nAsegúrate de tener suficiente XLM para pagar las tarifas de transacción.`
-        : `❌ Error establishing USDC trustline: ${error.message || "Unknown error"}\n\nMake sure you have enough XLM to pay transaction fees.`
-      )
+      alert(`❌ Error establishing USDC trustline: ${error.message || "Unknown error"}\n\nMake sure you have enough XLM to pay transaction fees.`)
       // Still open Stellar Expert even if trustline fails
     } finally {
       setIsEstablishingTrustline(false)
       // Open Stellar Expert after trustline is established (or if it fails)
       openStellarExpert()
+    }
+  }
+
+  const handleResolveRecipient = async () => {
+    if (!sendRecipient.trim()) {
+      return
+    }
+
+    setIsResolvingRecipient(true)
+    try {
+      const userId = sessionStorage.getItem("dev_username")
+      if (!userId) {
+        throw new Error("User not authenticated")
+      }
+
+      // If in manual mode and recipient is already a Stellar address, use it directly
+      if (isManualMode) {
+        const isStellarAddress = /^G[A-Z0-9]{55}$/.test(sendRecipient.trim())
+        if (isStellarAddress) {
+          console.log("[Resolve Recipient] ✅ Manual mode: Using Stellar address directly:", {
+            input: sendRecipient.trim(),
+            addressPreview: sendRecipient.trim().substring(0, 10) + "..." + sendRecipient.trim().substring(sendRecipient.trim().length - 10),
+            fullAddress: sendRecipient.trim(),
+            memo: sendMemo.trim() || "none"
+          })
+          setResolvedRecipientAddress(sendRecipient.trim())
+          setSendStep("amount")
+          return
+        } else {
+          throw new Error("Invalid Stellar wallet address format")
+        }
+      }
+
+      // Resolve recipient (Sozu tag or wallet address)
+      const resolveResponse = await fetch("/api/wallet/resolve-recipient", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": userId,
+        },
+        body: JSON.stringify({ recipient: sendRecipient.trim() }),
+      })
+
+      if (!resolveResponse.ok) {
+        const error = await resolveResponse.json()
+        console.error("[Resolve Recipient] Error response:", error)
+        if (error.details && error.details.walletsChecked) {
+          console.error("[Resolve Recipient] Total wallets in database:", error.details.totalWalletsInDatabase)
+          console.error("[Resolve Recipient] Wallets checked (full details):", JSON.stringify(error.details.walletsChecked, null, 2))
+          error.details.walletsChecked.forEach((w: any, i: number) => {
+            console.error(`[Resolve Recipient] Wallet ${i + 1}:`, {
+              publicKey: w.publicKey,
+              network: w.network,
+              updatedAt: w.updatedAt,
+              createdAt: w.createdAt
+            })
+          })
+        }
+        throw new Error(error.error || "Failed to resolve recipient")
+      }
+
+      const { walletAddress: recipientAddress } = await resolveResponse.json()
+      if (!recipientAddress) {
+        throw new Error("Recipient wallet address not found")
+      }
+
+      // Log the resolved address for debugging
+      console.log("[Resolve Recipient] ✅ Recipient resolved:", {
+        input: sendRecipient.trim(),
+        resolvedAddress: recipientAddress,
+        addressPreview: recipientAddress.substring(0, 10) + "..." + recipientAddress.substring(recipientAddress.length - 10),
+        fullAddress: recipientAddress // Log full address for debugging
+      })
+
+      // Store resolved address and move to amount step
+      setResolvedRecipientAddress(recipientAddress)
+      setSendStep("amount")
+    } catch (error: any) {
+      console.error("[Resolve Recipient] Error:", error)
+      alert(`❌ ${error.message || "Invalid recipient"}`)
+    } finally {
+      setIsResolvingRecipient(false)
+    }
+  }
+
+  const handleSendPayment = async () => {
+    if (!sendAmount || parseFloat(sendAmount) <= 0 || !resolvedRecipientAddress) {
+      return
+    }
+
+    const amount = parseFloat(sendAmount)
+    if (!walletAddress) {
+      alert("Wallet address not found. Please create a wallet first.")
+      return
+    }
+
+    // Check balance before proceeding - fetch REAL-TIME balance from Stellar network
+    // Don't rely on cached balance - verify actual wallet balance
+    const userId = sessionStorage.getItem("dev_username")
+    if (!userId) {
+      alert("User not authenticated. Please log in again.")
+      return
+    }
+    
+    console.log("[Send Payment] Fetching real-time USDC balance for verification...")
+    let currentBalance = defindexBalance?.walletBalance || 0
+    
+    // Fetch real-time balance from Stellar network to ensure accuracy
+    let balanceDataFromResponse: any = null
+    if (walletAddress) {
+      try {
+        const balanceResponse = await fetch(`/api/wallet/stellar/balance?publicKey=${walletAddress}`, {
+          headers: {
+            "x-user-id": userId,
+          },
+        })
+        
+        if (balanceResponse.ok) {
+          balanceDataFromResponse = await balanceResponse.json()
+          if (balanceDataFromResponse.usdcBalance !== undefined) {
+            currentBalance = balanceDataFromResponse.usdcBalance
+            console.log("[Send Payment] ✅ Real-time USDC balance:", {
+              walletBalance: balanceDataFromResponse.usdcBalance,
+              defindexBalance: balanceDataFromResponse.defindexBalance || 0,
+              totalUsdcBalance: balanceDataFromResponse.totalUsdcBalance || balanceDataFromResponse.usdcBalance,
+              allBalances: balanceDataFromResponse.allBalances || [],
+              note: "walletBalance is available for sending, defindexBalance is locked"
+            })
+          }
+        }
+      } catch (balanceError) {
+        console.warn("[Send Payment] Could not fetch real-time balance, using cached:", balanceError)
+        // Fall back to cached balance
+      }
+    }
+    
+    const bufferAmount = 0.01 // Keep 0.01 USDC buffer for fees and safety
+    const requiredBalance = amount + bufferAmount
+
+    // Log balance breakdown (wallet vs DeFindex strategy)
+    const walletBalance = defindexBalance?.walletBalance || 0
+    const strategyBalance = defindexBalance?.strategyBalance || 0
+    const totalBalance = defindexBalance?.totalBalance || 0
+    
+    // Get DeFindex locked balance from the API response or cached state
+    const defindexLocked = balanceDataFromResponse?.defindexBalance || strategyBalance || 0
+    
+    console.log("[Send Payment] 💰 Balance breakdown:", {
+      walletBalance: walletBalance.toFixed(2) + " USDC (available for sending)",
+      strategyBalance: strategyBalance.toFixed(2) + " USDC (in DeFindex strategy)",
+      totalBalance: totalBalance.toFixed(2) + " USDC (total)",
+      currentBalance: currentBalance.toFixed(2) + " USDC (real-time wallet balance)",
+      defindexLocked: defindexLocked.toFixed(2) + " USDC (locked in DeFindex)",
+      sendAmount: amount.toFixed(2) + " USDC",
+      bufferAmount: bufferAmount.toFixed(2) + " USDC",
+      requiredBalance: requiredBalance.toFixed(2) + " USDC",
+      walletAddress: walletAddress ? walletAddress.substring(0, 10) + "..." : "N/A",
+      note: "Only wallet balance can be used for sending. Strategy balance is locked in DeFindex."
+    })
+    
+    if (currentBalance < requiredBalance) {
+      const shortfall = requiredBalance - currentBalance
+      
+      let errorMessage = `Insufficient balance. You need ${requiredBalance.toFixed(2)} USDC (including ${bufferAmount.toFixed(2)} USDC buffer) but only have ${currentBalance.toFixed(2)} USDC available in your wallet.`
+      
+      if (defindexLocked > 0) {
+        errorMessage += `\n\nYou have ${defindexLocked.toFixed(2)} USDC locked in DeFindex strategy. You need to withdraw from DeFindex first to make it available for sending.`
+      }
+      
+      console.error("[Send Payment] ❌ Insufficient balance:", {
+        required: requiredBalance,
+        available: currentBalance,
+        shortfall: shortfall,
+        defindexLocked: defindexLocked,
+        totalUsdc: (currentBalance + defindexLocked).toFixed(2),
+        message: "Funds in DeFindex are locked and cannot be used for sending"
+      })
+      
+      alert(errorMessage)
+      setIsSending(false)
+      return
+    }
+
+    setIsSending(true)
+    try {
+      // userId already retrieved above
+
+      // Step 1: Get unsigned transaction from server
+      // Pass the sender's wallet address to ensure we use the correct one
+      console.log("[Send Payment] Building transaction:", {
+        sender: walletAddress ? walletAddress.substring(0, 10) + "..." + walletAddress.substring(walletAddress.length - 10) : "N/A",
+        destination: resolvedRecipientAddress ? resolvedRecipientAddress.substring(0, 10) + "..." + resolvedRecipientAddress.substring(resolvedRecipientAddress.length - 10) : "N/A",
+        fullDestination: resolvedRecipientAddress, // Log full address for debugging
+        amount: amount.toString(),
+        currentBalance: currentBalance.toFixed(2),
+        requiredBalance: requiredBalance.toFixed(2)
+      })
+      
+      const buildResponse = await fetch("/api/wallet/stellar/payment", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": userId,
+        },
+        body: JSON.stringify({
+          destination: resolvedRecipientAddress,
+          amount: amount.toString(),
+          sender: walletAddress, // Pass the wallet address from frontend state
+          memo: sendMemo.trim() || undefined, // Pass memo if provided
+        }),
+      })
+
+      if (!buildResponse.ok) {
+        const error = await buildResponse.json()
+        throw new Error(error.error || "Failed to build payment transaction")
+      }
+
+      const { unsignedXdr } = await buildResponse.json()
+      if (!unsignedXdr) {
+        throw new Error("No unsigned transaction returned")
+      }
+
+      // Step 2: Sign transaction with biometric (no text, just Face ID prompt)
+      const stellarSdk = await import("@stellar/stellar-sdk")
+      const { getStellarConfig } = await import("@/lib/turnkey/config")
+      const stellarConfig = getStellarConfig()
+      const networkPassphrase = stellarConfig.network === "mainnet" ? stellarSdk.Networks.PUBLIC : stellarSdk.Networks.TESTNET
+      const transactionXdr = stellarSdk.TransactionBuilder.fromXDR(unsignedXdr, networkPassphrase)
+      if (transactionXdr instanceof stellarSdk.FeeBumpTransaction) {
+        throw new Error("Fee bump transactions are not supported")
+      }
+      // TypeScript knows this is a Transaction after the instanceof check
+      const transaction = transactionXdr
+
+      // Verify transaction source matches our wallet address
+      console.log("[Send Payment] Verifying transaction source:", {
+        transactionSource: transaction.source,
+        walletAddress: walletAddress,
+        match: transaction.source === walletAddress
+      })
+
+      if (transaction.source !== walletAddress) {
+        console.error("[Send Payment] ❌ Transaction source doesn't match wallet address!", {
+          transactionSource: transaction.source,
+          walletAddress: walletAddress
+        })
+        throw new Error(`Transaction source mismatch. Expected: ${walletAddress?.substring(0, 10)}..., Got: ${transaction.source.substring(0, 10)}...`)
+      }
+
+      // Log transaction details before signing
+      const operations = transaction.operations || []
+      if (operations.length > 0) {
+        const paymentOp = operations[0] as any
+        console.log("[Send Payment] Transaction details before signing:", {
+          source: transaction.source.substring(0, 10) + "..." + transaction.source.substring(transaction.source.length - 10),
+          destination: paymentOp.destination ? paymentOp.destination.substring(0, 10) + "..." + paymentOp.destination.substring(paymentOp.destination.length - 10) : "N/A",
+          fullDestination: paymentOp.destination, // Log full destination for debugging
+          amount: paymentOp.amount,
+          asset: paymentOp.asset?.code || "native"
+        })
+      }
+
+      // Get credential ID and sign (this will trigger biometric prompt)
+      const { getCurrentCredentialId } = await import("@/lib/storage/key-utils")
+      const { signTransactionClientSide } = await import("@/lib/stellar/client-signing")
+      
+      const credentialId = await getCurrentCredentialId()
+      if (!credentialId) {
+        throw new Error("Credential ID not found. Please log in again.")
+      }
+
+      // Sign transaction (triggers biometric prompt)
+      // Use transaction.source as the publicKey to ensure we sign with the correct key
+      console.log("[Send Payment] Signing transaction with wallet address:", walletAddress)
+      const signedResult = await signTransactionClientSide(transaction, credentialId, walletAddress, userId)
+      const signedXdr = signedResult.transaction.toXDR()
+
+      // Step 3: Submit signed transaction
+      const submitResponse = await fetch("/api/wallet/stellar/payment", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": userId,
+        },
+        body: JSON.stringify({
+          signedTransactionXdr: signedXdr,
+        }),
+      })
+
+      if (!submitResponse.ok) {
+        const error = await submitResponse.json()
+        const errorMessage = error.error || "Failed to submit payment"
+        console.error("[Send Payment] Error response:", error)
+        throw new Error(errorMessage)
+      }
+
+      const result = await submitResponse.json()
+      if (result.success && result.transactionHash) {
+        // Show success modal
+        setTransactionHash(result.transactionHash)
+        setShowSuccessModal(true)
+        setIsSendModalOpen(false)
+        
+        // Refresh balance
+        if (walletAddress) {
+          fetchWalletUSDCBalance(walletAddress)
+        }
+      } else {
+        const errorMessage = result.error || "Payment failed"
+        console.error("[Send Payment] Payment failed:", result)
+        throw new Error(errorMessage)
+      }
+    } catch (error: any) {
+      console.error("[Send Payment] Error:", error)
+      console.error("[Send Payment] Error details:", {
+        message: error.message,
+        stack: error.stack,
+        response: error.response,
+        status: error.status
+      })
+      
+      // Provide more detailed error messages
+      let errorMessage = error.message || "Unknown error"
+      if (error.message?.includes("account not found")) {
+        errorMessage = "Your wallet account is not active on the Stellar network. Please ensure your account has been funded with at least 1 XLM."
+      } else if (error.message?.includes("insufficient")) {
+        errorMessage = "Insufficient balance. Please check your USDC balance."
+      } else if (error.message?.includes("trustline")) {
+        errorMessage = "USDC trustline not established. Please set up your wallet first."
+      } else if (error.message?.includes("Credential ID not found")) {
+        errorMessage = "Authentication error. Please log out and log back in."
+      }
+      
+      alert(`❌ ${errorMessage}`)
+    } finally {
+      setIsSending(false)
     }
   }
 
@@ -1525,6 +1775,134 @@ export default function WalletPage() {
     touchEndY.current = null
   }
 
+  const handleExposeSecretKey = async () => {
+    try {
+      const { retrieveKeypair } = await import("@/lib/storage/browser-keys")
+      const { getCredentialIdFromSession } = await import("@/lib/storage/key-utils")
+      const { Keypair } = await import("@stellar/stellar-sdk")
+      
+      const credentialId = getCredentialIdFromSession()
+      const userId = sessionStorage.getItem("dev_username")
+      
+      if (!credentialId) {
+        alert("No credential ID found. Please log in again.")
+        return
+      }
+      
+      const keypair = await retrieveKeypair(credentialId, userId || undefined)
+      
+      if (!keypair) {
+        alert("No keypair found. Please create a wallet first.")
+        return
+      }
+      
+      // Verify the keypair matches the wallet address
+      const publicKeyFromKeypair = keypair.publicKey()
+      if (walletAddress && publicKeyFromKeypair !== walletAddress) {
+        console.error("[Wallet] ⚠️ Keypair mismatch!", {
+          walletAddress,
+          publicKeyFromKeypair,
+        })
+        alert(`⚠️ WARNING: Secret key doesn't match wallet address!\n\nWallet Address: ${walletAddress}\nKeypair Public Key: ${publicKeyFromKeypair}\n\nThis secret key cannot be used to sign transactions for this wallet.`)
+        return
+      }
+      
+      const secret = keypair.secret()
+      
+      // Double-check: verify secret key can recreate the public key
+      try {
+        const verifyKeypair = Keypair.fromSecret(secret)
+        if (verifyKeypair.publicKey() !== publicKeyFromKeypair) {
+          console.error("[Wallet] ⚠️ Secret key verification failed!")
+          alert("⚠️ Secret key verification failed. The secret key cannot recreate the public key.")
+          return
+        }
+        console.log("[Wallet] ✅ Secret key verified - matches wallet address:", walletAddress)
+      } catch (verifyError) {
+        console.error("[Wallet] ⚠️ Error verifying secret key:", verifyError)
+        alert("⚠️ Failed to verify secret key. It may be invalid.")
+        return
+      }
+      
+      setSecretKey(secret)
+      setIsSecretKeyExposed(true)
+      console.log("[Wallet] Secret key exposed and verified (first 10 chars):", secret.substring(0, 10) + "...")
+    } catch (error) {
+      console.error("[Wallet] Error exposing secret key:", error)
+      alert("Failed to retrieve secret key. Please try again.")
+    }
+  }
+
+  const handleCopySecretKey = async () => {
+    if (!secretKey) {
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(secretKey)
+      setSecretKeyCopied(true)
+      setTimeout(() => setSecretKeyCopied(false), 2000)
+    } catch (err) {
+      console.error("Failed to copy secret key:", err)
+      alert("Failed to copy secret key")
+    }
+  }
+
+  const handleCheckAccountDiagnostics = async () => {
+    if (!walletAddress) {
+      alert("No wallet address available")
+      return
+    }
+
+    setLoadingDiagnostics(true)
+    try {
+      const { checkAccountStatus } = await import("@/lib/stellar/wallet-creator")
+      const { USDC_ISSUERS } = await import("@/lib/stellar/wallet-creator")
+      const { getStellarConfig } = await import("@/lib/turnkey/config")
+      
+      const status = await checkAccountStatus(walletAddress)
+      const stellarConfig = getStellarConfig()
+      const usdcIssuer = USDC_ISSUERS[stellarConfig.network]
+      
+      // Get XLM balance
+      const xlmBalance = status.balances.find(b => b.asset === "XLM")
+      const balanceValue = xlmBalance ? parseFloat(xlmBalance.balance) : 0
+      
+      setAccountDiagnostics({
+        xlmBalance: balanceValue,
+        hasTrustline: status.hasUSDCTrustline,
+        network: status.network,
+        usdcIssuer: usdcIssuer,
+      })
+      
+      // Show detailed info in console
+      console.log("[Wallet Diagnostics]", {
+        network: status.network,
+        xlmBalance: balanceValue,
+        hasTrustline: status.hasUSDCTrustline,
+        usdcIssuer,
+        allBalances: status.balances,
+        accountExists: status.exists,
+      })
+      
+      // Show alert with key info
+      if (!status.exists) {
+        alert("⚠️ Account not found on Stellar network. Please fund it first.")
+      } else if (balanceValue < 1.5) {
+        alert(`⚠️ Low balance: ${balanceValue.toFixed(7)} XLM\nYou need at least 1.5 XLM to create a trustline.\n\nMinimum requirements:\n- 1 XLM for account\n- 0.5 XLM for trustline reserve`)
+      } else if (status.hasUSDCTrustline) {
+        alert("✅ USDC trustline already exists!")
+      } else {
+        alert(`Account Status:\n\nNetwork: ${status.network.toUpperCase()}\nBalance: ${balanceValue.toFixed(7)} XLM\nTrustline: Not found\n\nUSDC Issuer:\n${usdcIssuer}\n\n✅ Use this issuer address in Stellar Lab to create the trustline.`)
+      }
+    } catch (error: any) {
+      console.error("[Wallet] Error checking account diagnostics:", error)
+      const errorMsg = error?.response?.data?.detail || error?.message || "Unknown error"
+      alert(`Failed to check account status:\n\n${errorMsg}\n\nMake sure:\n1. Your account is funded\n2. You're connected to the correct network`)
+    } finally {
+      setLoadingDiagnostics(false)
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-black dark text-white">
@@ -1554,94 +1932,111 @@ export default function WalletPage() {
       </div>
 
       {/* Content */}
-      <div 
-        className="relative z-10 h-full overflow-y-auto touch-pan-y"
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-        style={{ touchAction: 'pan-y' }}
-      >
-        <div className="container mx-auto px-6 py-8 md:py-12">
-          {/* Balance Display Box */}
-          <div className="mb-8 relative">
-            <div className="border border-white/20 rounded-lg p-8 text-center relative">
-              <div className="text-sm text-white/60 mb-4">{t.totalBalance} ({getCurrencySymbol()})</div>
-              <div
-                className="text-6xl font-bold text-white cursor-pointer select-none flex items-center justify-center min-h-[4rem]"
-                onClick={toggleBalanceVisibility}
-              >
-                {isBalanceLoading && xlmBalance === null ? (
-                  <span className="tabular-nums">----</span>
-                ) : isBalanceVisible ? (
-                  currency === "ARS" ? (
-                    <AnimatedARSBalance
-                      initialBalance={animatedBalance / (usdToArsRate || 900)} // Convert ARS back to USD
-                      usdToArsRate={usdToArsRate || 900}
-                      apy={defindexBalance?.apy || 15.5}
-                      isVisible={isBalanceVisible}
-                    />
-                  ) : (
-                    <SlidingNumber value={animatedBalance} />
-                  )
-                ) : (
-                  <span className="tabular-nums">{maskedBalance}</span>
-                )}
-              </div>
-              {/* Real-time APY Display - Clickable */}
-              <div className="mt-2">
-                <button
-                  onClick={() => {
-                    setIsBalanceAuditOpen(true)
-                    // Fetch APY if not already loaded
-                    if (apyLoading && typeof window !== "undefined") {
-                      const userId = sessionStorage.getItem("dev_username")
-                      if (userId) {
-                        fetchAPY(userId)
-                      }
-                    }
-                  }}
-                  className="flex items-center justify-center gap-2 text-green-400 hover:text-green-300 transition-colors cursor-pointer"
-                  aria-label="View Balance Audit"
+      {isBalanceLoading ? (
+        <WalletSkeleton />
+      ) : (
+        <motion.div 
+          className="relative z-10 h-full overflow-y-auto touch-pan-y pb-24 md:pb-28"
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          style={{ touchAction: 'pan-y' }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3, ease: "easeInOut" }}
+        >
+          <div className="container mx-auto px-6 py-8 md:py-12">
+            {/* Balance Display Box */}
+            <div className="mb-8 relative">
+              <div className="border border-white/20 rounded-lg p-8 text-center relative">
+                <div
+                  className="text-6xl font-bold text-white cursor-pointer select-none flex flex-col items-center justify-center min-h-[4rem]"
+                  onClick={toggleBalanceVisibility}
                 >
-                  <TrendingUp className="w-4 h-4" />
-                  <span className="font-semibold">
-                    {apyLoading ? "..." : (typeof apyValue === 'number' && !isNaN(apyValue)) ? `${apyValue.toFixed(2)}%` : (typeof defindexBalance?.apy === 'number' && !isNaN(defindexBalance.apy)) ? `${defindexBalance.apy.toFixed(2)}%` : "15.50%"}
-                  </span>
-                </button>
+                  {isBalanceVisible ? (
+                    <SlidingNumber value={animatedBalance} />
+                  ) : (
+                    <span className="tabular-nums">{maskedBalance}</span>
+                  )}
+                  <div className="text-2xl font-bold text-white mt-2">USDC</div>
+                </div>
+                {/* Real-time APY Display - Clickable */}
+                <div className="mt-2">
+                  <button
+                    onClick={() => {
+                      setIsBalanceAuditOpen(true)
+                      // Fetch APY if not already loaded
+                      if (apyLoading && typeof window !== "undefined") {
+                        const userId = sessionStorage.getItem("dev_username")
+                        if (userId) {
+                          fetchAPY(userId)
+                        }
+                      }
+                    }}
+                    className="flex items-center justify-center gap-2 text-green-400 hover:text-green-300 transition-colors cursor-pointer"
+                    aria-label="View Balance Audit"
+                  >
+                    <TrendingUp className="w-4 h-4" />
+                    <span className="font-semibold">
+                      {apyLoading ? "..." : (typeof apyValue === 'number' && !isNaN(apyValue)) ? `${apyValue.toFixed(2)}%` : (typeof defindexBalance?.apy === 'number' && !isNaN(defindexBalance.apy)) ? `${defindexBalance.apy.toFixed(2)}%` : "15.50%"}
+                    </span>
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Trust Points - Bottom Left */}
-        <button
-          onClick={() => setIsTrustModalOpen(true)}
-          className="fixed bottom-4 left-4 md:bottom-6 md:left-6 z-10"
-        >
-          <div className="px-5 py-3 md:px-4 md:py-2 flex items-center gap-2 md:gap-2 transition-colors cursor-pointer">
-            <Award className="w-6 h-6 md:w-5 md:h-5 text-white" />
-            <span className="text-white font-semibold text-base md:text-sm">
-              {trustPoints?.balance ?? 0} TRUST
-            </span>
-          </div>
-        </button>
-
-        {/* Wallet Icon - Bottom Right */}
-        <button
-          onClick={() => setIsProfileSheetOpen(true)}
-          className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-10"
-          aria-label={t.openProfile}
-        >
-          <div className="w-16 h-16 md:w-14 md:h-14 flex items-center justify-center transition-colors cursor-pointer relative">
-            <Wallet className="w-7 h-7 md:w-6 md:h-6 text-white" />
-            {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-xs text-white font-bold">
-                {unreadCount > 9 ? "9+" : unreadCount}
-              </span>
+            {/* Create New Wallet Button - Show for first-time users without wallet */}
+            {!walletAddress && (
+              <div className="mb-8">
+                <Button
+                  onClick={() => setIsProfileSheetOpen(true)}
+                  className="w-full h-14 text-lg font-semibold bg-white text-black hover:bg-white/90 transition-all duration-200 rounded-lg shadow-lg hover:shadow-xl"
+                >
+                  <Wallet className="w-5 h-5 mr-2" />
+                  Create new wallet
+                </Button>
+              </div>
             )}
           </div>
-        </button>
-      </div>
+
+          {/* Bottom Menu Bar - Three equally spaced buttons (floating) */}
+          <div className="fixed bottom-0 left-0 right-0 z-10 px-4 py-3 md:px-6 md:py-4">
+            <div className="max-w-md mx-auto flex items-center justify-between">
+              {/* Left: QR Code Button */}
+              <button
+                onClick={() => setIsQRCodeOpen(true)}
+                className="flex items-center justify-center w-14 h-14 md:w-16 md:h-16 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 transition-colors backdrop-blur-sm"
+                aria-label="Show QR Code"
+              >
+                <QrCode className="w-6 h-6 md:w-7 md:h-7 text-white" />
+              </button>
+
+              {/* Center: Circular Button with Upwards Arrow - Send Payment */}
+              <button
+                onClick={() => setIsSendModalOpen(true)}
+                className="flex items-center justify-center w-16 h-16 md:w-20 md:h-20 rounded-full bg-white text-black hover:bg-white/90 transition-colors shadow-lg"
+                aria-label="Send Payment"
+              >
+                <ArrowUp className="w-7 h-7 md:w-8 md:h-8" />
+              </button>
+
+              {/* Right: Wallet Button */}
+              <button
+                onClick={() => setIsProfileSheetOpen(true)}
+                className="flex items-center justify-center w-14 h-14 md:w-16 md:h-16 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 transition-colors relative backdrop-blur-sm"
+                aria-label={t.openProfile}
+              >
+                <Wallet className="w-6 h-6 md:w-7 md:h-7 text-white" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-xs text-white font-bold">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* Trust Points Modal */}
       <Dialog open={isTrustModalOpen} onOpenChange={setIsTrustModalOpen}>
@@ -1706,7 +2101,7 @@ export default function WalletPage() {
 
               {referralLoading ? (
                 <div className="p-4 bg-white/5 border border-white/10 rounded-lg text-white/60 text-center">
-                  {t.language === "es" ? "Cargando código de referido..." : "Loading referral code..."}
+                  Loading referral code...
                 </div>
               ) : inviteCode ? (
                 <>
@@ -1750,7 +2145,7 @@ export default function WalletPage() {
                       {inviteCodeCopied ? (
                         <>
                           <Check className="w-4 h-4 animate-in fade-in zoom-in duration-200" />
-                          <span>{t.language === "es" ? "¡Copiado!" : "Copied!"}</span>
+                          <span>Copied!</span>
                         </>
                       ) : (
                         <>
@@ -1817,7 +2212,7 @@ export default function WalletPage() {
                 </>
               ) : (
                 <div className="p-4 bg-white/5 border border-white/10 rounded-lg text-white/60 text-center">
-                  {t.language === "es" ? "No se pudo cargar el código de referido" : "Failed to load referral code"}
+                  Failed to load referral code
                 </div>
               )}
 
@@ -1909,6 +2304,12 @@ export default function WalletPage() {
           onTouchEnd={onSheetTouchEnd}
           style={{ touchAction: 'pan-y' }}
         >
+          {/* Accessibility: Title and Description for screen readers */}
+          <SheetTitle className="sr-only">Profile Settings</SheetTitle>
+          <SheetDescription className="sr-only">
+            Manage your profile, wallet address, and account settings
+          </SheetDescription>
+
           {/* Back Button - Top Left */}
           <button
             onClick={() => setIsProfileSheetOpen(false)}
@@ -1919,34 +2320,16 @@ export default function WalletPage() {
           </button>
 
 
-          <div className="space-y-6 px-4 pt-12 pb-8">
+          {/* Sozu Tag Title - Centered at top */}
+          <div className="px-4 pt-8 pb-4 text-center">
+            <h2 className="text-2xl font-bold text-white">
+              ${username || "Loading..."}
+            </h2>
+          </div>
+
+          <div className="space-y-6 px-4 pb-8">
             <Card className="border-white/20 bg-black">
               <CardContent className="space-y-6 pt-6">
-                {/* Profile Picture */}
-                <div className="flex justify-center">
-                  <button
-                    onClick={handleProfilePictureChange}
-                    className="cursor-pointer hover:opacity-80 transition-opacity"
-                  >
-                    <Avatar className="w-24 h-24 border-2 border-white/20">
-                      <AvatarImage src={profilePic || "/capybara_pfp.png"} />
-                      <AvatarFallback className="bg-white/10 text-white text-2xl">
-                        {username.substring(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                  </button>
-                </div>
-
-                {/* Username */}
-                <div className="space-y-2">
-                  <Input
-                    id="username"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="bg-black border-white/20 text-white"
-                    placeholder={t.username}
-                  />
-                </div>
 
                 {/* Wallet Address */}
                 <div className="space-y-2">
@@ -1966,7 +2349,7 @@ export default function WalletPage() {
                       {isEstablishingTrustline ? (
                         <>
                           <div className="w-3 h-3 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
-                          <span className="text-xs">{t.language === "es" ? "Configurando..." : "Setting up..."}</span>
+                          <span className="text-xs">Setting up...</span>
                         </>
                       ) : (
                         <>
@@ -1983,144 +2366,156 @@ export default function WalletPage() {
                   )}
                 </div>
 
-                {/* Language Selection */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-center gap-2 mb-2">
-                    <Globe className="w-4 h-4 text-white" />
-                    <span className="text-sm text-white/80">{t.language}</span>
-                  </div>
-                  <div className="flex justify-center gap-4">
-                    <Button
-                      variant="outline"
-                      onClick={() => handleLanguageChange("es")}
-                      className={`border-2 bg-transparent ${language === "es" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
-                    >
-                      ES
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => handleLanguageChange("en")}
-                      className={`border-2 bg-transparent ${language === "en" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
-                    >
-                      EN
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Currency Selection */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-center gap-2 mb-2">
-                    <Wallet className="w-4 h-4 text-white" />
-                    <span className="text-sm text-white/80">{t.currency}</span>
-                  </div>
-                  <p className="text-xs text-white/60 text-center mb-2">{t.currencyDesc}</p>
-                  <div className="flex flex-row justify-center gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => handleCurrencyChange("XLM")}
-                      className={`border-2 bg-transparent flex-1 ${currency === "XLM" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
-                    >
-                      {t.xlm}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => handleCurrencyChange("USD")}
-                      className={`border-2 bg-transparent flex-1 ${currency === "USD" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
-                    >
-                      {t.usd}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => handleCurrencyChange("ARS")}
-                      className={`border-2 bg-transparent flex-1 ${currency === "ARS" ? "border-white text-white" : "border-white/20 text-white/60"} hover:bg-white/10`}
-                    >
-                      {t.ars}
-                    </Button>
-                  </div>
-                </div>
-
-                {/* EVM Address Section */}
-                <div className="space-y-2 pt-4 border-t border-white/20">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <Link2 className="w-4 h-4 text-white" />
-                      <span className="text-sm text-white/80">{t.linkEvmAddress}</span>
-                    </div>
-                    {evmAddress && (
-                      <button
-                        onClick={handleUnlinkEvmAddress}
-                        disabled={evmLoading}
-                        className="text-xs text-white/60 hover:text-white/80 transition-colors"
-                      >
-                        {t.unlinkAddress}
-                      </button>
-                    )}
-                  </div>
-                  
-                  {evmAddress ? (
-                    <div className="space-y-2">
-                      <div 
-                        onClick={handleCopyEvmAddress}
-                        className="p-4 bg-white/5 border border-white/10 rounded-lg cursor-pointer hover:bg-white/10 transition-colors relative"
-                      >
-                        <code className="text-sm text-white/80 font-mono truncate block pr-20">
-                          {`${evmAddress.substring(0, 8)}...${evmAddress.substring(evmAddress.length - 8)}`}
-                        </code>
-                        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1 text-white/60 hover:text-white cursor-pointer">
-                          <ExternalLink className="w-3 h-3" />
-                          <span className="text-xs">{t.evmAddressCopied}</span>
-                        </div>
-                      </div>
-                      
-                      {/* MaxFlow Ego Score */}
-                      {maxflowLoading ? (
-                        <div className="p-4 bg-white/5 border border-white/10 rounded-lg text-center">
-                          <p className="text-sm text-white/60">{t.loadingScore}</p>
-                        </div>
-                      ) : maxflowEgoScore ? (
-                        <div className="p-4 bg-white/5 border border-white/10 rounded-lg space-y-2">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm font-semibold text-white">{t.maxflowScore}</span>
+                {/* Secret Key - Only show if wallet exists */}
+                {walletAddress && (
+                  <div className="space-y-2 pt-4 border-t border-white/20">
+                    <Label className="text-white/80 text-sm flex items-center gap-2">
+                      <Key className="w-4 h-4" />
+                      Secret Key
+                    </Label>
+                    <div className="p-4 bg-white/5 border border-white/10 rounded-lg overflow-hidden">
+                      {isSecretKeyExposed && secretKey ? (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <code className="text-xs text-white/90 font-mono truncate flex-1 pr-2">
+                              {secretKey.length > 40 
+                                ? `${secretKey.substring(0, 20)}...${secretKey.substring(secretKey.length - 20)}`
+                                : secretKey}
+                            </code>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={handleCopySecretKey}
+                              className="bg-transparent border-white/20 text-white hover:bg-white/10 flex-shrink-0"
+                            >
+                              {secretKeyCopied ? (
+                                <Check className="w-4 h-4 text-green-400" />
+                              ) : (
+                                <Copy className="w-4 h-4" />
+                              )}
+                            </Button>
                           </div>
-                          <div className="space-y-1 text-xs">
-                            <div className="flex justify-between">
-                              <span className="text-white/60">{t.localHealth}:</span>
-                              <span className="text-white font-medium">{maxflowEgoScore.localHealth.toFixed(2)}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-white/60">{t.totalNodes}:</span>
-                              <span className="text-white font-medium">{maxflowEgoScore.metrics.totalNodes}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-white/60">{t.acceptedUsers}:</span>
-                              <span className="text-white font-medium">{maxflowEgoScore.metrics.acceptedUsers}</span>
-                            </div>
-                            {maxflowEgoScore.metrics.avgResidualFlow > 0 && (
-                              <div className="flex justify-between">
-                                <span className="text-white/60">Avg Flow:</span>
-                                <span className="text-white font-medium">{maxflowEgoScore.metrics.avgResidualFlow.toFixed(2)}</span>
-                              </div>
-                            )}
+                          <p className="text-xs text-yellow-400/80">
+                            ⚠️ Keep this secret key secure. Anyone with access to it can control your wallet.
+                          </p>
+                          <div className="text-xs text-green-400/80 flex items-center gap-1">
+                            <Check className="w-3 h-3" />
+                            Verified: Secret key matches wallet address
                           </div>
                         </div>
                       ) : (
-                        <div className="p-4 bg-white/5 border border-white/10 rounded-lg text-center">
-                          <p className="text-sm text-white/60">{t.errorLoadingScore}</p>
+                        <div className="flex items-center gap-2">
+                          <code className="text-xs text-white/40 font-mono truncate flex-1 pr-2">
+                            ••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••
+                          </code>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={handleExposeSecretKey}
+                            className="bg-transparent border-white/20 text-white hover:bg-white/10 flex-shrink-0"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
                         </div>
                       )}
                     </div>
-                  ) : (
-                    <button
-                      onClick={() => setIsEvmDialogOpen(true)}
-                      className="w-full p-4 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-colors text-left"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-white/80">{t.evmAddressNotLinked}</span>
-                        <Link2 className="w-4 h-4 text-white/60" />
-                      </div>
-                    </button>
-                  )}
-                </div>
+                    <p className="text-xs text-white/60">
+                      Use this secret key to manually fund your account and add the USDC trustline using Stellar tools.
+                    </p>
+                    
+                    {/* Account Diagnostics */}
+                    <div className="pt-4 border-t border-white/20">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCheckAccountDiagnostics}
+                        disabled={loadingDiagnostics}
+                        className="w-full bg-transparent border-white/20 text-white hover:bg-white/10"
+                      >
+                        {loadingDiagnostics ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin mr-2" />
+                            Checking...
+                          </>
+                        ) : (
+                          "Check Account Status"
+                        )}
+                      </Button>
+                      
+                      {accountDiagnostics && (
+                        <div className="mt-3 p-3 bg-white/5 border border-white/10 rounded-lg space-y-2">
+                          <div className="text-xs text-white/80">
+                            <strong>Network:</strong> {accountDiagnostics.network?.toUpperCase() || "Unknown"}
+                          </div>
+                          <div className="text-xs text-white/80">
+                            <strong>XLM Balance:</strong> {accountDiagnostics.xlmBalance !== null ? `${accountDiagnostics.xlmBalance.toFixed(7)} XLM` : "Unknown"}
+                          </div>
+                          {accountDiagnostics.xlmBalance !== null && accountDiagnostics.xlmBalance < 1.5 && (
+                            <div className="text-xs text-yellow-400">
+                              ⚠️ Low balance! You need at least 1.5 XLM to create a trustline.
+                            </div>
+                          )}
+                          <div className="text-xs text-white/80">
+                            <strong>USDC Trustline:</strong> {accountDiagnostics.hasTrustline ? "✅ Exists" : "❌ Not found"}
+                          </div>
+                          <div className="text-xs text-white/60 break-all">
+                            <strong>USDC Issuer:</strong> {accountDiagnostics.usdcIssuer || "Unknown"}
+                          </div>
+                          {!accountDiagnostics.hasTrustline && (
+                            <div className="text-xs text-white/60 mt-2 pt-2 border-t border-white/10">
+                              <strong>For Stellar Lab:</strong>
+                              <ul className="list-disc list-inside mt-1 space-y-1">
+                                <li>Select <strong>{accountDiagnostics.network?.toUpperCase() || "TESTNET"}</strong> network</li>
+                                <li>Use issuer: <code className="text-xs">{accountDiagnostics.usdcIssuer?.substring(0, 20)}...</code></li>
+                                <li>Ensure balance ≥ 1.5 XLM</li>
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Cypherpunk Wallet Creator - Phase 3 */}
+                {(!walletAddress || walletAddress === "") && (
+                  <div className="space-y-2 pt-4 border-t border-white/20">
+                    <p className="text-xs text-white/60 mb-2">
+                      Create your non-custodial wallet with real Stellar account and USDC trustline
+                    </p>
+                    <div className="bg-black/50 rounded-lg p-4 border border-white/10">
+                      <WalletCreator 
+                        compact={true}
+                        onWalletCreated={async (publicKey, network) => {
+                          console.log("[Wallet] ✅ Wallet created via WalletCreator:", publicKey, network)
+                          setWalletAddress(publicKey)
+                          setWalletNetwork(network)
+                          
+                          // Fetch XLM balance for the new wallet
+                          try {
+                            const userId = sessionStorage.getItem("dev_username")
+                            if (userId) {
+                              const balanceResponse = await fetch("/api/wallet/stellar/balance", {
+                                headers: {
+                                  "x-user-id": userId,
+                                },
+                              })
+                              if (balanceResponse.ok) {
+                                const balanceData = await balanceResponse.json()
+                                if (balanceData.balance !== undefined) {
+                                  setXlmBalance(balanceData.balance)
+                                }
+                              }
+                            }
+                          } catch (error) {
+                            console.error("[Wallet] Error fetching balance after wallet creation:", error)
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
               </CardContent>
             </Card>
 
@@ -2225,10 +2620,10 @@ export default function WalletPage() {
         <DialogContent className="bg-black/80 backdrop-blur-md border-white/20 text-white max-w-md">
           <DialogHeader>
             <DialogTitle className="text-white text-2xl">
-              {t.language === "es" ? "Auditoría de Balance" : "Balance Audit"}
+              Balance Audit
             </DialogTitle>
             <DialogDescription className="text-white/60">
-              {t.language === "es" ? "Desglose detallado de tu balance" : "Detailed breakdown of your balance"}
+              Detailed breakdown of your balance
             </DialogDescription>
           </DialogHeader>
 
@@ -2239,7 +2634,7 @@ export default function WalletPage() {
                   {/* Wallet Balance */}
                   <div className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/10">
                     <span className="text-white/80">
-                      {t.language === "es" ? "Billetera" : "Wallet"}:
+                      Wallet:
                     </span>
                     <span className="text-white font-medium text-lg">
                       ${defindexBalance.walletBalance === 0 ? "0" : defindexBalance.walletBalance.toFixed(2)} USDC
@@ -2249,7 +2644,7 @@ export default function WalletPage() {
                   {/* Strategy Balance */}
                   <div className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/10">
                     <span className="text-white/80">
-                      {t.language === "es" ? "Estrategia DeFi" : "DeFi Strategy"}:
+                      DeFi Strategy:
                     </span>
                     <span className="text-green-400 font-medium text-lg">
                       ${defindexBalance.strategyBalance === 0 ? "0" : defindexBalance.strategyBalance.toFixed(2)} USDC
@@ -2259,7 +2654,7 @@ export default function WalletPage() {
                   {/* Total Balance */}
                   <div className="flex justify-between items-center p-4 bg-white/10 rounded-lg border-2 border-white/20">
                     <span className="text-white font-semibold">
-                      {t.language === "es" ? "Total" : "Total"}:
+                      Total:
                     </span>
                     <span className="text-white font-bold text-xl">
                       ${defindexBalance.totalBalance === 0 ? "0" : defindexBalance.totalBalance.toFixed(2)} USDC
@@ -2270,7 +2665,7 @@ export default function WalletPage() {
                   {defindexBalance.strategyShares > 0 && (
                     <div className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/10">
                       <span className="text-white/60 text-sm">
-                        {t.language === "es" ? "Acciones" : "Shares"}:
+                        Shares:
                       </span>
                       <span className="text-white/80 text-sm">
                         {defindexBalance.strategyShares.toFixed(4)}
@@ -2290,7 +2685,7 @@ export default function WalletPage() {
                   >
                     <div className="flex items-center gap-2">
                       <TrendingUp className="w-4 h-4" />
-                      <span>{t.language === "es" ? "Ver Estrategia Blend" : "View Blend Strategy"}</span>
+                      <span>View Blend Strategy</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <span>
@@ -2304,62 +2699,301 @@ export default function WalletPage() {
               </>
             ) : (
               <p className="text-white/60 text-center py-8">
-                {t.language === "es" ? "No hay datos de balance disponibles" : "No balance data available"}
+                No balance data available
               </p>
             )}
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* EVM Address Dialog */}
-      <Dialog open={isEvmDialogOpen} onOpenChange={setIsEvmDialogOpen}>
+      {/* QR Code Dialog */}
+      <Dialog open={isQRCodeOpen} onOpenChange={setIsQRCodeOpen}>
         <DialogContent className="bg-black/80 backdrop-blur-md border-white/20 text-white max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-white text-2xl">{t.evmAddressTitle}</DialogTitle>
+            <DialogTitle className="text-white text-2xl">Receive USDC</DialogTitle>
             <DialogDescription className="text-white/60">
-              {t.evmAddressDesc}
+              Scan this QR code to send USDC to your wallet on the Stellar network
             </DialogDescription>
           </DialogHeader>
+
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="evmAddress" className="text-white">
-                {t.evmAddressTitle}
-              </Label>
-              <Input
-                id="evmAddress"
-                value={evmInput}
-                onChange={(e) => setEvmInput(e.target.value)}
-                placeholder={t.evmAddressPlaceholder}
-                className="bg-black border-white/20 text-white font-mono"
-              />
-              <p className="text-xs text-white/60">
-                {t.language === "es" 
-                  ? "Ingresa tu dirección Ethereum (0x...)" 
-                  : "Enter your Ethereum address (0x...)"}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                onClick={handleLinkEvmAddress}
-                disabled={evmLoading || !evmInput.trim()}
-                className="flex-1 bg-white text-black hover:bg-white/90"
-              >
-                {evmLoading ? (t.language === "es" ? "Vinculando..." : "Linking...") : t.linkAddress}
-              </Button>
-              <Button
-                onClick={() => {
-                  setIsEvmDialogOpen(false)
-                  setEvmInput("")
-                }}
-                variant="outline"
-                className="border-white/20 text-white hover:bg-white/10"
-              >
-                {t.cancel}
-              </Button>
-            </div>
+            {walletAddress ? (
+              <>
+                {/* QR Code */}
+                <div className="flex justify-center p-6 bg-white rounded-lg">
+                  <QRCodeComponent walletAddress={walletAddress} walletNetwork={walletNetwork} />
+                </div>
+
+                {/* Wallet Address with Memo */}
+                <div className="space-y-2">
+                  <Label className="text-white/80 text-sm">Wallet Address</Label>
+                  <div className="p-3 bg-white/5 border border-white/10 rounded-lg">
+                    <code className="text-sm text-white font-mono break-all">
+                      {walletAddress}
+                    </code>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-white/80 text-sm">Memo (Required)</Label>
+                  <div className="p-3 bg-white/5 border border-white/10 rounded-lg flex items-center justify-between">
+                    <code className="text-sm text-white font-mono">
+                      {sessionStorage.getItem("dev_username") || "No memo"}
+                    </code>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={async () => {
+                        const memo = sessionStorage.getItem("dev_username") || ""
+                        if (memo) {
+                          await navigator.clipboard.writeText(memo)
+                          alert("Memo copied to clipboard")
+                        }
+                      }}
+                      className="bg-transparent border-white/20 text-white hover:bg-white/10"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <p className="text-xs text-white/60">
+                    Include this memo when sending USDC to ensure proper credit to your account
+                  </p>
+                </div>
+
+                {/* Copy Address Button */}
+                <Button
+                  onClick={handleCopyWalletAddress}
+                  className="w-full bg-white text-black hover:bg-white/90 font-semibold"
+                >
+                  <Copy className="w-4 h-4 mr-2" />
+                  Copy Wallet Address
+                </Button>
+              </>
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-white/60">Wallet address not available</p>
+                <p className="text-sm text-white/40 mt-2">
+                  Create a wallet first to generate a QR code
+                </p>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Send Payment Dialog */}
+      <Dialog open={isSendModalOpen} onOpenChange={(open) => {
+        setIsSendModalOpen(open)
+        if (!open) {
+          // Reset state when closing
+          setSendStep("recipient")
+          setSendRecipient("")
+          setSendAmount("")
+          setResolvedRecipientAddress(null)
+          setIsManualMode(false)
+          setSendMemo("")
+        }
+      }}>
+        <DialogContent className="bg-black/80 backdrop-blur-md border-white/20 text-white max-w-md">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Send Payment</DialogTitle>
+            <DialogDescription>Send USDC to a recipient</DialogDescription>
+          </DialogHeader>
+          {sendStep === "recipient" ? (
+            <div className="space-y-4 py-4">
+              {!isManualMode ? (
+                <>
+                  {/* Sozu Tag Input */}
+                  <Input
+                    type="text"
+                    value={sendRecipient}
+                    onChange={(e) => setSendRecipient(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && sendRecipient.trim()) {
+                        handleResolveRecipient()
+                      }
+                    }}
+                    placeholder="$Sozutag"
+                    className="bg-white/5 border-white/20 text-white placeholder:text-white/40 text-lg h-14"
+                    autoFocus
+                  />
+
+                  {/* Manual Mode Button */}
+                  <button
+                    onClick={() => setIsManualMode(true)}
+                    className="w-full text-white text-sm hover:text-white/80 transition-colors"
+                    type="button"
+                  >
+                    Manual wallet address + memo
+                  </button>
+
+                  {/* Continue Button */}
+                  <Button
+                    onClick={handleResolveRecipient}
+                    disabled={!sendRecipient.trim() || isResolvingRecipient}
+                    className="w-full bg-white text-black hover:bg-white/90 font-semibold disabled:opacity-50 disabled:cursor-not-allowed h-14 text-lg"
+                  >
+                    {isResolvingRecipient ? (
+                      <>
+                        <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin mr-2" />
+                        Resolving...
+                      </>
+                    ) : (
+                      "Continue"
+                    )}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  {/* Stellar Wallet Address Input */}
+                  <Input
+                    type="text"
+                    value={sendRecipient}
+                    onChange={(e) => setSendRecipient(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && sendRecipient.trim()) {
+                        handleResolveRecipient()
+                      }
+                    }}
+                    placeholder="Stellar Wallet Address"
+                    className="bg-white/5 border-white/20 text-white placeholder:text-white/40 text-lg h-14"
+                    autoFocus
+                  />
+
+                  {/* Memo Input */}
+                  <Input
+                    type="text"
+                    value={sendMemo}
+                    onChange={(e) => setSendMemo(e.target.value)}
+                    placeholder="Memo (optional)"
+                    className="bg-white/5 border-white/20 text-white placeholder:text-white/40 text-lg h-14"
+                  />
+
+                  {/* Back to Sozu Tag Button */}
+                  <button
+                    onClick={() => {
+                      setIsManualMode(false)
+                      setSendRecipient("")
+                      setSendMemo("")
+                    }}
+                    className="w-full text-white text-sm hover:text-white/80 transition-colors"
+                    type="button"
+                  >
+                    Use Sozu tag instead
+                  </button>
+
+                  {/* Continue Button */}
+                  <Button
+                    onClick={handleResolveRecipient}
+                    disabled={!sendRecipient.trim() || isResolvingRecipient}
+                    className="w-full bg-white text-black hover:bg-white/90 font-semibold disabled:opacity-50 disabled:cursor-not-allowed h-14 text-lg"
+                  >
+                    {isResolvingRecipient ? (
+                      <>
+                        <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin mr-2" />
+                        Resolving...
+                      </>
+                    ) : (
+                      "Continue"
+                    )}
+                  </Button>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4 py-4">
+              {/* Amount Display */}
+              <div className="text-center py-2">
+                <div className="text-4xl font-bold text-white">
+                  {sendAmount || "0.00"}
+                </div>
+                <div className="text-white/60 text-sm mt-1">USDC</div>
+              </div>
+
+              {/* Amount Input (hidden but functional for mobile keyboard) */}
+              <Input
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                min="0.01"
+                value={sendAmount}
+                onChange={(e) => setSendAmount(e.target.value)}
+                placeholder="0.00"
+                className="bg-white/5 border-white/20 text-white placeholder:text-white/40 text-2xl text-center h-16 font-semibold"
+                autoFocus
+              />
+
+              {/* Send Button */}
+              <Button
+                onClick={handleSendPayment}
+                disabled={!sendAmount || isSending || parseFloat(sendAmount) <= 0}
+                className="w-full bg-white text-black hover:bg-white/90 font-semibold disabled:opacity-50 disabled:cursor-not-allowed h-14 text-lg"
+              >
+                {isSending ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin mr-2" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-5 h-5 mr-2" />
+                    Send
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Success Modal */}
+      <Dialog open={showSuccessModal} onOpenChange={(open) => {
+        setShowSuccessModal(open)
+        if (!open) {
+          // Reset all send state when closing success modal
+          setSendStep("recipient")
+          setSendRecipient("")
+          setSendAmount("")
+          setResolvedRecipientAddress(null)
+          setTransactionHash(null)
+          setIsManualMode(false)
+          setSendMemo("")
+        }
+      }}>
+        <DialogContent className="bg-black/80 backdrop-blur-md border-white/20 text-white max-w-md">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Transaction Successful</DialogTitle>
+            <DialogDescription>Your payment was sent successfully</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4 text-center">
+            <div className="w-16 h-16 mx-auto bg-green-500/20 rounded-full flex items-center justify-center">
+              <Check className="w-8 h-8 text-green-500" />
+            </div>
+            <div className="text-2xl font-bold text-white">Transaction Successful</div>
+            {transactionHash && (
+              <div className="text-sm text-white/60 font-mono">
+                {transactionHash.substring(0, 8)}...{transactionHash.substring(transactionHash.length - 8)}
+              </div>
+            )}
+            <Button
+              onClick={() => {
+                setShowSuccessModal(false)
+                setSendStep("recipient")
+                setSendRecipient("")
+                setSendAmount("")
+                setResolvedRecipientAddress(null)
+                setTransactionHash(null)
+                setIsManualMode(false)
+                setSendMemo("")
+              }}
+              className="w-full bg-white text-black hover:bg-white/90 font-semibold h-14 text-lg"
+            >
+              Done
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </div>
   )
 }

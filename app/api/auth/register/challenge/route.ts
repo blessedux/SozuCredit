@@ -19,6 +19,45 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Check if username/tag already exists in database
+    // This ensures 1 tag = 1 user = 1 passkey = 1 wallet
+    // Use service role client to bypass RLS for username availability checks
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    
+    if (!supabaseServiceKey || !supabaseUrl) {
+      console.error("[Register Challenge] Missing Supabase service credentials")
+      return NextResponse.json(
+        { error: "Service not available" },
+        { status: 500, headers: corsHeaders(request) }
+      )
+    }
+    
+    const { createClient: createServiceClient } = await import("@supabase/supabase-js")
+    const serviceClient = createServiceClient(supabaseUrl, supabaseServiceKey)
+    
+    const { data: existingProfile, error: checkError } = await serviceClient
+      .from("profiles")
+      .select("id, username")
+      .eq("username", username)
+      .maybeSingle()
+    
+    if (checkError && checkError.code !== "PGRST116") { // PGRST116 = no rows returned
+      console.error("[Register Challenge] Error checking for existing username:", checkError)
+      // Continue anyway - let the registration verify endpoint handle it
+    }
+    
+    if (existingProfile) {
+      console.log("[Register Challenge] Username already exists:", username)
+      return NextResponse.json(
+        { 
+          error: "This Sozu tag is already taken. Please choose a different tag or log in with your existing account.",
+          usernameExists: true
+        },
+        { status: 409, headers: corsHeaders(request) }
+      )
+    }
+
     // Clean up old challenges
     cleanupChallenges()
 

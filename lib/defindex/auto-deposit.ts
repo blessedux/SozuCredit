@@ -15,7 +15,7 @@ export interface AutoDepositConfig {
 
 const DEFAULT_CONFIG: AutoDepositConfig = {
   minDepositAmount: 10.0, // Minimum $10 USDC to trigger auto-deposit
-  networkFeeBuffer: 1.0, // Keep $1 USDC for network fees
+  networkFeeBuffer: 0.4, // Always keep $0.4 USDC in wallet for transactions (never deposit 100%)
   maxRetries: 3,
   retryDelayMs: 5000, // 5 seconds between retries
 }
@@ -62,17 +62,42 @@ export async function checkAndTriggerAutoDeposit(
   }
   
   // Calculate deposit amount (current balance minus network fee buffer)
-  const depositAmount = currentBalance - finalConfig.networkFeeBuffer
+  // IMPORTANT: Always leave at least 0.4 USDC in wallet for transactions (never deposit 100%)
+  let depositAmount = currentBalance - finalConfig.networkFeeBuffer
   
-  // Ensure deposit amount is positive and meets minimum
-  if (depositAmount <= 0 || depositAmount < finalConfig.minDepositAmount) {
-    console.log("[Auto-Deposit] Calculated deposit amount too small:", depositAmount)
+  // Ensure deposit amount is positive
+  if (depositAmount <= 0) {
+    console.log("[Auto-Deposit] Calculated deposit amount is zero or negative:", depositAmount)
+    return { triggered: false }
+  }
+  
+  // Final safety check: ensure we're leaving at least the buffer amount
+  const remainingInWallet = currentBalance - depositAmount
+  if (remainingInWallet < finalConfig.networkFeeBuffer) {
+    console.warn("[Auto-Deposit] ⚠️ Deposit would leave less than buffer in wallet, adjusting...")
+    depositAmount = currentBalance - finalConfig.networkFeeBuffer
+    if (depositAmount <= 0) {
+      console.log("[Auto-Deposit] Adjusted deposit amount is zero or negative:", depositAmount)
+      return { triggered: false }
+    }
+  }
+  
+  // Ensure deposit amount meets minimum
+  if (depositAmount < finalConfig.minDepositAmount) {
+    console.log("[Auto-Deposit] Deposit amount below minimum:", {
+      depositAmount,
+      minDepositAmount: finalConfig.minDepositAmount,
+      currentBalance,
+      remainingInWallet: currentBalance - depositAmount
+    })
     return { triggered: false }
   }
   
   console.log("[Auto-Deposit] ✅ Triggering auto-deposit:", {
-    depositAmount,
+    depositAmount: depositAmount.toFixed(2),
+    remainingInWallet: (currentBalance - depositAmount).toFixed(2),
     networkFeeBuffer: finalConfig.networkFeeBuffer,
+    note: "Always leaving 0.4 USDC in wallet for transactions (never deposit 100%)"
   })
   
   // Trigger deposit with retry logic
