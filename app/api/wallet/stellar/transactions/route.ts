@@ -96,11 +96,13 @@ export async function GET(request: NextRequest) {
     const transactionMap = new Map<string, any>()
 
     for (const payment of payments.records) {
-      const txHash = payment.transaction_hash
+      // Cast to any to access Horizon API response properties
+      const paymentRecord = payment as any
+      const txHash = paymentRecord.transaction_hash
       
       // Skip if not a payment operation
-      if (payment.type !== "payment") {
-        console.log(`[Transaction History API] Skipping non-payment operation: ${payment.type}`)
+      if (paymentRecord.type !== "payment") {
+        console.log(`[Transaction History API] Skipping non-payment operation: ${paymentRecord.type}`)
         continue
       }
       
@@ -109,11 +111,11 @@ export async function GET(request: NextRequest) {
       let assetCode = "XLM"
       let assetIssuer: string | null = null
       
-      if (payment.asset_type === "native") {
+      if (paymentRecord.asset_type === "native") {
         assetCode = "XLM"
-      } else if (payment.asset_type === "credit_alphanum4" || payment.asset_type === "credit_alphanum12") {
-        assetCode = payment.asset_code || "unknown"
-        assetIssuer = payment.asset_issuer || null
+      } else if (paymentRecord.asset_type === "credit_alphanum4" || paymentRecord.asset_type === "credit_alphanum12") {
+        assetCode = paymentRecord.asset_code || "unknown"
+        assetIssuer = paymentRecord.asset_issuer || null
       }
       
       console.log(`[Transaction History API] Payment asset: ${assetCode}, issuer: ${assetIssuer}, expected USDC issuer: ${usdcIssuer}`)
@@ -121,13 +123,13 @@ export async function GET(request: NextRequest) {
       // Filter for USDC payments only
       const isUSDC = assetCode === "USDC" && assetIssuer === usdcIssuer
       if (!isUSDC) {
-        console.log(`[Transaction History API] Skipping non-USDC payment: ${assetCode} (issuer: ${assetIssuer}) from ${payment.from?.substring(0, 10) || payment.source_account?.substring(0, 10) || "unknown"}...`)
+        console.log(`[Transaction History API] Skipping non-USDC payment: ${assetCode} (issuer: ${assetIssuer}) from ${paymentRecord.from?.substring(0, 10) || paymentRecord.source_account?.substring(0, 10) || "unknown"}...`)
         continue
       }
       
       // Get from/to addresses - payments endpoint uses 'from' and 'to', or 'source_account' and 'to'
-      const fromAddress = payment.from || payment.source_account || publicKeyToUse
-      const toAddress = payment.to || publicKeyToUse
+      const fromAddress = paymentRecord.from || paymentRecord.source_account || publicKeyToUse
+      const toAddress = paymentRecord.to || publicKeyToUse
       
       // Get or create transaction entry
       if (!transactionMap.has(txHash)) {
@@ -153,8 +155,8 @@ export async function GET(request: NextRequest) {
           transactionMap.set(txHash, {
             id: txHash,
             hash: txHash,
-            createdAt: payment.created_at || new Date().toISOString(),
-            ledger: payment.ledger || 0,
+            createdAt: paymentRecord.created_at || new Date().toISOString(),
+            ledger: (paymentRecord as any).ledger || 0,
             successful: true,
             memo: null,
             operations: [],
@@ -168,7 +170,7 @@ export async function GET(request: NextRequest) {
         type: "payment",
         from: fromAddress,
         to: toAddress,
-        amount: parseFloat(payment.amount),
+        amount: parseFloat(paymentRecord.amount),
         asset: assetCode,
         assetIssuer: assetIssuer,
       })
@@ -195,13 +197,14 @@ export async function GET(request: NextRequest) {
         firstOp: finalTransactions[0].operations[0]
       })
     } else if (payments.records.length > 0) {
+      const samplePayment = payments.records[0] as any
       console.log("[Transaction History API] Sample payment (not USDC):", {
-        type: payments.records[0].type,
-        asset_type: payments.records[0].asset_type,
-        asset_code: payments.records[0].asset_code,
-        asset_issuer: payments.records[0].asset_issuer,
-        from: payments.records[0].from?.substring(0, 10) + "...",
-        to: payments.records[0].to?.substring(0, 10) + "...",
+        type: samplePayment.type,
+        asset_type: samplePayment.asset_type,
+        asset_code: samplePayment.asset_code,
+        asset_issuer: samplePayment.asset_issuer,
+        from: samplePayment.from?.substring(0, 10) + "...",
+        to: samplePayment.to?.substring(0, 10) + "...",
       })
     }
 

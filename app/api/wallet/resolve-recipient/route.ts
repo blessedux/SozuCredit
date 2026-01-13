@@ -56,7 +56,6 @@ export async function POST(request: NextRequest) {
       .select("id, username")
       .eq("username", recipient.trim())
       .maybeSingle()
-      .maybeSingle()
     
     // If not found, try case-insensitive match (for debugging)
     if (!profile && !profileError) {

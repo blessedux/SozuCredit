@@ -208,43 +208,31 @@ export async function PUT(request: Request) {
       }
       
       if (!updatedProfile) {
-        // Profile doesn't exist, create it
-        const { data: newProfile, error: createError } = await serviceClient
-          .from("profiles")
-          .insert({
-            id: userId,
-            username: trimmedUsername,
-            display_name: display_name?.trim() || trimmedUsername,
-            profile_picture: profile_picture || null
-          })
-          .select("username, display_name, profile_picture")
-          .maybeSingle()
-        
-        if (createError) {
-          console.error("[Profile API] Error creating profile:", createError)
-          return NextResponse.json({ 
-            error: "Failed to create profile",
-            details: createError.message 
-          }, { status: 500 })
-        }
-        
-        if (!newProfile) {
-          return NextResponse.json({ 
-            error: "Failed to create profile",
-            details: "Profile creation returned no data"
-          }, { status: 500 })
-        }
-        
-        return NextResponse.json({ profile: newProfile })
+        // Profile doesn't exist - this shouldn't happen, but return error
+        return NextResponse.json({ 
+          error: "Profile not found. Please contact support.",
+          details: "Profile should exist but was not found"
+        }, { status: 404 })
       }
       
       return NextResponse.json({ profile: updatedProfile })
     }
     
     // Fallback: try with regular client
-    const updateData: { username: string; display_name: string; profile_picture?: string } = {
-      username: trimmedUsername,
-      display_name: display_name?.trim() || trimmedUsername
+    const updateData: { display_name?: string; profile_picture?: string } = {}
+    
+    if (display_name && typeof display_name === "string") {
+      updateData.display_name = display_name.trim()
+    }
+    
+    if (profile_picture && typeof profile_picture === "string") {
+      updateData.profile_picture = profile_picture
+    }
+    
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ 
+        error: "No valid fields to update. Username cannot be changed." 
+      }, { status: 400 })
     }
     
     if (profile_picture && typeof profile_picture === "string") {

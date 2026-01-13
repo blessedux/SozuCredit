@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
-import { Horizon, Asset, TransactionBuilder, Networks, Operation, BASE_FEE, Account, Memo } from "@stellar/stellar-sdk"
+import { Horizon, Asset, TransactionBuilder, Networks, Operation, BASE_FEE, Account, Memo, Transaction, FeeBumpTransaction } from "@stellar/stellar-sdk"
 import { getStellarConfig } from "@/lib/turnkey/config"
 import { getStellarWallet } from "@/lib/turnkey/stellar-wallet"
+
+// Helper function to get transaction source (handles both Transaction and FeeBumpTransaction)
+function getTransactionSource(tx: Transaction | FeeBumpTransaction): string {
+  if ('source' in tx) {
+    return tx.source
+  }
+  // For FeeBumpTransaction, get source from inner transaction
+  return (tx as any).innerTransaction?.source || ""
+}
 
 const corsHeaders = (request: NextRequest) => ({
   "Access-Control-Allow-Origin": "*",
@@ -54,7 +63,7 @@ export async function POST(request: NextRequest) {
         if (operations.length > 0) {
           const paymentOp = operations[0] as any
           console.log("[Payment API] Transaction details:", {
-            source: signedTransaction.source,
+            source: getTransactionSource(signedTransaction),
             destination: paymentOp.destination,
             amount: paymentOp.amount,
             asset: paymentOp.asset?.code || "native",
@@ -80,7 +89,7 @@ export async function POST(request: NextRequest) {
           if (operations.length > 0) {
             const paymentOp = operations[0] as any
             console.error("[Payment API] ❌ Transaction submission failed - Transaction details:", {
-              source: signedTransaction.source,
+              source: getTransactionSource(signedTransaction),
               destination: paymentOp.destination,
               amount: paymentOp.amount,
               asset: paymentOp.asset?.code || "native",
@@ -136,30 +145,31 @@ export async function POST(request: NextRequest) {
               
               // Also check by parsing the signed transaction and looking for it in recent transactions
               try {
-                const signedTransaction = TransactionBuilder.fromXDR(body.signedTransactionXdr, networkPassphrase)
-                const operations = signedTransaction.operations || []
+                const signedTx = TransactionBuilder.fromXDR(body.signedTransactionXdr, networkPassphrase)
+                const operations = signedTx.operations || []
                 if (operations.length > 0) {
                   const paymentOp = operations[0] as any
                   const destination = paymentOp.destination
                   const amount = paymentOp.amount
                   
                   // Check recent payments to this destination
-                  const payments = await server.payments().forAccount(signedTransaction.source)
+                  const payments = await server.payments().forAccount(getTransactionSource(signedTx))
                     .order("desc")
                     .limit(5)
                     .call()
                   
                   // Look for a matching payment in the last few transactions
                   for (const payment of payments.records) {
-                    if (payment.to === destination && 
-                        payment.assetCode === "USDC" &&
-                        Math.abs(parseFloat(payment.amount) - parseFloat(amount)) < 0.0000001) {
+                    const paymentRecord = payment as any
+                    if (paymentRecord.to === destination && 
+                        paymentRecord.asset_code === "USDC" &&
+                        Math.abs(parseFloat(paymentRecord.amount) - parseFloat(amount)) < 0.0000001) {
                       // Found matching transaction - it succeeded!
-                      console.log("[Payment API] ✅ Found matching successful transaction:", payment.transactionHash)
+                      console.log("[Payment API] ✅ Found matching successful transaction:", paymentRecord.transaction_hash)
                       return NextResponse.json(
                         {
                           success: true,
-                          transactionHash: payment.transactionHash,
+                          transactionHash: paymentRecord.transaction_hash,
                           note: "Transaction succeeded (found in recent payments)"
                         },
                         { headers: corsHeaders(request) }
@@ -340,7 +350,8 @@ export async function POST(request: NextRequest) {
             console.log("[Payment API]   This is normal for non-custodial wallets using derived keypairs")
             wallet.publicKey = sender
             // Keep the network from database (or use config default)
-            wallet.network = wallet.network || stellarConfig.network
+            const tempStellarConfig = getStellarConfig()
+            wallet.network = wallet.network || tempStellarConfig.network
           }
         } else {
           // No service client available, but sender is valid - use it
@@ -405,17 +416,19 @@ export async function POST(request: NextRequest) {
         account = await server.loadAccount(wallet.publicKey)
         
         // Get detailed balance information
-        const usdcBalance = account.balances.find((b: any) => 
+        // Account type from Stellar SDK has balances as a getter
+        const accountBalances = (account as any).balances || []
+        const usdcBalance = accountBalances.find((b: any) => 
           b.asset_code === "USDC" && 
           b.asset_issuer === USDC_ISSUERS[stellarConfig.network]
         )
-        const xlmBalance = account.balances.find((b: any) => b.asset_type === "native")
+        const xlmBalance = accountBalances.find((b: any) => b.asset_type === "native")
         
         console.log("[Payment API] ✅ Account loaded successfully:", {
           publicKey: wallet.publicKey,
           sequence: account.sequenceNumber(),
-          balances: account.balances.length,
-          allBalances: account.balances.map((b: any) => ({
+          balances: accountBalances.length,
+          allBalances: accountBalances.map((b: any) => ({
             asset_type: b.asset_type,
             asset_code: b.asset_code || "XLM",
             asset_issuer: b.asset_issuer || undefined,
@@ -558,7 +571,8 @@ export async function POST(request: NextRequest) {
 
     // Get USDC balance from loaded account for verification
     // Note: usdcIssuer is already defined earlier in the function (line 307)
-    const accountUSDCBalance = account.balances.find((b: any) => 
+    const accountBalances = (account as any).balances || []
+    const accountUSDCBalance = accountBalances.find((b: any) => 
       b.asset_code === "USDC" && 
       b.asset_issuer === usdcIssuer
     )
@@ -605,9 +619,10 @@ export async function POST(request: NextRequest) {
 
     // Verify transaction source matches wallet
     // Verify transaction source matches wallet address
-    if (transaction.source !== wallet.publicKey) {
+    const transactionSource = getTransactionSource(transaction)
+    if (transactionSource !== wallet.publicKey) {
       console.error("[Payment API] ❌ Transaction source mismatch!", {
-        transactionSource: transaction.source,
+        transactionSource: transactionSource,
         walletPublicKey: wallet.publicKey,
         senderFromFrontend: sender,
         note: "Transaction source must match the wallet address being used"
@@ -651,9 +666,10 @@ export async function POST(request: NextRequest) {
 
     // Log the actual destination from the transaction operation
     const paymentOp = transaction.operations[0] as any
+    const builtTxSource = getTransactionSource(transaction)
     console.log("[Payment API] ✅ Transaction built successfully:", {
-      source: transaction.source.substring(0, 10) + "..." + transaction.source.substring(transaction.source.length - 10),
-      fullSource: transaction.source, // Log full source for debugging
+      source: builtTxSource.substring(0, 10) + "..." + builtTxSource.substring(builtTxSource.length - 10),
+      fullSource: builtTxSource, // Log full source for debugging
       destination: paymentOp.destination ? paymentOp.destination.substring(0, 10) + "..." + paymentOp.destination.substring(paymentOp.destination.length - 10) : "N/A",
       fullDestination: paymentOp.destination, // Log full destination from operation for debugging
       operations: transaction.operations.length,
