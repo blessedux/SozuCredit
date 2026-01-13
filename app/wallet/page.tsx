@@ -1,9 +1,10 @@
 "use client"
 
 import { useEffect, useState, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import { QRCodeSVG } from "qrcode.react"
-import { Wallet, Award, ArrowLeft, Globe, LogOut, Bell, FileText, Link2, ExternalLink, X, TrendingUp, MessageCircle, Send, Copy, Check, Eye, Key, ArrowUp, QrCode } from "lucide-react"
+import { Wallet, Award, ArrowLeft, Globe, LogOut, Bell, FileText, Link2, ExternalLink, X, TrendingUp, MessageCircle, Send, Copy, Check, Eye, Key, ArrowUp, QrCode, Settings, ChevronDown, ChevronUp, ArrowDown, ArrowRight } from "lucide-react"
 import { FallingPattern } from "@/components/ui/falling-pattern"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet"
@@ -45,6 +46,7 @@ function QRCodeComponent({ walletAddress, walletNetwork }: { walletAddress: stri
 }
 
 export default function WalletPage() {
+  const router = useRouter()
   const [vault, setVault] = useState<Vault | null>(null)
   const [trustPoints, setTrustPoints] = useState<TrustPoints | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -132,7 +134,24 @@ export default function WalletPage() {
     previousBalance: number | null
   } | null>(null)
   const [isAutoDepositing, setIsAutoDepositing] = useState(false)
-  const [isEstablishingTrustline, setIsEstablishingTrustline] = useState(false)
+  const [transactionHistory, setTransactionHistory] = useState<Array<{
+    id: string
+    hash: string
+    createdAt: string
+    successful: boolean
+    memo: string | null
+    operations: Array<{
+      type: string
+      from: string
+      to: string
+      amount: number
+      asset: string
+      memo?: string | null
+    }>
+  }>>([])
+  const [isLoadingTransactions, setIsLoadingTransactions] = useState(false)
+  const [isTransactionsExpanded, setIsTransactionsExpanded] = useState(false)
+  const [addressToTagMap, setAddressToTagMap] = useState<Record<string, string>>({})
 
   // Swipe gesture state
 
@@ -179,6 +198,87 @@ export default function WalletPage() {
       })
     } catch (error) {
       console.error("[Wallet] ❌ Error fetching USDC wallet balance:", error)
+    }
+  }
+
+  const resolveAddressToTag = async (address: string): Promise<string | null> => {
+    // Check cache first
+    if (addressToTagMap[address]) {
+      return addressToTagMap[address]
+    }
+
+    try {
+      const userId = sessionStorage.getItem("dev_username")
+      const response = await fetch("/api/wallet/resolve-address-to-tag", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": userId || "",
+        },
+        body: JSON.stringify({ address }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.tag) {
+          // Cache the result
+          setAddressToTagMap(prev => ({ ...prev, [address]: data.tag }))
+          return data.tag
+        }
+      }
+    } catch (error) {
+      console.error("[Wallet] Error resolving address to tag:", error)
+    }
+    return null
+  }
+
+  const fetchTransactionHistory = async (publicKey: string) => {
+    if (!publicKey) {
+      console.warn("[Wallet] No public key provided for transaction history fetch")
+      return
+    }
+    
+    setIsLoadingTransactions(true)
+    try {
+      // Get userId from sessionStorage (same as other fetch functions)
+      const currentUserId = typeof window !== "undefined" ? sessionStorage.getItem("dev_username") : null
+      
+      console.log("[Wallet] 🔍 Fetching transaction history for:", publicKey.substring(0, 10) + "...")
+      const response = await fetch(`/api/wallet/stellar/transactions?publicKey=${publicKey}&limit=100`, {
+        headers: {
+          "x-user-id": currentUserId || "",
+        },
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success && data.transactions) {
+          console.log("[Wallet] ✅ Transaction history fetched:", data.transactions.length, "transactions")
+          
+          // Resolve addresses to tags for all transactions
+          const addressesToResolve = new Set<string>()
+          data.transactions.forEach((tx: any) => {
+            const paymentOp = tx.operations.find((op: any) => op.type === "payment")
+            if (paymentOp) {
+              if (paymentOp.from && paymentOp.from !== publicKey) addressesToResolve.add(paymentOp.from)
+              if (paymentOp.to && paymentOp.to !== publicKey) addressesToResolve.add(paymentOp.to)
+            }
+          })
+          
+          // Resolve all addresses in parallel
+          const resolvePromises = Array.from(addressesToResolve).map(addr => resolveAddressToTag(addr))
+          await Promise.all(resolvePromises)
+          
+          // Set transaction history after resolving tags
+          setTransactionHistory(data.transactions)
+        }
+      } else {
+        console.warn("[Wallet] Could not fetch transaction history:", response.status)
+      }
+    } catch (error) {
+      console.error("[Wallet] ❌ Error fetching transaction history:", error)
+    } finally {
+      setIsLoadingTransactions(false)
     }
   }
 
@@ -774,6 +874,7 @@ export default function WalletPage() {
                   // Fetch balances for this wallet
                   fetchXLMBalance(publicKeyToUse)
                   fetchWalletUSDCBalance(publicKeyToUse) // Fetch USDC directly from Stellar
+                  fetchTransactionHistory(publicKeyToUse) // Fetch transaction history
 
                   // Fetch DeFindex balance, auto-deposit status, and APY
                   fetchDefindexBalance(finalUserId)
@@ -1165,131 +1266,15 @@ export default function WalletPage() {
     }
   }
 
-  const handleOpenStellarExpert = async (e: React.MouseEvent) => {
+  const handleOpenStellarExpert = (e: React.MouseEvent) => {
     e.stopPropagation() // Prevent triggering copy when clicking icon
     if (!walletAddress) {
       console.warn("Cannot open Stellar Expert: wallet address not available yet")
       return
     }
     
-    // Establish USDC trustline first (with client-side signing)
-    setIsEstablishingTrustline(true)
-    try {
-      const userId = sessionStorage.getItem("dev_username")
-      if (!userId) {
-        console.warn("Cannot establish trustline: user ID not found")
-        // Still open Stellar Expert even if trustline fails
-        setIsEstablishingTrustline(false)
-        openStellarExpert()
-        return
-      }
-
-      console.log("[Wallet] Establishing USDC trustline with client-side signing...")
-      
-      // Step 1: Get unsigned transaction from server
-      const response = await fetch("/api/wallet/stellar/trustline", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-user-id": userId,
-        },
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: "Unknown error" }))
-        console.error("[Wallet] Trustline API error:", errorData)
-        throw new Error(errorData.error || "Failed to establish trustline")
-      }
-
-      const result = await response.json()
-      
-      if (result.success) {
-        // Trustline already exists or was created successfully
-        console.log("[Wallet] ✅ USDC trustline established successfully")
-        if (result.transactionHash) {
-          console.log("[Wallet] Transaction hash:", result.transactionHash)
-          alert(`✅ USDC trustline established successfully\nHash: ${result.transactionHash.substring(0, 8)}...`)
-        } else {
-          console.log("[Wallet] Trustline already exists")
-        }
-      } else if (result.needsSigning && result.unsignedXdr) {
-        // Step 2: Sign transaction client-side
-        console.log("[Wallet] Signing transaction client-side...")
-        const { retrieveKeypair, getKeypairByPublicKey } = await import("@/lib/storage/browser-keys")
-        const { TransactionBuilder, Networks } = await import("@stellar/stellar-sdk")
-        const { getCurrentCredentialId } = await import("@/lib/storage/key-utils")
-        
-        // Get keypair from browser storage
-        const credentialId = await getCurrentCredentialId()
-        let keypair = null
-        
-        if (credentialId) {
-          keypair = await retrieveKeypair(credentialId, userId)
-        }
-        
-        if (!keypair) {
-          // Fallback: try to get by public key
-          keypair = await getKeypairByPublicKey(walletAddress)
-        }
-        
-        if (!keypair) {
-          throw new Error("Keypair not found in browser storage. Please authenticate with a passkey first.")
-        }
-        
-        // Verify public key matches
-        if (keypair.publicKey() !== walletAddress) {
-          throw new Error("Keypair public key doesn't match wallet address")
-        }
-        
-        // Parse and sign transaction
-        const networkPassphrase = walletNetwork === "mainnet" ? Networks.PUBLIC : Networks.TESTNET
-        const transaction = TransactionBuilder.fromXDR(result.unsignedXdr, networkPassphrase)
-        transaction.sign(keypair)
-        
-        const signedXdr = transaction.toXDR()
-        
-        // Step 3: Submit signed transaction
-        console.log("[Wallet] Submitting signed transaction...")
-        const submitResponse = await fetch("/api/wallet/stellar/trustline", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-user-id": userId,
-          },
-          body: JSON.stringify({
-            signedTransactionXdr: signedXdr,
-          }),
-        })
-        
-        if (!submitResponse.ok) {
-          const errorData = await submitResponse.json().catch(() => ({ error: "Unknown error" }))
-          throw new Error(errorData.error || "Failed to submit signed transaction")
-        }
-        
-        const submitResult = await submitResponse.json()
-        
-        if (submitResult.success) {
-          console.log("[Wallet] ✅ USDC trustline created successfully")
-          if (submitResult.transactionHash) {
-            alert(`✅ USDC trustline established successfully\nHash: ${submitResult.transactionHash.substring(0, 8)}...`)
-          }
-        } else {
-          throw new Error(submitResult.error || "Failed to create trustline")
-        }
-      } else {
-        console.error("[Wallet] Trustline establishment failed:", result.error)
-        throw new Error(result.error || "Failed to establish trustline")
-      }
-    } catch (error: any) {
-      console.error("[Wallet] Error establishing trustline:", error)
-      // Show error message to user
-      alert(`❌ Error establishing USDC trustline: ${error.message || "Unknown error"}\n\nMake sure you have enough XLM to pay transaction fees.`)
-      // Still open Stellar Expert even if trustline fails
-    } finally {
-      setIsEstablishingTrustline(false)
-      // Open Stellar Expert after trustline is established (or if it fails)
-      openStellarExpert()
-    }
+    // Open Stellar Expert directly in a new tab
+    openStellarExpert()
   }
 
   const handleResolveRecipient = async () => {
@@ -1592,9 +1577,10 @@ export default function WalletPage() {
         setShowSuccessModal(true)
         setIsSendModalOpen(false)
         
-        // Refresh balance
+        // Refresh balance and transaction history
         if (walletAddress) {
           fetchWalletUSDCBalance(walletAddress)
+          fetchTransactionHistory(walletAddress)
         }
       } else {
         const errorMessage = result.error || "Payment failed"
@@ -1985,6 +1971,117 @@ export default function WalletPage() {
               </div>
             </div>
 
+            {/* Transaction History - Scrollable list below balance */}
+            {walletAddress && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.3 }}
+                className="mb-8"
+              >
+                <div className="border border-white/20 rounded-lg p-4 bg-white/5">
+                  <ul className="space-y-3 list-none">
+                    {isLoadingTransactions ? (
+                      <li className="text-white/60 text-sm text-center py-4">Loading transactions...</li>
+                    ) : transactionHistory.length === 0 ? (
+                      <li className="text-white/60 text-sm text-center py-4">No transactions yet</li>
+                    ) : (
+                      <>
+                        {(isTransactionsExpanded ? transactionHistory : transactionHistory.slice(0, 5)).map((tx) => {
+                          // Find the relevant payment operation (sent or received)
+                          const paymentOp = tx.operations.find((op: any) => op.type === "payment")
+                          if (!paymentOp) return null
+                          
+                          const isSent = paymentOp.from === walletAddress
+                          const isReceived = paymentOp.to === walletAddress
+                          const amount = paymentOp.amount
+                          const otherAddress = isSent ? paymentOp.to : paymentOp.from
+                          const otherTag = addressToTagMap[otherAddress] || null
+                          
+                          // Stellar Expert URL
+                          const network = walletNetwork || "testnet"
+                          const stellarExpertUrl = `https://stellar.expert/explorer/${network}/tx/${tx.hash}`
+                          
+                          return (
+                            <motion.li
+                              key={tx.id}
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ duration: 0.3 }}
+                              className="flex items-start gap-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
+                            >
+                              {/* Arrow Icon - Green for deposit, Red for withdrawal */}
+                              <div className="flex-shrink-0 mt-1">
+                                {isReceived ? (
+                                  <ArrowDown className="w-5 h-5 text-green-400" />
+                                ) : (
+                                  <ArrowUp className="w-5 h-5 text-red-400" />
+                                )}
+                              </div>
+                              
+                              {/* Transaction Content */}
+                              <div className="flex-1 min-w-0 flex flex-col">
+                                {/* Amount on top */}
+                                <div className="flex items-center justify-between gap-2 mb-2">
+                                  <span className={`text-lg font-semibold ${isReceived ? "text-green-400" : "text-red-400"}`}>
+                                    {isReceived ? "+" : "−"}{amount.toFixed(2)} USDC
+                                  </span>
+                                  {/* Stellar Expert Link */}
+                                  <a
+                                    href={stellarExpertUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="text-white/40 hover:text-white/60 transition-colors flex-shrink-0"
+                                    aria-label="View on Stellar Expert"
+                                  >
+                                    <ExternalLink className="w-4 h-4" />
+                                  </a>
+                                </div>
+                                
+                                {/* From/To Sozu tag on the right */}
+                                <div className="flex items-center justify-end text-sm text-white/60">
+                                  {isSent ? "To" : "From"}: {otherTag ? (
+                                    <span className="text-white font-medium ml-1">${otherTag}</span>
+                                  ) : (
+                                    <span className="text-white/40 font-mono text-xs ml-1">
+                                      {otherAddress.substring(0, 8)}...{otherAddress.substring(otherAddress.length - 8)}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </motion.li>
+                          )
+                        })}
+                        
+                        {/* Expand/Collapse Button */}
+                        {transactionHistory.length > 5 && (
+                          <li className="pt-2 border-t border-white/10">
+                            <button
+                              onClick={() => setIsTransactionsExpanded(!isTransactionsExpanded)}
+                              className="w-full flex items-center justify-center gap-2 text-white/60 hover:text-white transition-colors py-2"
+                            >
+                              {isTransactionsExpanded ? (
+                                <>
+                                  <ChevronUp className="w-4 h-4" />
+                                  <span className="text-sm">Show less</span>
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronDown className="w-4 h-4" />
+                                  <span className="text-sm">Show all ({transactionHistory.length} transactions)</span>
+                                </>
+                              )}
+                            </button>
+                          </li>
+                        )}
+                      </>
+                    )}
+                  </ul>
+                </div>
+              </motion.div>
+            )}
+
             {/* Create New Wallet Button - Show for first-time users without wallet */}
             {!walletAddress && (
               <div className="mb-8">
@@ -2344,19 +2441,10 @@ export default function WalletPage() {
                     </code>
                     <div 
                       onClick={handleOpenStellarExpert}
-                      className={`absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1 text-white/60 hover:text-white cursor-pointer ${isEstablishingTrustline ? "opacity-50 cursor-wait" : ""}`}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1 text-white/60 hover:text-white cursor-pointer"
                     >
-                      {isEstablishingTrustline ? (
-                        <>
-                          <div className="w-3 h-3 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
-                          <span className="text-xs">Setting up...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Wallet className="w-3 h-3" />
-                          <span className="text-xs">{t.addy}</span>
-                        </>
-                      )}
+                      <Wallet className="w-3 h-3" />
+                      <span className="text-xs">{t.addy}</span>
                     </div>
                   </div>
                   {walletAddress && (
@@ -2542,6 +2630,21 @@ export default function WalletPage() {
                 aria-label={t.logout}
               >
                 <LogOut className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Config Button - At the very bottom */}
+            <div className="pt-4 border-t border-white/20 mt-4">
+              <button
+                onClick={() => {
+                  setIsProfileSheetOpen(false)
+                  router.push("/settings")
+                }}
+                className="w-full flex items-center justify-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-colors text-white/60 hover:text-white"
+                aria-label="Settings"
+              >
+                <Settings className="w-4 h-4" />
+                <span className="text-sm">Settings</span>
               </button>
             </div>
           </div>

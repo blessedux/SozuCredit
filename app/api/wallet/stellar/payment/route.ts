@@ -106,18 +106,93 @@ export async function POST(request: NextRequest) {
           const horizonError = submitError.response.data
           const resultCodes = horizonError.extras?.result_codes
           
+          // Special handling for tx_bad_seq - transaction might have already succeeded
+          if (resultCodes?.transaction === "tx_bad_seq") {
+            console.log("[Payment API] ⚠️ Got tx_bad_seq error - checking if transaction actually succeeded...")
+            
+            try {
+              // Try to extract transaction hash from error response
+              const txHash = horizonError.extras?.result_xdr || submitError.extras?.resultXdr
+              
+              // If we have a hash, verify the transaction succeeded
+              if (txHash) {
+                try {
+                  const txResponse = await server.transactions().transaction(txHash).call()
+                  if (txResponse && txResponse.successful) {
+                    console.log("[Payment API] ✅ Transaction actually succeeded despite tx_bad_seq error:", txHash)
+                    return NextResponse.json(
+                      {
+                        success: true,
+                        transactionHash: txHash,
+                        note: "Transaction succeeded (sequence number was already used)"
+                      },
+                      { headers: corsHeaders(request) }
+                    )
+                  }
+                } catch (txCheckError) {
+                  console.log("[Payment API] Could not verify transaction hash:", txCheckError)
+                }
+              }
+              
+              // Also check by parsing the signed transaction and looking for it in recent transactions
+              try {
+                const signedTransaction = TransactionBuilder.fromXDR(body.signedTransactionXdr, networkPassphrase)
+                const operations = signedTransaction.operations || []
+                if (operations.length > 0) {
+                  const paymentOp = operations[0] as any
+                  const destination = paymentOp.destination
+                  const amount = paymentOp.amount
+                  
+                  // Check recent payments to this destination
+                  const payments = await server.payments().forAccount(signedTransaction.source)
+                    .order("desc")
+                    .limit(5)
+                    .call()
+                  
+                  // Look for a matching payment in the last few transactions
+                  for (const payment of payments.records) {
+                    if (payment.to === destination && 
+                        payment.assetCode === "USDC" &&
+                        Math.abs(parseFloat(payment.amount) - parseFloat(amount)) < 0.0000001) {
+                      // Found matching transaction - it succeeded!
+                      console.log("[Payment API] ✅ Found matching successful transaction:", payment.transactionHash)
+                      return NextResponse.json(
+                        {
+                          success: true,
+                          transactionHash: payment.transactionHash,
+                          note: "Transaction succeeded (found in recent payments)"
+                        },
+                        { headers: corsHeaders(request) }
+                      )
+                    }
+                  }
+                }
+              } catch (checkError) {
+                console.log("[Payment API] Could not check recent transactions:", checkError)
+              }
+            } catch (verifyError) {
+              console.log("[Payment API] Error verifying tx_bad_seq transaction:", verifyError)
+            }
+            
+            // If we couldn't verify success, return a user-friendly error
+            userFriendlyMessage = "Transaction sequence number mismatch. The transaction may have already been submitted. Please check your transaction history."
+            console.warn("[Payment API] ⚠️ tx_bad_seq error - could not verify if transaction succeeded")
+          }
+          
           // Check for specific error codes and provide user-friendly messages
           if (resultCodes) {
             const operationCodes = resultCodes.operations || []
             const transactionCode = resultCodes.transaction || ""
             
-            // Check error codes in order of priority
-            if (operationCodes.includes("op_underfunded")) {
+            // Skip tx_bad_seq here since we already handled it above
+            if (transactionCode === "tx_bad_seq") {
+              // Already handled above, continue to return the error
+            } else if (operationCodes.includes("op_underfunded")) {
               // Sender doesn't have enough USDC
               // Note: We can't check DeFindex here since wallet isn't loaded yet in this error path
               // The frontend should handle balance checks before sending
               
-              userFriendlyMessage = `Insufficient balance. You don't have enough USDC in your wallet to complete this payment.${defindexInfo}`
+              userFriendlyMessage = `Insufficient balance. You don't have enough USDC in your wallet to complete this payment.`
               console.error("[Payment API] ❌ Transaction failed - Insufficient USDC balance:", {
                 resultCodes,
                 suggestion: "Check your USDC balance and ensure you have enough to cover the payment amount plus transaction fees."
@@ -187,9 +262,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Otherwise, build unsigned transaction
-    const { destination, amount, sender } = body
-
-    // Note: destination and amount are already extracted from body above
+    // Note: destination, amount, sender, and memo are already extracted from body above (line 25)
     if (!destination || !amount) {
       return NextResponse.json(
         { error: "Destination and amount are required" },

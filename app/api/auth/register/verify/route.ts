@@ -70,6 +70,44 @@ export async function POST(request: NextRequest) {
       )
     }
     
+    // Get Supabase service credentials (used for username check and passkey storage)
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    
+    // Double-check username availability before creating user
+    // This prevents race conditions and duplicate accounts
+    
+    if (supabaseServiceKey && supabaseUrl) {
+      const serviceClient = createServiceClient(supabaseUrl, supabaseServiceKey)
+      const { data: existingProfile, error: checkError } = await serviceClient
+        .from("profiles")
+        .select("id, username")
+        .eq("username", username)
+        .maybeSingle()
+      
+      if (checkError && checkError.code !== "PGRST116") {
+        console.error("[Register] Error checking username availability:", checkError)
+        return NextResponse.json(
+          { 
+            error: "Failed to verify username availability",
+            details: checkError.message
+          },
+          { status: 500, headers: corsHeaders(request) }
+        )
+      }
+      
+      if (existingProfile) {
+        console.log("[Register] Username already exists:", username)
+        return NextResponse.json(
+          { 
+            error: "This Sozu tag is already taken. Please choose a different tag or log in with your existing account.",
+            usernameExists: true
+          },
+          { status: 409, headers: corsHeaders(request) }
+        )
+      }
+    }
+    
     // Use a valid email format - Supabase requires proper email format with valid TLD
     // Generate a unique email using UUID to ensure uniqueness and pass validation
     // Using test.com domain which is a real domain (not reserved like example.com)
@@ -83,10 +121,8 @@ export async function POST(request: NextRequest) {
       referral_code: referralCode || null,
     })
     
-    // The trigger handle_new_user() tries to create profile with email column,
-    // but the schema was updated to remove email and require username.
-    // This may cause the trigger to fail silently.
-    // We'll create the user and handle profile creation manually to avoid trigger conflicts.
+    // The trigger handle_new_user() will now properly check for username conflicts
+    // and fail the transaction if the username already exists
     
     let { data: authData, error: authError } = await supabase.auth.signUp({
       email: randomEmail,
@@ -116,6 +152,23 @@ export async function POST(request: NextRequest) {
         __isAuthError: (authError as any).__isAuthError,
       })
       
+      // Check for username conflict errors (from trigger)
+      if (
+        authError.message?.includes("already taken") ||
+        authError.message?.includes("Username") && authError.message?.includes("taken") ||
+        authError.message?.includes("23505") || // PostgreSQL unique violation
+        authError.message?.includes("unique constraint")
+      ) {
+        console.log("[Register] Username conflict detected from trigger")
+        return NextResponse.json(
+          { 
+            error: "This Sozu tag is already taken. Please choose a different tag or log in with your existing account.",
+            usernameExists: true
+          },
+          { status: 409, headers: corsHeaders(request) }
+        )
+      }
+      
       // Check for network errors
       if (authError.message?.includes("Failed to fetch") || authError.message?.includes("NetworkError") || authError.message?.includes("fetch")) {
         console.error("[Register] Network error detected - check Supabase URL and connectivity")
@@ -138,7 +191,7 @@ export async function POST(request: NextRequest) {
       }
       
       // The error is likely due to the trigger handle_new_user() failing
-      // because it tries to insert 'email' column that was removed from profiles table
+      // The trigger should now properly handle username conflicts, but other errors may occur
       // The user may have been created in auth.users but the trigger failed
       // We'll proceed with error message that points to the fix
       
@@ -150,7 +203,7 @@ export async function POST(request: NextRequest) {
               code: authError.status,
               message: authError.message,
               name: authError.name,
-              hint: "This error is likely due to the database trigger handle_new_user() failing. Please run scripts/005_fix_trigger.sql in your Supabase SQL Editor to fix the trigger schema mismatch.",
+              hint: "This error may be due to the database trigger handle_new_user() failing. Please check the trigger logs in Supabase.",
               fullError: JSON.stringify(authError, Object.getOwnPropertyNames(authError)),
             }
           },
@@ -293,9 +346,7 @@ export async function POST(request: NextRequest) {
     
     // Use service client to bypass RLS since we don't have an authenticated session yet
     // The user was just created but we don't have auth.uid() available
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    
+    // (supabaseUrl and supabaseServiceKey are already declared at the top of the function)
     if (!supabaseServiceKey || !supabaseUrl) {
       const missing = []
       if (!supabaseUrl) missing.push("NEXT_PUBLIC_SUPABASE_URL")
