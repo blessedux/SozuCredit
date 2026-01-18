@@ -70,7 +70,7 @@ async function processUserAutoDeposit(wallet: any, supabase: any) {
             autoDepositTriggered: true,
             depositAmount: result.depositAmount,
             transactionHash: result.transactionHash,
-            snapshotType: "auto_deposit_cron",
+            snapshotType: "auto_deposit_trigger" as const,
           },
           true
         )
@@ -126,7 +126,7 @@ async function runAutoDepositCron() {
       console.log(`[Auto-Deposit Cron] 🔄 Processing batch ${Math.floor(i / CONFIG.batchSize) + 1}/${Math.ceil(wallets.length / CONFIG.batchSize)} (${batch.length} users)`)
 
       // Process batch concurrently
-      const batchPromises = batch.map(wallet => processUserAutoDeposit(wallet, supabase))
+      const batchPromises = batch.map((wallet: any) => processUserAutoDeposit(wallet, supabase))
       const batchResults = await Promise.all(batchPromises)
       results.push(...batchResults)
 

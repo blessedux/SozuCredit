@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useState, useCallback } from "react"
 
 export function DepositForm({ vaultId, currentBalance }: { vaultId: string; currentBalance: number }) {
   const [amount, setAmount] = useState("")
@@ -19,7 +19,7 @@ export function DepositForm({ vaultId, currentBalance }: { vaultId: string; curr
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError(null)
@@ -64,7 +64,7 @@ export function DepositForm({ vaultId, currentBalance }: { vaultId: string; curr
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [amount, currentBalance, description, vaultId, router])
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">

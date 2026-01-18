@@ -23,6 +23,8 @@ import {
   TransactionBuilder,
   BASE_FEE,
   Account,
+  Transaction,
+  FeeBumpTransaction,
 } from "@stellar/stellar-sdk"
 import { getStellarConfig } from "../turnkey/config"
 import { retrieveKeypair, deriveAndStoreKey } from "../storage/browser-keys"
@@ -282,12 +284,12 @@ export async function createUSDCTrustlineReal(
     }
 
     // Check if trustline already exists
-    const hasTrustline = account.balances.some(
+    const hasTrustline = (account as any).balances?.some(
       (bal: any) =>
         bal.asset_type === "credit_alphanum4" &&
         bal.asset_code === "USDC" &&
         bal.asset_issuer === usdcIssuer
-    )
+    ) || false
 
     if (hasTrustline) {
       console.log("[Wallet Creator] ✅ USDC trustline already exists")
@@ -314,7 +316,7 @@ export async function createUSDCTrustlineReal(
       .build()
 
     // Sign transaction (client-side if credentialId provided, otherwise use keypair directly)
-    let signedTransaction: Transaction
+    let signedTransaction: Transaction | FeeBumpTransaction
     if (credentialId && userId) {
       const signedResult = await signTransactionClientSide(
         transaction,

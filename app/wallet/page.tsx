@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
+import dynamic from "next/dynamic"
 import { motion } from "framer-motion"
-import { QRCodeSVG } from "qrcode.react"
 import { Wallet, Award, ArrowLeft, Globe, LogOut, Bell, FileText, Link2, ExternalLink, X, TrendingUp, MessageCircle, Send, Copy, Check, Eye, Key, ArrowUp, QrCode, Settings, ChevronDown, ChevronUp, ArrowDown, ArrowRight } from "lucide-react"
 import { FallingPattern } from "@/components/ui/falling-pattern"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
@@ -15,8 +15,24 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { SlidingNumber } from "@/components/ui/sliding-number"
 import { APYDisplay, APYBadge } from "@/components/defindex/apy-display"
-import { WalletCreator } from "@/components/wallet-creator"
 import { WalletSkeleton } from "@/components/ui/wallet-skeleton"
+
+// Dynamic imports for heavy components (code splitting)
+const QRCodeSVG = dynamic(
+  () => import("qrcode.react").then((mod) => mod.QRCodeSVG),
+  {
+    ssr: false,
+    loading: () => <div className="h-64 w-64 bg-gray-200 animate-pulse rounded" />,
+  }
+)
+
+const WalletCreator = dynamic(
+  () => import("@/components/wallet-creator").then((mod) => ({ default: mod.WalletCreator })),
+  {
+    ssr: false,
+    loading: () => <div className="h-32 w-full bg-gray-200 animate-pulse rounded" />,
+  }
+)
 
 interface Vault {
   id: string
@@ -66,6 +82,8 @@ export default function WalletPage() {
   const [isResolvingRecipient, setIsResolvingRecipient] = useState(false)
   const [isManualMode, setIsManualMode] = useState(false)
   const [sendMemo, setSendMemo] = useState("")
+  const [recipientError, setRecipientError] = useState<string | null>(null)
+  const [isVibrating, setIsVibrating] = useState(false)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [transactionHash, setTransactionHash] = useState<string | null>(null)
   const [modalView, setModalView] = useState<"main" | "invite" | "vouch">("main")
@@ -1282,6 +1300,8 @@ export default function WalletPage() {
       return
     }
 
+    // Clear any previous errors
+    setRecipientError(null)
     setIsResolvingRecipient(true)
     try {
       const userId = sessionStorage.getItem("dev_username")
@@ -1332,12 +1352,22 @@ export default function WalletPage() {
             })
           })
         }
+        // Check if it's a "not found" error
+        if (error.error && (error.error.includes("not found") || error.error.includes("Recipient not found"))) {
+          setRecipientError("Sozu tag not found")
+          setIsVibrating(true)
+          setTimeout(() => setIsVibrating(false), 500)
+          return
+        }
         throw new Error(error.error || "Failed to resolve recipient")
       }
 
       const { walletAddress: recipientAddress } = await resolveResponse.json()
       if (!recipientAddress) {
-        throw new Error("Recipient wallet address not found")
+        setRecipientError("Sozu tag not found")
+        setIsVibrating(true)
+        setTimeout(() => setIsVibrating(false), 500)
+        return
       }
 
       // Log the resolved address for debugging
@@ -1351,9 +1381,15 @@ export default function WalletPage() {
       // Store resolved address and move to amount step
       setResolvedRecipientAddress(recipientAddress)
       setSendStep("amount")
+      setRecipientError(null)
     } catch (error: any) {
       console.error("[Resolve Recipient] Error:", error)
-      alert(`❌ ${error.message || "Invalid recipient"}`)
+      // Only show error if it's not already handled above
+      if (!recipientError) {
+        setRecipientError("Sozu tag not found")
+        setIsVibrating(true)
+        setTimeout(() => setIsVibrating(false), 500)
+      }
     } finally {
       setIsResolvingRecipient(false)
     }
@@ -1523,10 +1559,17 @@ export default function WalletPage() {
         throw new Error(`Transaction source mismatch. Expected: ${walletAddress?.substring(0, 10)}..., Got: ${transaction.source.substring(0, 10)}...`)
       }
 
-      // Log transaction details before signing
+      // Log transaction details before signing and check for self-transfer
       const operations = transaction.operations || []
       if (operations.length > 0) {
         const paymentOp = operations[0] as any
+        
+        // Check if sending to self (same address)
+        if (paymentOp.destination === walletAddress) {
+          console.warn("[Send Payment] ⚠️ Warning: Sending to self (same address as sender)")
+          // Don't block, but user should know balance won't change
+        }
+        
         console.log("[Send Payment] Transaction details before signing:", {
           source: transaction.source.substring(0, 10) + "..." + transaction.source.substring(transaction.source.length - 10),
           destination: paymentOp.destination ? paymentOp.destination.substring(0, 10) + "..." + paymentOp.destination.substring(paymentOp.destination.length - 10) : "N/A",
@@ -1536,19 +1579,51 @@ export default function WalletPage() {
         })
       }
 
-      // Get credential ID and sign (this will trigger biometric prompt)
+      // Get credential ID and sign with passkey approval
       const { getCurrentCredentialId } = await import("@/lib/storage/key-utils")
-      const { signTransactionClientSide } = await import("@/lib/stellar/client-signing")
+      const { signTransactionWithPasskeyApproval } = await import("@/lib/stellar/client-signing")
       
       const credentialId = await getCurrentCredentialId()
       if (!credentialId) {
         throw new Error("Credential ID not found. Please log in again.")
       }
 
-      // Sign transaction (triggers biometric prompt)
-      // Use transaction.source as the publicKey to ensure we sign with the correct key
-      console.log("[Send Payment] Signing transaction with wallet address:", walletAddress)
-      const signedResult = await signTransactionClientSide(transaction, credentialId, walletAddress, userId)
+      // Sign transaction with passkey approval (triggers biometric prompt)
+      // This function will:
+      // 1. Request challenge from server
+      // 2. Get passkey assertion (biometric prompt)
+      // 3. Verify assertion with server
+      // 4. Sign transaction with stored keypair
+      console.log("[Send Payment] Signing transaction with passkey approval")
+      console.log("[Send Payment] ⚠️ User must approve transaction with passkey/biometric")
+      
+      let signedResult
+      try {
+        signedResult = await signTransactionWithPasskeyApproval(transaction, credentialId, walletAddress, userId)
+      } catch (signError: any) {
+        console.error("[Send Payment] ❌ Transaction signing failed:", signError)
+        // Check if it's a user cancellation (they didn't approve)
+        if (signError.message?.includes("not found") || signError.message?.includes("Keypair not found")) {
+          throw new Error("Unable to sign transaction. Please ensure you're logged in and have created a wallet.")
+        } else if (signError.message?.includes("cancelled") || signError.message?.includes("Cancelled") || signError.name === "NotAllowedError" || signError.name === "AbortError") {
+          throw new Error("Transaction cancelled. You must approve the transaction with your passkey to send payment.")
+        } else if (signError.message?.includes("verification failed") || signError.message?.includes("Challenge")) {
+          throw new Error("Passkey verification failed. Please try again.")
+        } else {
+          throw new Error(`Transaction signing failed: ${signError.message || "Please try again."}`)
+        }
+      }
+      
+      if (!signedResult || !signedResult.transaction) {
+        throw new Error("Transaction signing failed - no signed transaction returned. Please try again.")
+      }
+      
+      // Verify the transaction has signatures
+      if (signedResult.transaction.signatures.length === 0) {
+        throw new Error("Transaction signing failed - no signatures found. Please try again.")
+      }
+      
+      console.log("[Send Payment] ✅ Transaction signed successfully with", signedResult.transaction.signatures.length, "signature(s)")
       const signedXdr = signedResult.transaction.toXDR()
 
       // Step 3: Submit signed transaction
@@ -1571,7 +1646,20 @@ export default function WalletPage() {
       }
 
       const result = await submitResponse.json()
-      if (result.success && result.transactionHash) {
+      
+      // Only show success if we have a valid transaction hash and success is true
+      if (result.success === true && result.transactionHash && typeof result.transactionHash === "string" && result.transactionHash.length > 0) {
+        console.log("[Send Payment] ✅ Transaction submitted successfully:", result.transactionHash)
+        
+        // Wait a moment for transaction to be included in ledger before refreshing balance
+        // This ensures the balance update reflects the confirmed transaction
+        if (result.confirmed) {
+          console.log("[Send Payment] Transaction confirmed, refreshing balance immediately")
+        } else {
+          console.log("[Send Payment] Transaction pending confirmation, waiting 2 seconds before refresh")
+          await new Promise((resolve) => setTimeout(resolve, 2000))
+        }
+        
         // Show success modal
         setTransactionHash(result.transactionHash)
         setShowSuccessModal(true)
@@ -1579,12 +1667,20 @@ export default function WalletPage() {
         
         // Refresh balance and transaction history
         if (walletAddress) {
+          // Refresh multiple times to catch the balance update
           fetchWalletUSDCBalance(walletAddress)
           fetchTransactionHistory(walletAddress)
+          
+          // Refresh again after a short delay to ensure balance is updated
+          setTimeout(() => {
+            fetchWalletUSDCBalance(walletAddress)
+            fetchTransactionHistory(walletAddress)
+          }, 3000)
         }
       } else {
-        const errorMessage = result.error || "Payment failed"
-        console.error("[Send Payment] Payment failed:", result)
+        // Transaction did not succeed - show error
+        const errorMessage = result.error || "Payment failed. Transaction was not submitted successfully."
+        console.error("[Send Payment] ❌ Payment failed:", result)
         throw new Error(errorMessage)
       }
     } catch (error: any) {
@@ -1931,7 +2027,7 @@ export default function WalletPage() {
           animate={{ opacity: 1 }}
           transition={{ duration: 0.3, ease: "easeInOut" }}
         >
-          <div className="container mx-auto px-6 py-8 md:py-12">
+          <div className="container mx-auto px-6 pt-16 pb-8 md:py-12">
             {/* Balance Display Box */}
             <div className="mb-8 relative">
               <div className="border border-white/20 rounded-lg p-8 text-center relative">
@@ -1987,7 +2083,7 @@ export default function WalletPage() {
                       <li className="text-white/60 text-sm text-center py-4">No transactions yet</li>
                     ) : (
                       <>
-                        {(isTransactionsExpanded ? transactionHistory : transactionHistory.slice(0, 5)).map((tx) => {
+                        {(isTransactionsExpanded ? transactionHistory : transactionHistory.slice(0, 3)).map((tx, index) => {
                           // Find the relevant payment operation (sent or received)
                           const paymentOp = tx.operations.find((op: any) => op.type === "payment")
                           if (!paymentOp) return null
@@ -2002,13 +2098,18 @@ export default function WalletPage() {
                           const network = walletNetwork || "testnet"
                           const stellarExpertUrl = `https://stellar.expert/explorer/${network}/tx/${tx.hash}`
                           
+                          // Calculate opacity for fade effect - start fading from the third box (index 2)
+                          const isFading = !isTransactionsExpanded && index >= 2
+                          const opacity = isFading ? 0.3 : 1
+                          
                           return (
                             <motion.li
                               key={tx.id}
                               initial={{ opacity: 0, x: -10 }}
-                              animate={{ opacity: 1, x: 0 }}
+                              animate={{ opacity: opacity, x: 0 }}
                               transition={{ duration: 0.3 }}
-                              className="flex items-start gap-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
+                              onClick={() => !isTransactionsExpanded && setIsTransactionsExpanded(true)}
+                              className={`flex items-start gap-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors ${!isTransactionsExpanded ? 'cursor-pointer' : ''}`}
                             >
                               {/* Arrow Icon - Green for deposit, Red for withdrawal */}
                               <div className="flex-shrink-0 mt-1">
@@ -2055,7 +2156,7 @@ export default function WalletPage() {
                         })}
                         
                         {/* Expand/Collapse Button */}
-                        {transactionHistory.length > 5 && (
+                        {transactionHistory.length > 3 && (
                           <li className="pt-2 border-t border-white/10">
                             <button
                               onClick={() => setIsTransactionsExpanded(!isTransactionsExpanded)}
@@ -2895,6 +2996,8 @@ export default function WalletPage() {
           setResolvedRecipientAddress(null)
           setIsManualMode(false)
           setSendMemo("")
+          setRecipientError(null)
+          setIsVibrating(false)
         }
       }}>
         <DialogContent className="bg-black/80 backdrop-blur-md border-white/20 text-white max-w-md">
@@ -2906,29 +3009,40 @@ export default function WalletPage() {
             <div className="space-y-4 py-4">
               {!isManualMode ? (
                 <>
-                  {/* Sozu Tag Input */}
-                  <Input
-                    type="text"
-                    value={sendRecipient}
-                    onChange={(e) => setSendRecipient(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && sendRecipient.trim()) {
-                        handleResolveRecipient()
-                      }
-                    }}
-                    placeholder="$Sozutag"
-                    className="bg-white/5 border-white/20 text-white placeholder:text-white/40 text-lg h-14"
-                    autoFocus
-                  />
-
-                  {/* Manual Mode Button */}
-                  <button
-                    onClick={() => setIsManualMode(true)}
-                    className="w-full text-white text-sm hover:text-white/80 transition-colors"
-                    type="button"
+                  {/* Sozu Tag Input Container with Error */}
+                  <motion.div
+                    animate={isVibrating ? {
+                      x: [0, -10, 10, -10, 10, 0],
+                    } : {}}
+                    transition={{ duration: 0.5 }}
+                    className="space-y-2"
                   >
-                    Manual wallet address + memo
-                  </button>
+                    <Input
+                      type="text"
+                      value={sendRecipient}
+                      onChange={(e) => {
+                        setSendRecipient(e.target.value)
+                        setRecipientError(null)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && sendRecipient.trim()) {
+                          handleResolveRecipient()
+                        }
+                      }}
+                      placeholder="$Sozutag"
+                      className={`bg-white/5 border-white/20 text-white placeholder:text-white/40 text-lg h-14 ${recipientError ? 'border-red-500/50' : ''}`}
+                      autoFocus
+                    />
+                    {recipientError && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="text-red-400 text-sm text-center"
+                      >
+                        {recipientError}
+                      </motion.div>
+                    )}
+                  </motion.div>
 
                   {/* Continue Button */}
                   <Button
@@ -2945,6 +3059,18 @@ export default function WalletPage() {
                       "Continue"
                     )}
                   </Button>
+
+                  {/* Manual Transaction Button */}
+                  <button
+                    onClick={() => {
+                      setIsManualMode(true)
+                      setRecipientError(null)
+                    }}
+                    className="w-full text-white/60 text-sm hover:text-white/80 transition-colors"
+                    type="button"
+                  >
+                    Manual transaction
+                  </button>
                 </>
               ) : (
                 <>
@@ -3021,6 +3147,12 @@ export default function WalletPage() {
                 min="0.01"
                 value={sendAmount}
                 onChange={(e) => setSendAmount(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && sendAmount && parseFloat(sendAmount) > 0 && !isSending) {
+                    e.preventDefault()
+                    handleSendPayment()
+                  }
+                }}
                 placeholder="0.00"
                 className="bg-white/5 border-white/20 text-white placeholder:text-white/40 text-2xl text-center h-16 font-semibold"
                 autoFocus

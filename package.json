@@ -5,6 +5,7 @@
   "scripts": {
     "build": "next build",
     "dev": "next dev",
+    "dev:clean": "bash scripts/dev-clean.sh && npm run dev",
     "lint": "eslint .",
     "start": "next start",
     "auto-deposit": "tsx scripts/auto-deposit-cron.ts",

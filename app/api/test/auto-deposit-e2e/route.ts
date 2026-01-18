@@ -248,16 +248,16 @@ export async function GET(request: NextRequest) {
     }
 
     // Summary
-    const allStepsPassed = results.testSteps.every(step => 
+    const allStepsPassed = results.testSteps.every((step: { status: string }) => 
       step.status === "passed" || step.status === "skipped"
     )
-    const failedSteps = results.testSteps.filter(step => step.status === "failed")
+    const failedSteps = results.testSteps.filter((step: { status: string }) => step.status === "failed")
 
     results.summary = {
       allStepsPassed,
       totalSteps: results.testSteps.length,
-      passedSteps: results.testSteps.filter(s => s.status === "passed").length,
-      skippedSteps: results.testSteps.filter(s => s.status === "skipped").length,
+      passedSteps: results.testSteps.filter((s: { status: string }) => s.status === "passed").length,
+      skippedSteps: results.testSteps.filter((s: { status: string }) => s.status === "skipped").length,
       failedSteps: failedSteps.length,
       currentBalance,
       previousBalance,

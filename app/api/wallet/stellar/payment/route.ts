@@ -72,12 +72,64 @@ export async function POST(request: NextRequest) {
         }
         
         const response = await server.submitTransaction(signedTransaction)
-        console.log("[Payment API] ✅ Transaction submitted successfully:", response.hash)
+        console.log("[Payment API] ✅ Transaction submitted to network:", response.hash)
+
+        // Wait for transaction to be confirmed in a ledger
+        // Stellar transactions are typically included within 5 seconds
+        console.log("[Payment API] Waiting for transaction confirmation...")
+        let confirmed = false
+        let attempts = 0
+        const maxAttempts = 10 // Wait up to 10 seconds (1 second per attempt)
+
+        while (!confirmed && attempts < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, 1000)) // Wait 1 second
+          
+          try {
+            const txResponse = await server.transactions().transaction(response.hash).call()
+            if (txResponse && txResponse.successful !== undefined) {
+              confirmed = true
+              console.log("[Payment API] ✅ Transaction confirmed in ledger:", {
+                hash: response.hash,
+                successful: txResponse.successful,
+                ledger: txResponse.ledger
+              })
+              
+              if (!txResponse.successful) {
+                console.error("[Payment API] ❌ Transaction failed on network:", txResponse.result_codes)
+                return NextResponse.json(
+                  {
+                    success: false,
+                    error: "Transaction failed on network",
+                    transactionHash: response.hash,
+                    details: txResponse.result_codes
+                  },
+                  { status: 400, headers: corsHeaders(request) }
+                )
+              }
+              break
+            }
+          } catch (checkError: any) {
+            // Transaction might not be in ledger yet, continue waiting
+            if (checkError.response?.status === 404) {
+              console.log("[Payment API] Transaction not yet in ledger, waiting... (attempt", attempts + 1, "of", maxAttempts + ")")
+            } else {
+              console.warn("[Payment API] Error checking transaction status:", checkError.message)
+            }
+          }
+          
+          attempts++
+        }
+
+        if (!confirmed) {
+          console.warn("[Payment API] ⚠️ Transaction not confirmed after", maxAttempts, "attempts, but submission was successful")
+          // Still return success since submission was successful - transaction might be pending
+        }
 
         return NextResponse.json(
           {
             success: true,
             transactionHash: response.hash,
+            confirmed: confirmed,
           },
           { headers: corsHeaders(request) }
         )

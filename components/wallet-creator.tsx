@@ -13,7 +13,7 @@
 
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, memo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -37,7 +37,7 @@ interface WalletCreatorProps {
   compact?: boolean // For use in profile sheet
 }
 
-export function WalletCreator({ onWalletCreated, compact = false }: WalletCreatorProps = {}) {
+export const WalletCreator = memo(function WalletCreator({ onWalletCreated, compact = false }: WalletCreatorProps = {}) {
   const [status, setStatus] = useState<AccountCreationStatus | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [accountInfo, setAccountInfo] = useState<{
@@ -395,4 +395,4 @@ export function WalletCreator({ onWalletCreated, compact = false }: WalletCreato
       </Card>
     </div>
   )
-}
+})

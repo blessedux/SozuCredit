@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 
 interface AuthGuardProps {
@@ -10,7 +10,7 @@ interface AuthGuardProps {
 export function AuthGuard({ children }: AuthGuardProps) {
   const router = useRouter()
 
-  useEffect(() => {
+  const checkAuth = useCallback(() => {
     // Check if we're authenticated via sessionStorage (for dev mode without Supabase)
     if (typeof window !== "undefined") {
       const isAuthenticated = sessionStorage.getItem("dev_authenticated") === "true"
@@ -21,6 +21,10 @@ export function AuthGuard({ children }: AuthGuardProps) {
       }
     }
   }, [router])
+
+  useEffect(() => {
+    checkAuth()
+  }, [checkAuth])
 
   // In dev mode, show children immediately (server will allow access)
   // Client-side check ensures redirect happens if not authenticated

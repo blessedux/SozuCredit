@@ -238,36 +238,62 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (existingProfile) {
-      console.log("[Register] Profile exists (created by trigger), updating username")
-      // Profile exists but might not have username - update it
-      const { error: profileUpdateError } = await supabase
-        .from("profiles")
-        .update({ username, display_name: username })
-        .eq("id", authData.user.id)
-
-      if (profileUpdateError) {
-        console.error("[Register] Error updating profile:", profileUpdateError)
-        // If update fails due to unique constraint, the username might already exist
-        if (profileUpdateError.code === "23505") {
-          console.log("[Register] Username already taken, trying to get existing profile")
-          const { data: existing } = await supabase
+      console.log("[Register] Profile exists (created by trigger)")
+      
+      // Check if the profile has the correct username
+      if (existingProfile.username !== username) {
+        console.warn("[Register] Profile username mismatch:", {
+          expected: username,
+          actual: existingProfile.username,
+          userId: authData.user.id
+        })
+        
+        // Username is immutable - if it doesn't match, this is a serious error
+        // The trigger should have set it correctly. If not, we can't change it
+        // because it might conflict with another user's username.
+        // Only update display_name if needed
+        if (existingProfile.username) {
+          console.log("[Register] Profile already has username, only updating display_name")
+          const { error: profileUpdateError } = await supabase
             .from("profiles")
-            .select("*")
+            .update({ display_name: username })
             .eq("id", authData.user.id)
-            .single()
           
-          if (!existing) {
-            // Profile doesn't actually exist, create it
-            const { error: createError } = await supabase.from("profiles").insert({
-              id: authData.user.id,
-              username: `${username}-${Date.now().toString().slice(-6)}`, // Make unique
-              display_name: username,
-            })
-            
-            if (createError) {
-              console.error("[Register] Error creating profile after update failed:", createError)
+          if (profileUpdateError) {
+            console.error("[Register] Error updating display_name:", profileUpdateError)
+          }
+        } else {
+          // Profile exists but has no username - this shouldn't happen, but try to set it
+          // Only if it doesn't conflict
+          console.log("[Register] Profile has no username, attempting to set it")
+          const { error: profileUpdateError } = await supabase
+            .from("profiles")
+            .update({ username, display_name: username })
+            .eq("id", authData.user.id)
+          
+          if (profileUpdateError) {
+            console.error("[Register] Error setting username:", profileUpdateError)
+            if (profileUpdateError.code === "23505") {
+              // Username is already taken - this is a critical error
+              return NextResponse.json(
+                { 
+                  error: "This Sozu tag is already taken. Please choose a different tag or log in with your existing account.",
+                  usernameExists: true
+                },
+                { status: 409, headers: corsHeaders(request) }
+              )
             }
           }
+        }
+      } else {
+        // Username matches - just update display_name if needed
+        const { error: profileUpdateError } = await supabase
+          .from("profiles")
+          .update({ display_name: username })
+          .eq("id", authData.user.id)
+        
+        if (profileUpdateError) {
+          console.error("[Register] Error updating display_name:", profileUpdateError)
         }
       }
     } else {

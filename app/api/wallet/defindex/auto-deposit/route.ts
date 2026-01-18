@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     // Check and trigger auto-deposit if needed
     const result = await checkAndTriggerAutoDeposit(
       user.id,
-      wallet.previousUsdcBalance,
+      wallet.previousUsdcBalance ?? null,
       currentBalance,
       {
         minDepositAmount: 10.0, // $10 minimum

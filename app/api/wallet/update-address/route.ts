@@ -11,13 +11,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 
-function corsHeaders(request: NextRequest) {
+function corsHeaders(request: NextRequest): Record<string, string> {
   const origin = request.headers.get("origin")
   const allowedOrigins = [
     "http://localhost:3000",
     "http://localhost:3001",
     process.env.NEXT_PUBLIC_APP_URL,
-  ].filter(Boolean)
+  ].filter(Boolean) as string[]
 
   if (origin && allowedOrigins.includes(origin)) {
     return {
@@ -28,7 +28,11 @@ function corsHeaders(request: NextRequest) {
     }
   }
 
-  return {}
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, x-user-id",
+  }
 }
 
 export async function OPTIONS(request: NextRequest) {

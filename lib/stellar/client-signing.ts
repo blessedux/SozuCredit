@@ -7,13 +7,104 @@
 
 "use client"
 
-import { Transaction, TransactionBuilder, Keypair } from "@stellar/stellar-sdk"
+import { Transaction, TransactionBuilder, Keypair, FeeBumpTransaction } from "@stellar/stellar-sdk"
 import { retrieveKeypair, getKeypairByPublicKey } from "../storage/browser-keys"
 
 export interface SignedTransaction {
-  transaction: Transaction
+  transaction: Transaction | FeeBumpTransaction
   signature: string
   transactionXdr: string
+}
+
+/**
+ * Sign a Stellar transaction with passkey approval
+ * Requires explicit passkey/biometric confirmation before signing
+ * 
+ * @param transaction - Unsigned Stellar transaction
+ * @param credentialId - WebAuthn credential ID
+ * @param publicKey - Stellar public key
+ * @param userId - User ID
+ * @returns Signed transaction
+ */
+export async function signTransactionWithPasskeyApproval(
+  transaction: Transaction,
+  credentialId: string,
+  publicKey: string,
+  userId: string
+): Promise<SignedTransaction> {
+  console.log("[Client Signing] Starting transaction signing with passkey approval")
+
+  // Step 1: Calculate transaction hash
+  const transactionHash = transaction.hash().toString("hex")
+  console.log("[Client Signing] Transaction hash:", transactionHash.substring(0, 20) + "...")
+
+  // Step 2: Request challenge from server
+  const challengeResponse = await fetch("/api/wallet/stellar/signing-challenge", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      transactionHash,
+      userId,
+    }),
+  })
+
+  if (!challengeResponse.ok) {
+    const error = await challengeResponse.json()
+    throw new Error(error.error || "Failed to generate signing challenge")
+  }
+
+  const challengeData = await challengeResponse.json()
+  console.log("[Client Signing] ✅ Challenge received")
+
+  // Step 3: Get passkey assertion (triggers biometric prompt)
+  const { getPasskeyForTransaction } = await import("@/lib/turnkey/passkeys")
+  console.log("[Client Signing] Requesting passkey approval...")
+  
+  const credential = await getPasskeyForTransaction({
+    challenge: challengeData.challenge,
+    rpId: challengeData.rpId,
+    rp: challengeData.rp,
+    allowCredentials: challengeData.allowCredentials,
+    timeout: challengeData.timeout,
+    userVerification: challengeData.userVerification,
+  })
+
+  if (!credential) {
+    throw new Error("Transaction cancelled. You must approve the transaction with your passkey to send payment.")
+  }
+
+  console.log("[Client Signing] ✅ Passkey approval received")
+
+  // Step 4: Verify assertion with server
+  const verifyResponse = await fetch("/api/wallet/stellar/verify-assertion", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      credential,
+      transactionHash,
+      userId,
+      challenge: challengeData.challenge,
+    }),
+  })
+
+  if (!verifyResponse.ok) {
+    const error = await verifyResponse.json()
+    throw new Error(error.error || "Passkey verification failed")
+  }
+
+  const verifyResult = await verifyResponse.json()
+  if (!verifyResult.success || !verifyResult.verified) {
+    throw new Error("Passkey verification failed. Please try again.")
+  }
+
+  console.log("[Client Signing] ✅ Assertion verified by server")
+
+  // Step 5: Sign transaction with stored keypair
+  return await signTransactionClientSide(transaction, credentialId, publicKey, userId)
 }
 
 /**
@@ -22,6 +113,7 @@ export interface SignedTransaction {
  * @param transaction - Unsigned Stellar transaction
  * @param credentialId - WebAuthn credential ID (optional, will try to find by public key if not provided)
  * @param publicKey - Stellar public key (optional, will extract from transaction if not provided)
+ * @param userId - User ID (optional)
  * @returns Signed transaction
  * 
  * @example

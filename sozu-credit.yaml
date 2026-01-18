@@ -1,0 +1,37 @@
+title: Sozu Credit
+other_names: null
+parent: null
+description: A simple, passkeys-powered wallet that gives entrepreneurs instant access to high-yield DeFi and unlocks decentralized credit through community vouching and education. Sozu Credit combines passkeys authentication, Stellar smart wallets, automatic 10-20% APY on USDC holdings via DeFi vaults, and community-based credit access through vouching and education.
+links:
+  website: https://sozucredit.com
+  blog: null
+  x: null
+  linkedin: null
+  discord_server: null
+  telegram: null
+  youtube: null
+  instagram: null
+  reddit: null
+  tiktok: null
+  github: https://github.com/sozu-capital/sozu-credit
+  linktree: null
+attributes:
+  category: DeFi & Lending
+  tags: []
+  smart_contracts: false
+  regions_services: null
+  country: null
+images:
+  icon: null
+  thumbnail: null
+  banner: null
+scf:
+  awarded_submissions: []
+  awarded_submissions_url: []
+  awarded_round: []
+  awarded_total: null
+mainnet:
+  live: true
+  tokens: []
+  contracts: []
+  audits: []

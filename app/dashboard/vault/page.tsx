@@ -10,8 +10,23 @@ import { ArrowDownToLine, ArrowUpFromLine, TrendingUp, Wallet } from "lucide-rea
 export default function VaultPage() {
   const router = useRouter()
 
-  const [vault, setVault] = useState<any>(null)
-  const [transactions, setTransactions] = useState<any[]>([])
+  interface Vault {
+    id: string
+    balance: number
+    yield_rate: number
+    alias: string | null
+  }
+
+  interface Transaction {
+    id: string
+    type: string
+    amount: number
+    description: string | null
+    created_at: string
+  }
+
+  const [vault, setVault] = useState<Vault | null>(null)
+  const [transactions, setTransactions] = useState<Transaction[]>([])
 
   useEffect(() => {
     // Client-side auth check for dev mode without Supabase
@@ -40,6 +55,7 @@ export default function VaultPage() {
         // In dev mode, use mock data since we don't have Supabase
         // You can extend this later to fetch from Supabase when configured
         setVault({
+          id: "dev-vault-" + Date.now().toString().slice(-6),
           balance: 0,
           yield_rate: 15,
           alias: "dev-vault-" + Date.now().toString().slice(-6)

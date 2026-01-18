@@ -5,7 +5,7 @@
 
 "use client"
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { TrendingUp, Clock, Settings, RefreshCw } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -39,7 +39,7 @@ interface APYDisplayProps {
   className?: string
 }
 
-export function APYDisplay({
+export const APYDisplay = React.memo(function APYDisplay({
   strategyAddress,
   compact = false,
   showControls = true,
@@ -57,7 +57,7 @@ export function APYDisplay({
   const [precision, setPrecision] = useState<number>(2)
   const [showAllPeriods, setShowAllPeriods] = useState(false)
 
-  const fetchAPY = async () => {
+  const fetchAPY = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -82,18 +82,18 @@ export function APYDisplay({
     } finally {
       setLoading(false)
     }
-  }
+  }, [selectedPeriod, precision])
 
   useEffect(() => {
     fetchAPY()
-  }, [selectedPeriod, precision])
+  }, [fetchAPY])
 
   useEffect(() => {
     if (!autoRefresh) return
 
     const interval = setInterval(fetchAPY, refreshInterval)
     return () => clearInterval(interval)
-  }, [autoRefresh, refreshInterval, selectedPeriod, precision])
+  }, [autoRefresh, refreshInterval, fetchAPY])
 
   const getConfidenceColor = (confidence: string) => {
     switch (confidence) {
@@ -276,10 +276,10 @@ export function APYDisplay({
       </CardContent>
     </Card>
   )
-}
+})
 
 // Compact version for inline display
-export function APYBadge({ strategyAddress, className = "" }: { strategyAddress: string, className?: string }) {
+export const APYBadge = React.memo(function APYBadge({ strategyAddress, className = "" }: { strategyAddress: string, className?: string }) {
   const [apyData, setApyData] = useState<APYData | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -347,7 +347,7 @@ export function APYBadge({ strategyAddress, className = "" }: { strategyAddress:
       </Badge>
     </div>
   )
-}
+})
 
 // Hook for programmatic APY access
 export function useAPY(strategyAddress: string, period: 'daily' | 'weekly' | 'monthly' | 'yearly' = 'yearly', precision: number = 2) {
@@ -355,7 +355,7 @@ export function useAPY(strategyAddress: string, period: 'daily' | 'weekly' | 'mo
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchAPY = async () => {
+  const fetchAPY = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -370,7 +370,6 @@ export function useAPY(strategyAddress: string, period: 'daily' | 'weekly' | 'mo
 
       if (data.success && data.apy) {
         setApyData(data.apy)
-        setLastUpdate(new Date())
       } else {
         throw new Error(data.error || 'Failed to fetch APY data')
       }
@@ -380,11 +379,11 @@ export function useAPY(strategyAddress: string, period: 'daily' | 'weekly' | 'mo
     } finally {
       setLoading(false)
     }
-  }
+  }, [period, precision])
 
   useEffect(() => {
     fetchAPY()
-  }, [period, precision])
+  }, [fetchAPY])
 
   return { apyData, loading, error, refetch: fetchAPY }
 }

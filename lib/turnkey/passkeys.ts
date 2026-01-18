@@ -297,8 +297,8 @@ export async function createPasskey(
     // Note: userHandle may not be available in registration response for all authenticators
     // It will be available during authentication
     let userHandle: string | null = null
-    if (response.userHandle) {
-      userHandle = new TextDecoder().decode(response.userHandle)
+    if ((response as any).userHandle) {
+      userHandle = new TextDecoder().decode((response as any).userHandle)
       console.log("[createPasskey] UserHandle in response:", userHandle)
     } else {
       // Use the userId we provided (it's stored in user.id)
@@ -340,6 +340,37 @@ export async function createPasskey(
     
     // If error is not an Error instance, wrap it
     throw new Error("Failed to create passkey: Unknown error occurred")
+  }
+}
+
+/**
+ * Get WebAuthn credential for transaction approval
+ * Wrapper around getPasskey with transaction-specific error messages
+ */
+export async function getPasskeyForTransaction(challenge: PasskeyChallenge): Promise<PasskeyCredential | null> {
+  try {
+    return await getPasskey(challenge)
+  } catch (error: any) {
+    // Provide transaction-specific error messages
+    if (error instanceof DOMException) {
+      if (error.name === "NotAllowedError") {
+        throw new Error("Transaction cancelled. You must approve the transaction with your passkey to send payment.")
+      } else if (error.name === "AbortError") {
+        throw new Error("Transaction approval cancelled.")
+      } else if (error.name === "TimeoutError") {
+        throw new Error("Transaction approval timed out. Please try again.")
+      }
+      throw error
+    }
+    
+    if (error instanceof Error) {
+      if (error.message.includes("WebAuthn is not supported")) {
+        throw new Error("Your browser does not support passkeys. Please use a modern browser.")
+      }
+      throw error
+    }
+    
+    throw new Error("Failed to get passkey approval. Please try again.")
   }
 }
 

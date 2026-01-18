@@ -21,7 +21,7 @@ export function AnimatedARSBalance({
 }: AnimatedARSBalanceProps) {
   const [currentBalance, setCurrentBalance] = useState(initialBalance);
   const [displayBalance, setDisplayBalance] = useState(initialBalance);
-  const animationRef = useRef<NodeJS.Timeout>();
+  const animationRef = useRef<NodeJS.Timeout | null>(null);
   const lastUpdateRef = useRef(Date.now());
 
   // Spring animation for smooth number transitions

@@ -45,7 +45,7 @@ async function deriveEncryptionKey(
   const encryptionKey = await crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
-      salt: salt,
+      salt: salt.buffer as ArrayBuffer,
       iterations: 100000, // High iteration count for security
       hash: "SHA-256",
     },
@@ -80,7 +80,7 @@ async function encryptSeed(
       tagLength: 128, // 128-bit authentication tag
     },
     encryptionKey,
-    seed
+    seed.buffer as ArrayBuffer
   )
 
   // Combine salt and encrypted data for storage
@@ -223,7 +223,7 @@ export async function retrieveKeypair(
     }
 
     // Create keypair from seed
-    const keypair = Keypair.fromRawEd25519Seed(seed)
+    const keypair = Keypair.fromRawEd25519Seed(Buffer.from(seed))
 
     // Verify public key matches
     if (keypair.publicKey() !== encryptedKeyData.publicKey) {

@@ -6,14 +6,14 @@
 import { getTurnkeyClient } from "./client"
 import { getTurnkeyConfig } from "./config"
 import { getStellarWallet } from "./stellar-wallet"
-import { Transaction, TransactionBuilder, xdr, Networks, BASE_FEE, Keypair, StrKey } from "@stellar/stellar-sdk"
+import { Transaction, TransactionBuilder, xdr, Networks, BASE_FEE, Keypair, StrKey, FeeBumpTransaction } from "@stellar/stellar-sdk"
 import { getSorobanRpc as getSorobanRpcFromVault } from "../defindex/vault"
 import * as rpc from "@stellar/stellar-sdk/rpc"
 import { Api } from "@stellar/stellar-sdk/rpc"
 import { createActivityPoller } from "@turnkey/http"
 
 export interface SignedTransaction {
-  transaction: Transaction
+  transaction: Transaction | FeeBumpTransaction
   signature: string
   transactionXdr: string
 }
@@ -557,7 +557,7 @@ export async function submitSorobanTransaction(
       await new Promise((resolve) => setTimeout(resolve, 1000)) // Wait 1 second
       
       try {
-        const transactionStatus = await sorobanRpc.getTransactionStatus(transactionHash)
+        const transactionStatus = await (sorobanRpc as any).getTransactionStatus(transactionHash)
         
         if (transactionStatus.status === "SUCCESS") {
           status = "SUCCESS"

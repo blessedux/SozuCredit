@@ -146,7 +146,7 @@ export async function deriveStellarKeypair(
 
   // Create Stellar keypair from seed
   // Stellar SDK's Keypair.fromRawEd25519Seed expects a 32-byte seed
-  const keypair = Keypair.fromRawEd25519Seed(seedBytes)
+  const keypair = Keypair.fromRawEd25519Seed(Buffer.from(seedBytes))
 
   console.log("[Key Derivation] ✅ Keypair derived successfully:", {
     publicKey: keypair.publicKey(),
