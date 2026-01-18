@@ -95,13 +95,12 @@ export async function POST(request: NextRequest) {
               })
               
               if (!txResponse.successful) {
-                console.error("[Payment API] ❌ Transaction failed on network:", txResponse.result_codes)
+                console.error("[Payment API] ❌ Transaction failed on network")
                 return NextResponse.json(
                   {
                     success: false,
                     error: "Transaction failed on network",
                     transactionHash: response.hash,
-                    details: txResponse.result_codes
                   },
                   { status: 400, headers: corsHeaders(request) }
                 )
