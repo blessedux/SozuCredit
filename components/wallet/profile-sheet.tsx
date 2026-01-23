@@ -44,6 +44,9 @@ interface ProfileSheetProps {
     onTouchStart: (e: React.TouchEvent) => void
     onTouchMove: (e: React.TouchEvent) => void
     onTouchEnd: () => void
+    onSheetTouchStart: (e: React.TouchEvent) => void
+    onSheetTouchMove: (e: React.TouchEvent) => void
+    onSheetTouchEnd: () => void
   }
 }
 
@@ -213,10 +216,10 @@ export const ProfileSheet = memo(function ProfileSheet({
     <Sheet open={isOpen} onOpenChange={handleClose}>
       <SheetContent
         side="right"
-        className="bg-black border-white/20 text-white w-full sm:max-w-lg overflow-y-auto [&>button]:hidden touch-pan-y"
-        onTouchStart={onSwipeHandlers?.onTouchStart}
-        onTouchMove={onSwipeHandlers?.onTouchMove}
-        onTouchEnd={onSwipeHandlers?.onTouchEnd}
+        className="bg-black border-white/20 text-white w-full sm:max-w-lg overflow-y-auto touch-pan-y"
+        onTouchStart={onSwipeHandlers?.onSheetTouchStart}
+        onTouchMove={onSwipeHandlers?.onSheetTouchMove}
+        onTouchEnd={onSwipeHandlers?.onSheetTouchEnd}
         style={{ touchAction: 'pan-y' }}
       >
         <SheetTitle className="sr-only">Profile Settings</SheetTitle>
@@ -226,7 +229,7 @@ export const ProfileSheet = memo(function ProfileSheet({
 
         <button
           onClick={() => handleClose(false)}
-          className="absolute top-4 left-4 z-10 p-2 rounded-full bg-white/10 border border-white/20 hover:bg-white/20 transition-colors"
+          className="absolute top-4 right-4 z-10 p-2 rounded-full bg-white/10 border border-white/20 hover:bg-white/20 transition-colors"
           aria-label={t.closeProfile}
         >
           <ArrowLeft className="w-5 h-5 text-white" />
