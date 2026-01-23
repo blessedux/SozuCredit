@@ -37,7 +37,7 @@ export function useNotifications() {
         const newNotifications = notificationsData.notifications || []
         const previousUnreadCount = previousUnreadCountRef.current
         setNotifications(newNotifications)
-        const unread = newNotifications.filter((n) => !n.read).length
+        const unread = newNotifications.filter((n: Notification) => !n.read).length
         setUnreadCount(unread)
         previousUnreadCountRef.current = unread
 
@@ -76,7 +76,7 @@ export function useNotifications() {
       })
 
       // Update local state
-      setNotifications(prev => prev.map(n => 
+      setNotifications(prev => prev.map(n =>
         n.id === notificationId ? { ...n, read: true } : n
       ))
       setUnreadCount(prev => Math.max(0, prev - 1))
@@ -88,7 +88,7 @@ export function useNotifications() {
   // Initialize notifications on mount
   useEffect(() => {
     fetchNotifications()
-    
+
     // Refresh notifications every 30 seconds
     const interval = setInterval(fetchNotifications, 30000)
     return () => clearInterval(interval)

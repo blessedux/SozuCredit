@@ -110,7 +110,7 @@ export type WalletTexts = {
   usernamePlaceholder: string;
   pointsToSend: string;
   available: string;
-  sending: string;
+
   sendPoints: string;
   pointsSentSuccess: string;
   pointsSentError: string;
@@ -255,7 +255,7 @@ export const walletTexts = {
     usernamePlaceholder: "Nombre de usuario",
     pointsToSend: "Puntos a Enviar",
     available: "Disponible:",
-    sending: "Enviando...",
+
     sendPoints: "Enviar Puntos",
     pointsSentSuccess: "Puntos de confianza enviados exitosamente",
     pointsSentError: "Error al enviar puntos",
@@ -397,7 +397,7 @@ export const walletTexts = {
     usernamePlaceholder: "Username",
     pointsToSend: "Points to Send",
     available: "Available:",
-    sending: "Sending...",
+
     sendPoints: "Send Points",
     pointsSentSuccess: "Trust points sent successfully",
     pointsSentError: "Error sending points",
