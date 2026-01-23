@@ -43,17 +43,24 @@ export async function getWalletBalanceClientSide(
     // Load account from Stellar network
     const account = await server.loadAccount(publicKey)
 
-    // Log all balances for debugging (especially for USDC)
+    // Log balance summary for debugging (truncated to prevent memory issues)
     if (assetCode === "USDC") {
       console.log(`[getWalletBalanceClientSide] 🔍 Checking USDC balance for ${publicKey.substring(0, 10)}...`)
       console.log(`[getWalletBalanceClientSide] Network: ${stellarConfig.network}`)
       console.log(`[getWalletBalanceClientSide] Looking for issuer: ${assetIssuer ? assetIssuer.substring(0, 20) + "..." : "ANY"}`)
-      console.log(`[getWalletBalanceClientSide] All account balances:`, account.balances.map((b: any) => ({
-        asset_type: b.asset_type,
-        asset_code: b.asset_code,
-        asset_issuer: b.asset_issuer ? b.asset_issuer.substring(0, 20) + "..." : undefined,
-        balance: b.balance,
-      })))
+      console.log(`[getWalletBalanceClientSide] Account has ${account.balances.length} balance(s)`)
+      
+      // Log only USDC-related balances, not all balances
+      const usdcBalances = account.balances.filter((b: any) => 
+        b.asset_type !== "native" && b.asset_code === "USDC"
+      );
+      if (usdcBalances.length > 0) {
+        console.log(`[getWalletBalanceClientSide] USDC balances found:`, usdcBalances.map((b: any) => ({
+          asset_code: b.asset_code,
+          asset_issuer: b.asset_issuer ? b.asset_issuer.substring(0, 20) + "..." : undefined,
+          balance: b.balance,
+        })));
+      }
     }
 
     // Find the balance for the requested asset
@@ -77,9 +84,8 @@ export async function getWalletBalanceClientSide(
         
         if (!balance && assetCode === "USDC") {
           console.warn(`[getWalletBalanceClientSide] ⚠️ No USDC balance found with issuer ${assetIssuer.substring(0, 20)}...`)
-          console.warn(`[getWalletBalanceClientSide] Available non-native assets:`, account.balances
-            .filter((b: any) => b.asset_type !== "native")
-            .map((b: any) => `${b.asset_code}:${b.asset_issuer ? b.asset_issuer.substring(0, 20) + "..." : "N/A"}`))
+          const nonNativeAssets = account.balances.filter((b: any) => b.asset_type !== "native")
+          console.log(`[getWalletBalanceClientSide] Found ${nonNativeAssets.length} non-native asset(s)`)
         }
       } else {
         // Try without issuer (match any asset with this code)

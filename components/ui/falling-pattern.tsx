@@ -21,6 +21,8 @@ type FallingPatternProps = React.ComponentProps<'div'> & {
 	useVideoFallback?: boolean;
 	/** Video source for mobile fallback */
 	videoSrc?: string;
+	/** Pause animation when modal is open (default: false) */
+	pauseAnimation?: boolean;
 };
 
 export function FallingPattern({

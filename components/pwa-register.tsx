@@ -1,8 +1,10 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 export function PWARegister() {
+  const updateIntervalRef = useRef<NodeJS.Timeout | null>(null)
+
   useEffect(() => {
     if (typeof window === 'undefined') return
 
@@ -14,7 +16,7 @@ export function PWARegister() {
           console.log('[PWA] Service Worker registered:', registration.scope)
           
           // Check for updates periodically
-          setInterval(() => {
+          updateIntervalRef.current = setInterval(() => {
             registration.update()
           }, 60000) // Check every minute
         })
@@ -45,6 +47,10 @@ export function PWARegister() {
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+      // Clean up interval
+      if (updateIntervalRef.current) {
+        clearInterval(updateIntervalRef.current)
+      }
     }
   }, [])
 

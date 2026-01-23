@@ -2,12 +2,25 @@
 
 import { FallingPattern } from '@/components/ui/falling-pattern'
 import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
 
 export function SharedBackground() {
   const pathname = usePathname()
+  const [mounted, setMounted] = useState(false)
+
+  // Ensure component is mounted before checking pathname (prevents hydration issues)
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // Show background on pages that use it
-  const showBackground = pathname === '/wallet' || pathname === '/auth' || pathname === '/' || pathname?.startsWith('/wallet') || pathname?.startsWith('/auth')
+  const showBackground = mounted && (
+    pathname === '/wallet' || 
+    pathname === '/auth' || 
+    pathname === '/' || 
+    pathname?.startsWith('/wallet') || 
+    pathname?.startsWith('/auth')
+  )
 
   if (!showBackground) {
     return null
