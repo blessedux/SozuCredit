@@ -23,14 +23,17 @@ export default function SettingsPage() {
     const storedUsername = sessionStorage.getItem("dev_username")
     if (storedUsername) {
       setUsername(storedUsername)
+    } else {
+      // No username means not logged in - redirect to auth
+      router.push("/auth")
     }
-  }, [])
+  }, [router])
 
   const handleDeleteAccount = async () => {
     // Check if they typed the Sozu tag with or without $ prefix
     const expectedTag = `$${username}`
     const expectedTagWithoutPrefix = username
-    
+
     if (deleteConfirmation !== expectedTag && deleteConfirmation !== expectedTagWithoutPrefix) {
       setDeleteError("Confirmation does not match your Sozu tag")
       return

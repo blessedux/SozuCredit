@@ -277,19 +277,29 @@ export const ProfileSheet = memo(function ProfileSheet({
                     <Key className="w-4 h-4" />
                     Clave Secreta
                   </Label>
-                  <div className="p-4 bg-white/5 border border-white/10 rounded-lg overflow-hidden">
+                  <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
                     {isSecretKeyExposed && secretKey ? (
                       <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          <code className="text-xs text-white/90 font-mono truncate flex-1 pr-2">
-                            {secretKey.length > 40
-                              ? `${secretKey.substring(0, 20)}...${secretKey.substring(secretKey.length - 20)}`
-                              : secretKey}
+                        <div className="flex items-start gap-2">
+                          <code className="text-xs text-white/90 font-mono break-all flex-1">
+                            {secretKey}
                           </code>
-                          <span className="text-xs text-white/60 ml-2">
-                            Verificado: La clave secreta coincide con la dirección de la billetera
-                          </span>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={handleCopySecretKey}
+                            className="bg-transparent border-white/20 text-white hover:bg-white/10 flex-shrink-0"
+                          >
+                            {secretKeyCopied ? (
+                              <Check className="w-4 h-4 text-green-400" />
+                            ) : (
+                              <Copy className="w-4 h-4" />
+                            )}
+                          </Button>
                         </div>
+                        <p className="text-xs text-green-400/80">
+                          ✓ Verificado: La clave secreta coincide con la dirección de la billetera
+                        </p>
                       </div>
                     ) : (
                       <div className="flex items-center gap-2">

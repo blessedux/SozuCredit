@@ -5,20 +5,26 @@ export async function updateSession(request: NextRequest) {
   // CRITICAL: Check for allowed routes at the VERY START - before creating NextResponse
   // This ensures these routes are allowed before any other processing
   const pathname = request.nextUrl.pathname
-  
+
   // Allow test-keys route (for Phase 1 & 2 testing)
   if (pathname === "/test-keys") {
     console.log("[Middleware] ✅ /test-keys route detected - ALLOWING immediately")
     return NextResponse.next()
   }
-  
+
   if (pathname === "/wallet") {
     // Log immediately to verify this code path is being hit
     console.log("[Middleware] ✅ /wallet route detected - ALLOWING immediately")
     // Return immediately with a fresh NextResponse
     return NextResponse.next()
   }
-  
+
+  if (pathname === "/settings") {
+    // Allow settings route - it handles its own auth via sessionStorage
+    console.log("[Middleware] ✅ /settings route detected - ALLOWING immediately")
+    return NextResponse.next()
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   })
@@ -26,17 +32,18 @@ export async function updateSession(request: NextRequest) {
   // CRITICAL: Check routes FIRST before any Supabase calls
   // This prevents unnecessary Supabase client creation for routes that don't need it
   const isWalletRoute = pathname === "/wallet"
+  const isSettingsRoute = pathname === "/settings"
   const isTestKeysRoute = pathname === "/test-keys"
   const isAuthRoute = pathname.startsWith("/auth")
   const isApiRoute = pathname.startsWith("/api")
   const isDevMode = process.env.NODE_ENV === "development"
-  
+
   // Always allow test-keys route - it's a testing page that doesn't need auth
   if (isTestKeysRoute) {
     console.log("[Middleware] ✅ ALLOWING /test-keys route (testing page)")
     return supabaseResponse
   }
-  
+
   // Always allow wallet route FIRST - it handles its own auth via sessionStorage
   // Skip all Supabase checks for wallet route (this is a backup check)
   if (isWalletRoute) {
@@ -45,7 +52,13 @@ export async function updateSession(request: NextRequest) {
     // Return immediately - no Supabase client creation needed
     return supabaseResponse
   }
-  
+
+  // Always allow settings route - it handles its own auth via sessionStorage
+  if (isSettingsRoute) {
+    console.log("[Middleware] ✅ ALLOWING /settings route immediately (handles own auth via sessionStorage)")
+    return supabaseResponse
+  }
+
   // Don't redirect API routes - they handle their own authentication
   if (isApiRoute) {
     // Allow API routes to proceed without redirect
@@ -67,10 +80,10 @@ export async function updateSession(request: NextRequest) {
     const missing = []
     if (!supabaseUrl) missing.push("NEXT_PUBLIC_SUPABASE_URL")
     if (!supabaseAnonKey) missing.push("NEXT_PUBLIC_SUPABASE_ANON_KEY")
-    
+
     console.error(`[Middleware] Missing required environment variables: ${missing.join(", ")}`)
     console.error("[Middleware] Please set these in Vercel Dashboard → Settings → Environment Variables")
-    
+
     throw new Error(
       `Missing Supabase environment variables: ${missing.join(", ")}. ` +
       "Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Vercel Dashboard → Settings → Environment Variables."
@@ -100,9 +113,9 @@ export async function updateSession(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  
-  // Redirect to login if not authenticated and not on auth pages, wallet, or test-keys
-  if (!user && !isAuthRoute && request.nextUrl.pathname !== "/" && !isWalletRoute && !isTestKeysRoute) {
+
+  // Redirect to login if not authenticated and not on auth pages, wallet, settings, or test-keys
+  if (!user && !isAuthRoute && request.nextUrl.pathname !== "/" && !isWalletRoute && !isSettingsRoute && !isTestKeysRoute) {
     const url = request.nextUrl.clone()
     url.pathname = "/auth"
     return NextResponse.redirect(url)
@@ -115,7 +128,7 @@ export async function updateSession(request: NextRequest) {
     // Check if this is likely a sessionStorage-only auth (no Supabase session cookie)
     // If so, let the client handle the redirect to avoid refresh
     const hasSessionCookie = request.cookies.has("sb-access-token") || request.cookies.has("sb-refresh-token")
-    
+
     if (hasSessionCookie) {
       // We have a Supabase session cookie, safe to redirect server-side
       const url = request.nextUrl.clone()
