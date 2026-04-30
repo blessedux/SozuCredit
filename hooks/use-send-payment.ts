@@ -70,7 +70,9 @@ export function useSendPayment(
           "Content-Type": "application/json",
           "x-user-id": userId,
         },
-        body: JSON.stringify({ recipient: sendRecipient.trim() }),
+        body: JSON.stringify({
+          recipient: sendRecipient.trim().replace(/^\$+/, "").trim() || sendRecipient.trim(),
+        }),
       })
 
       if (!resolveResponse.ok) {
@@ -219,7 +221,7 @@ export function useSendPayment(
       const { getCurrentCredentialId } = await import("@/lib/storage/key-utils")
       const { signTransactionWithPasskeyApproval } = await import("@/lib/stellar/client-signing")
       
-      const credentialId = await getCurrentCredentialId()
+      const credentialId = await getCurrentCredentialId(walletAddress)
       if (!credentialId) {
         throw new Error("Credential ID not found. Please log in again.")
       }

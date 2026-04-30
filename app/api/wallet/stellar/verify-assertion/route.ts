@@ -4,6 +4,53 @@ import { corsHeaders, handleOPTIONS } from "@/lib/cors"
 import { challengeStore } from "@/lib/webauthn/config"
 import { base64URLToBuffer } from "@/lib/webauthn/utils"
 
+/** Accept clientDataJSON.origin if it matches any plausible app URL (prod env drift, Vercel previews, missing Origin). */
+function isWebAuthnOriginAllowed(clientOrigin: string, request: NextRequest): boolean {
+  let client: URL
+  try {
+    client = new URL(clientOrigin)
+  } catch {
+    return false
+  }
+
+  const candidates: string[] = []
+  const originHeader = request.headers.get("origin")
+  if (originHeader) candidates.push(originHeader)
+  const referer = request.headers.get("referer")
+  if (referer) {
+    try {
+      candidates.push(new URL(referer).origin)
+    } catch {
+      /* ignore */
+    }
+  }
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    candidates.push(process.env.NEXT_PUBLIC_APP_URL)
+  }
+  candidates.push("http://localhost:3000")
+  const vercelUrl = process.env.VERCEL_URL
+  if (vercelUrl) {
+    try {
+      candidates.push(new URL(`https://${vercelUrl}`).origin)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  for (const raw of candidates) {
+    try {
+      if (new URL(raw).origin === client.origin) {
+        return true
+      }
+    } catch {
+      if (raw === clientOrigin) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
 export async function OPTIONS(request: NextRequest) {
   return handleOPTIONS(request)
 }
@@ -92,14 +139,12 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        // Verify origin matches
-        const originHeader = request.headers.get("origin")
-        const expectedOrigin = originHeader || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
-        
-        if (clientDataJSON.origin !== expectedOrigin) {
+        if (!isWebAuthnOriginAllowed(clientDataJSON.origin, request)) {
           console.error("[Verify Assertion] ❌ Origin mismatch:", {
-            expected: expectedOrigin,
-            received: clientDataJSON.origin
+            received: clientDataJSON.origin,
+            originHeader: request.headers.get("origin"),
+            nextPublicAppUrl: process.env.NEXT_PUBLIC_APP_URL,
+            vercelUrl: process.env.VERCEL_URL,
           })
           return NextResponse.json(
             { error: "Origin mismatch" },

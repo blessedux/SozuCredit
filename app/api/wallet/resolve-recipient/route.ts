@@ -13,10 +13,21 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { recipient } = await request.json()
+    const { recipient: rawRecipient } = await request.json()
     const userId = request.headers.get("x-user-id")
 
-    if (!recipient) {
+    if (!rawRecipient || typeof rawRecipient !== "string") {
+      return NextResponse.json(
+        { error: "Recipient is required" },
+        { status: 400, headers: corsHeaders(request) }
+      )
+    }
+
+    const recipient = rawRecipient.trim()
+    // Sozu tags are stored without "$"; users often type "$alice"
+    const sozuTagLookup = recipient.replace(/^\$+/, "").trim()
+
+    if (!sozuTagLookup) {
       return NextResponse.json(
         { error: "Recipient is required" },
         { status: 400, headers: corsHeaders(request) }
@@ -24,11 +35,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if recipient is a Stellar address (starts with G and is 56 chars)
-    const isStellarAddress = /^G[A-Z0-9]{55}$/.test(recipient)
+    const isStellarAddress = /^G[A-Z0-9]{55}$/.test(sozuTagLookup)
     
     if (isStellarAddress) {
       return NextResponse.json(
-        { walletAddress: recipient },
+        { walletAddress: sozuTagLookup },
         { headers: corsHeaders(request) }
       )
     }
@@ -48,13 +59,13 @@ export async function POST(request: NextRequest) {
 
     // Find profile by username (Sozu tag)
     // Username should be case-sensitive and exact match
-    console.log("[Resolve Recipient] Looking up profile for Sozu tag:", recipient)
+    console.log("[Resolve Recipient] Looking up profile for Sozu tag:", sozuTagLookup)
     
     // Try exact match first (case-sensitive)
     let { data: profile, error: profileError } = await serviceClient
       .from("profiles")
       .select("id, username")
-      .eq("username", recipient.trim())
+      .eq("username", sozuTagLookup)
       .maybeSingle()
     
     // If not found, try case-insensitive match (for debugging)
@@ -63,13 +74,13 @@ export async function POST(request: NextRequest) {
       const { data: profiles } = await serviceClient
         .from("profiles")
         .select("id, username")
-        .ilike("username", recipient.trim())
+        .ilike("username", sozuTagLookup)
         .limit(5)
       
       if (profiles && profiles.length > 0) {
         console.log("[Resolve Recipient] Found profiles with case-insensitive match:", profiles.map(p => ({ id: p.id, username: p.username })))
         // Use exact match if available, otherwise use first result
-        profile = profiles.find(p => p.username === recipient.trim()) || profiles[0]
+        profile = profiles.find(p => p.username === sozuTagLookup) || profiles[0]
         console.log("[Resolve Recipient] Using profile:", { id: profile.id, username: profile.username })
       }
     }

@@ -3,8 +3,6 @@ import type { NextRequest } from "next/server"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
 import { generateChallenge } from "@/lib/webauthn/utils"
 import { challengeStore, cleanupChallenges, getRpID, rpName } from "@/lib/webauthn/config"
-import { createClient } from "@/lib/supabase/server"
-
 export async function OPTIONS(request: NextRequest) {
   return handleOPTIONS(request)
 }
@@ -39,22 +37,6 @@ export async function POST(request: NextRequest) {
     const challenge = generateChallenge()
     console.log("[Signing Challenge] Generated challenge:", challenge.substring(0, 20) + "...")
 
-    // Get user's passkeys for allowCredentials
-    const supabase = await createClient()
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("id", userId)
-      .single()
-
-    if (!profile) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404, headers: corsHeaders(request) }
-      )
-    }
-
-    // Get user's passkeys
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
@@ -67,6 +49,21 @@ export async function POST(request: NextRequest) {
 
     const { createClient: createServiceClient } = await import("@supabase/supabase-js")
     const serviceClient = createServiceClient(supabaseUrl, supabaseServiceKey)
+
+    // Use service role: cookie-based Supabase client often has no session here (x-user-id only),
+    // so RLS would hide the profile and break signing on production.
+    const { data: profile } = await serviceClient
+      .from("profiles")
+      .select("id")
+      .eq("id", userId)
+      .maybeSingle()
+
+    if (!profile) {
+      return NextResponse.json(
+        { error: "User not found" },
+        { status: 404, headers: corsHeaders(request) }
+      )
+    }
 
     const { data: passkeys } = await serviceClient
       .from("passkeys")
