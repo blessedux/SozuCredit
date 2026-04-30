@@ -217,12 +217,31 @@ export async function GET(request: NextRequest) {
       { headers: corsHeaders(request as any) }
     )
   } catch (error) {
+    const status =
+      typeof error === "object" &&
+      error !== null &&
+      "response" in error &&
+      typeof (error as { response?: { status?: number } }).response?.status === "number"
+        ? (error as { response: { status: number } }).response.status
+        : null
+    const message = error instanceof Error ? error.message : String(error)
+    // Brand-new accounts are not on Horizon until funded; payments.forAccount returns 404.
+    if (status === 404 || message === "Not Found") {
+      console.log(
+        "[Transaction History API] No Horizon account yet (404) — returning empty history"
+      )
+      return NextResponse.json(
+        { success: true, transactions: [], count: 0 },
+        { headers: corsHeaders(request as any) }
+      )
+    }
+
     console.error("[Transaction History API] Error fetching transactions:", error)
-    
+
     return NextResponse.json(
       {
         error: "Failed to fetch transaction history",
-        details: error instanceof Error ? error.message : String(error),
+        details: message,
       },
       { status: 500, headers: corsHeaders(request as any) }
     )

@@ -2,12 +2,13 @@
 
 import { Suspense, lazy, useEffect, useState, useRef, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { motion } from "framer-motion"
 import { Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { WalletSkeleton } from "@/components/ui/wallet-skeleton"
 import { WalletErrorBoundary } from "@/components/wallet/wallet-error-boundary"
 import { getWalletTexts } from "@/lib/wallet-texts"
+import { getUserId } from "@/lib/wallet-utils"
+import { checkAccountStatus, getOrCreateRealWallet } from "@/lib/stellar/wallet-creator"
 
 // Hooks
 import { useWalletData } from "@/hooks/use-wallet-data"
@@ -47,6 +48,7 @@ export default function WalletPage() {
     isLoadingTransactions,
     addressToTagMap,
     fetchWalletUSDCBalance,
+    fetchXLMBalance,
     fetchTransactionHistory,
     fetchAPY,
     setWalletAddress,
@@ -70,6 +72,9 @@ export default function WalletPage() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [transactionHash, setTransactionHash] = useState<string | null>(null)
+  const [activationNeeded, setActivationNeeded] = useState(false)
+  const [isActivating, setIsActivating] = useState(false)
+  const [activationMessage, setActivationMessage] = useState<string | null>(null)
 
   // Balance animation refs
   const animatedBalanceRef = useRef(0)
@@ -174,10 +179,12 @@ export default function WalletPage() {
   // Refresh handler for send payment
   const handleRefresh = useCallback(() => {
     if (walletAddress) {
+      const uid = typeof window !== "undefined" ? sessionStorage.getItem("dev_username") : null
+      if (uid) fetchXLMBalance(walletAddress, uid)
       fetchWalletUSDCBalance(walletAddress)
       fetchTransactionHistory(walletAddress)
     }
-  }, [walletAddress, fetchWalletUSDCBalance, fetchTransactionHistory])
+  }, [walletAddress, fetchXLMBalance, fetchWalletUSDCBalance, fetchTransactionHistory])
 
   // Success handler for send payment
   const handleSendSuccess = useCallback((hash: string) => {
@@ -185,6 +192,56 @@ export default function WalletPage() {
     setShowSuccessModal(true)
     setIsSendModalOpen(false)
   }, [])
+
+  const refreshActivationState = useCallback(async () => {
+    if (!walletAddress || walletNetwork !== "testnet") {
+      setActivationNeeded(false)
+      return
+    }
+    try {
+      const info = await checkAccountStatus(walletAddress)
+      setActivationNeeded(!(info.exists && info.hasUSDCTrustline))
+    } catch {
+      setActivationNeeded(true)
+    }
+  }, [walletAddress, walletNetwork])
+
+  useEffect(() => {
+    void refreshActivationState()
+  }, [refreshActivationState])
+
+  const handleActivateWallet = useCallback(async () => {
+    if (!walletAddress || walletNetwork !== "testnet" || isActivating) return
+    setIsActivating(true)
+    setActivationMessage("Activando…")
+    try {
+      const userId = getUserId()
+      const result = await getOrCreateRealWallet(userId || undefined, {
+        onStatusUpdate: (s) => setActivationMessage(s.message),
+      })
+      if (result.status === "error") {
+        throw new Error(result.error || result.message)
+      }
+      const uid = typeof window !== "undefined" ? sessionStorage.getItem("dev_username") : null
+      if (uid) fetchXLMBalance(walletAddress, uid)
+      fetchWalletUSDCBalance(walletAddress)
+      fetchTransactionHistory(walletAddress)
+      await refreshActivationState()
+      setActivationMessage(null)
+    } catch (e) {
+      setActivationMessage(e instanceof Error ? e.message : String(e))
+    } finally {
+      setIsActivating(false)
+    }
+  }, [
+    walletAddress,
+    walletNetwork,
+    isActivating,
+    fetchXLMBalance,
+    fetchWalletUSDCBalance,
+    fetchTransactionHistory,
+    refreshActivationState,
+  ])
 
   // Fetch APY handler
   const handleFetchAPY = useCallback(() => {
@@ -194,25 +251,34 @@ export default function WalletPage() {
     }
   }, [fetchAPY])
 
-  // Wallet created handler
+  // Wallet created handler (client-derived key; register with server so DB has public key only – non-custodial)
   const handleWalletCreated = useCallback(async (publicKey: string, network: "testnet" | "mainnet") => {
     setWalletAddress(publicKey)
     setWalletNetwork(network)
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("stellar_public_key", publicKey)
+    }
 
-    // Fetch XLM balance for the new wallet
+    const userId = typeof window !== "undefined" ? sessionStorage.getItem("dev_username") : null
+    if (userId) {
+      try {
+        await fetch("/api/wallet/stellar/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-user-id": userId },
+          body: JSON.stringify({ publicKey }),
+        })
+      } catch (e) {
+        console.warn("[Wallet] Register wallet after create:", e)
+      }
+    }
+
     try {
-      const userId = sessionStorage.getItem("dev_username")
       if (userId) {
         const balanceResponse = await fetch("/api/wallet/stellar/balance", {
-          headers: {
-            "x-user-id": userId,
-          },
+          headers: { "x-user-id": userId },
         })
         if (balanceResponse.ok) {
-          const balanceData = await balanceResponse.json()
-          if (balanceData.balance !== undefined) {
-            // Balance will be updated by wallet data hook
-          }
+          // Balance will be updated by wallet data hook
         }
       }
     } catch (error) {
@@ -244,21 +310,25 @@ export default function WalletPage() {
             <WalletSkeleton />
           </div>
         ) : (
-          <motion.div
+          <div
             ref={scrollContainerRef}
             onScroll={handleScroll}
-            className="relative z-10 h-full overflow-y-auto touch-pan-y pb-24 md:pb-28"
+            className="relative z-10 h-full overflow-y-auto touch-pan-y pb-24 md:pb-28 opacity-0 animate-fade-in"
             onTouchStart={swipeHandlers.onTouchStart}
             onTouchMove={swipeHandlers.onTouchMove}
             onTouchEnd={swipeHandlers.onTouchEnd}
-            style={{ touchAction: 'pan-y' }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.3, ease: "easeInOut" }}
           >
             <WalletErrorBoundary>
               <div className="container mx-auto px-6 pt-16 pb-8 md:py-12 relative">
-                {/* Balance Display */}
+                {/* Testnet badge */}
+                {walletNetwork === "testnet" && (
+                  <div className="flex justify-center mb-4">
+                    <span className="px-3 py-1 rounded-full text-xs font-bold tracking-widest uppercase border border-yellow-500/40 text-yellow-400 bg-yellow-500/10">
+                      Testnet
+                    </span>
+                  </div>
+                )}
+
                 <Suspense fallback={<div className="h-32 bg-white/5 animate-pulse rounded-lg mb-8" />}>
                   <BalanceDisplay
                     animatedBalance={animatedBalance}
@@ -271,6 +341,22 @@ export default function WalletPage() {
                     onFetchAPY={handleFetchAPY}
                   />
                 </Suspense>
+
+                {/* Single CTA below balance (testnet only) */}
+                {walletAddress && walletNetwork === "testnet" && activationNeeded && (
+                  <div className="mt-4 mb-8">
+                    <Button
+                      onClick={handleActivateWallet}
+                      disabled={isActivating}
+                      className="w-full h-12 text-base font-semibold bg-white text-black hover:bg-white/90 rounded-lg"
+                    >
+                      {isActivating ? "Activando…" : "Activar billetera"}
+                    </Button>
+                    {activationMessage && (
+                      <p className="mt-2 text-xs text-white/60">{activationMessage}</p>
+                    )}
+                  </div>
+                )}
 
                 {/* Transaction History */}
                 <Suspense fallback={<div className="h-64 bg-white/5 animate-pulse rounded-lg mb-8" />}>
@@ -304,7 +390,7 @@ export default function WalletPage() {
               onWalletClick={() => setIsProfileSheetOpen(true)}
               unreadCount={unreadCount}
             />
-          </motion.div>
+          </div>
         )}
 
         {/* Modals - Lazy loaded with Suspense */}
@@ -339,6 +425,8 @@ export default function WalletPage() {
             walletAddress={walletAddress}
             walletNetwork={walletNetwork}
             unreadCount={unreadCount}
+            onActivateWallet={walletNetwork === "testnet" ? handleActivateWallet : undefined}
+            showActivateWallet={activationNeeded}
             onOpenNotifications={() => {
               setIsProfileSheetOpen(false)
               setIsNotificationsOpen(true)

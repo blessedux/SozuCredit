@@ -55,7 +55,10 @@ export function useWalletData() {
   const [error, setError] = useState<string | null>(null)
   const [isBalanceLoading, setIsBalanceLoading] = useState(true)
   const [xlmBalance, setXlmBalance] = useState<number | null>(null)
-  const [walletAddress, setWalletAddress] = useState("")
+  const [walletAddress, setWalletAddress] = useState(() => {
+    if (typeof window === "undefined") return ""
+    return sessionStorage.getItem("stellar_public_key") || ""
+  })
   const [walletNetwork, setWalletNetwork] = useState<"testnet" | "mainnet">("testnet")
   const [username, setUsername] = useState("")
   const [xlmPriceUSD, setXlmPriceUSD] = useState<number | null>(null)
@@ -66,6 +69,7 @@ export function useWalletData() {
   const [transactionHistory, setTransactionHistory] = useState<Transaction[]>([])
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(false)
   const [addressToTagMap, setAddressToTagMap] = useState<Record<string, string>>({})
+  const hasAttemptedWalletRegisterRef = useRef(false)
 
   // LRU cache for address-to-tag mapping (limit to 100 entries)
   const updateAddressToTagMap = useCallback((address: string, tag: string) => {
@@ -388,15 +392,23 @@ export function useWalletData() {
           return
         } else {
           console.warn("[Wallet] No public key in wallet response:", walletData)
-          if (retryCount < 5) {
-            console.log(`[Wallet] Attempting to create wallet (attempt ${retryCount + 1}/5)...`)
+          if (retryCount < 2 && !hasAttemptedWalletRegisterRef.current) {
+            console.log("[Wallet] Attempting to register wallet with client-derived key (one-shot)...")
+            hasAttemptedWalletRegisterRef.current = true
             try {
+              const clientPublicKey = typeof window !== "undefined" ? sessionStorage.getItem("stellar_public_key") : null
+              if (!clientPublicKey) {
+                console.warn("[Wallet] No client-derived public key available; skipping server registration.")
+                setWalletAddress("")
+                return
+              }
               const createResponse = await fetch("/api/wallet/stellar/create", {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
                   "x-user-id": userId,
                 },
+                body: JSON.stringify({ publicKey: clientPublicKey }),
               })
               
               if (createResponse.ok) {
@@ -414,24 +426,45 @@ export function useWalletData() {
                   return
                 }
               }
+              if (createResponse.status === 400) {
+                console.log("[Wallet] Wallet must be created client-side (sign in with passkey or use Create wallet)")
+                setWalletAddress("")
+                return
+              }
             } catch (createError) {
               console.error("[Wallet] Error creating wallet:", createError)
             }
             
-            setTimeout(() => fetchWalletAddress(userId, retryCount + 1), 2000)
+            setTimeout(() => fetchWalletAddress(userId, retryCount + 1), 1500)
           } else {
+            // Avoid infinite loops: if we already tried registration, fall back to session key (if any) and stop retrying.
+            const sessionPublicKey = typeof window !== "undefined" ? sessionStorage.getItem("stellar_public_key") : null
+            if (sessionPublicKey) {
+              console.log("[Wallet] Falling back to session public key (DB not yet synced).")
+              setWalletAddress(sessionPublicKey)
+              fetchWalletUSDCBalance(sessionPublicKey)
+              fetchTransactionHistory(sessionPublicKey)
+              return
+            }
             setWalletAddress("")
           }
         }
       } else if (walletAddressResponse.status === 404) {
-        if (retryCount === 0) {
+        if (retryCount === 0 && !hasAttemptedWalletRegisterRef.current) {
           try {
+            const clientPublicKey = typeof window !== "undefined" ? sessionStorage.getItem("stellar_public_key") : null
+            hasAttemptedWalletRegisterRef.current = true
+            if (!clientPublicKey) {
+              setWalletAddress("")
+              return
+            }
             const createResponse = await fetch("/api/wallet/stellar/create", {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
                 "x-user-id": userId,
               },
+              body: JSON.stringify({ publicKey: clientPublicKey }),
             })
             
             if (createResponse.ok) {
@@ -447,18 +480,27 @@ export function useWalletData() {
                 return
               }
             }
+            if (createResponse.status === 400) {
+              setWalletAddress("")
+              return
+            }
           } catch (createError) {
             console.error("[Wallet] Error creating wallet:", createError)
           }
         }
         
-        if (retryCount < 3) {
-          setTimeout(() => fetchWalletAddress(userId, retryCount + 1), 2000)
-        } else {
-          setWalletAddress("")
+        // Stop looping hard on 404: rely on session public key UX while server catches up.
+        const sessionPublicKey = typeof window !== "undefined" ? sessionStorage.getItem("stellar_public_key") : null
+        if (sessionPublicKey) {
+          setWalletAddress(sessionPublicKey)
+          fetchWalletUSDCBalance(sessionPublicKey)
+          fetchTransactionHistory(sessionPublicKey)
           setIsBalanceLoading(false)
-          fetchDefindexBalance(userId)
+          return
         }
+        setWalletAddress("")
+        setIsBalanceLoading(false)
+        fetchDefindexBalance(userId)
       } else if (walletAddressResponse.status === 500) {
         if (retryCount < 3) {
           console.log(`[Wallet] Retrying after error (attempt ${retryCount + 1}/3)...`)
@@ -491,6 +533,15 @@ export function useWalletData() {
     if (typeof window === "undefined") return
 
     const isDevMode = process.env.NODE_ENV === "development"
+
+    // Prefer client-derived public key (passkey-derived) to avoid showing
+    // wallet-creation CTAs while we sync with the server/DB.
+    const sessionPublicKey = sessionStorage.getItem("stellar_public_key")
+    if (sessionPublicKey && !walletAddress) {
+      setWalletAddress(sessionPublicKey)
+      fetchWalletUSDCBalance(sessionPublicKey)
+      fetchTransactionHistory(sessionPublicKey)
+    }
     
     const checkAuth = () => {
       const isAuthenticated = sessionStorage.getItem("dev_authenticated") === "true"
@@ -589,7 +640,7 @@ export function useWalletData() {
     }
     
     checkAuth()
-  }, [fetchWalletAddress])
+  }, [fetchWalletAddress, fetchTransactionHistory, fetchWalletUSDCBalance, walletAddress])
 
   // Fetch XLM price
   useEffect(() => {
@@ -632,6 +683,7 @@ export function useWalletData() {
     addressToTagMap,
     // Actions
     fetchWalletUSDCBalance,
+    fetchXLMBalance,
     fetchTransactionHistory,
     fetchDefindexBalance,
     fetchAPY,

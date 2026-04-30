@@ -25,6 +25,16 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // Allow /city (Urban Treasure map) without auth so we can test the map feature
+  if (pathname.startsWith("/city")) {
+    return NextResponse.next()
+  }
+
+  // Allow /tracker (Expense Tracker) without auth so we can test the UI
+  if (pathname.startsWith("/tracker")) {
+    return NextResponse.next()
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   })
@@ -34,6 +44,8 @@ export async function updateSession(request: NextRequest) {
   const isWalletRoute = pathname === "/wallet"
   const isSettingsRoute = pathname === "/settings"
   const isTestKeysRoute = pathname === "/test-keys"
+  const isCityRoute = pathname.startsWith("/city")
+  const isTrackerRoute = pathname.startsWith("/tracker")
   const isAuthRoute = pathname.startsWith("/auth")
   const isApiRoute = pathname.startsWith("/api")
   const isDevMode = process.env.NODE_ENV === "development"
@@ -114,8 +126,8 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Redirect to login if not authenticated and not on auth pages, wallet, settings, or test-keys
-  if (!user && !isAuthRoute && request.nextUrl.pathname !== "/" && !isWalletRoute && !isSettingsRoute && !isTestKeysRoute) {
+  // Redirect to login if not authenticated and not on auth pages, wallet, settings, test-keys, city, or tracker
+  if (!user && !isAuthRoute && request.nextUrl.pathname !== "/" && !isWalletRoute && !isSettingsRoute && !isTestKeysRoute && !isCityRoute && !isTrackerRoute) {
     const url = request.nextUrl.clone()
     url.pathname = "/auth"
     return NextResponse.redirect(url)

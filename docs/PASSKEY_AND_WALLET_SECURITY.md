@@ -64,16 +64,23 @@ The `stellar_wallets` table stores:
 - **Never sent to server**
 - **Never stored in database**
 
-### Key Derivation Flow
+### Key Derivation Flow (fully client-side)
+
+- **Wallet creation**: Keys are **only** derived in the browser from the user's passkey. The server **never** generates or sees secret keys.
+- The server only stores the **public key** after the client sends it (e.g. after login or "Create wallet"). There is no server-side key generation.
 
 ```
 User Passkey (device)
     ↓
-Browser derives Stellar keypair (client-side)
+Browser derives Stellar keypair (client-side only)
     ↓
 Private Key → Encrypted → IndexedDB (browser only)
-Public Key → Database (server)
+Public Key → Client sends to server → Database (server stores public key only)
 ```
+
+### Who Can See the Secret Key?
+
+- **Only the signed-in user, in their browser.** The secret key is never sent to the server. It is decrypted from IndexedDB only when the user clicks "Show secret key" in the wallet profile, and only if the same device has the passkey credential and session (credential ID in sessionStorage). No API can return the secret key; it exists only in the client.
 
 ### Can You Sign Transactions?
 

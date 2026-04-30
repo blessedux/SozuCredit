@@ -225,7 +225,7 @@ export const walletTexts = {
     noNotifications: "Aún no hay notificaciones",
     unreadNotifications: "notificaciones no leídas",
     // Create Wallet
-    createNewWallet: "Crear nueva billetera",
+    createNewWallet: "Comenzar ahora",
     // Trust Points
     trustPoints: "Puntos de Confianza",
     trustPointsTitle: "Puntos de Confianza",
@@ -368,7 +368,7 @@ export const walletTexts = {
     noNotifications: "No notifications yet",
     unreadNotifications: "unread notifications",
     // Create Wallet
-    createNewWallet: "Create new wallet",
+    createNewWallet: "Start Now",
     // Trust Points
     trustPoints: "Trust Points",
     trustPointsTitle: "Trust Points",

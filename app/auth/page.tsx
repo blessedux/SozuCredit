@@ -616,6 +616,8 @@ function AuthPageContent() {
           className="h-full w-full"
           backgroundColor="oklch(0 0 0)"
           color="oklch(1 0 0)"
+          useVideoFallback
+          videoSrc={process.env.NEXT_PUBLIC_BG_VIDEO_SRC}
         />
       </div>
 

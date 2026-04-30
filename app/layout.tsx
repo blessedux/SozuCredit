@@ -5,6 +5,7 @@ import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
 import { PWARegister } from "@/components/pwa-register"
 import { SharedBackground } from "@/components/shared-background"
+import { Toaster } from "@/components/ui/sonner"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -57,6 +58,7 @@ export default function RootLayout({
         {children}
         <Analytics />
         <PWARegister />
+        <Toaster />
       </body>
     </html>
   )

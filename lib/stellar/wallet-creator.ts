@@ -29,7 +29,11 @@ import {
 import { getStellarConfig } from "../turnkey/config"
 import { retrieveKeypair, deriveAndStoreKey } from "../storage/browser-keys"
 import { signTransactionClientSide } from "./client-signing"
-import { getCredentialIdFromSession, getPublicKeyFromSession } from "../storage/key-utils"
+import {
+  getCurrentCredentialId,
+  getPublicKeyFromSession,
+  storeCredentialIdInSession,
+} from "../storage/key-utils"
 
 /**
  * Real USDC issuers for Stellar network
@@ -111,6 +115,10 @@ export async function createRealStellarAccount(
     const stellarConfig = getStellarConfig()
     const network = stellarConfig.network
 
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("stellar_public_key", publicKey)
+    }
+
     updateStatus({
       publicKey,
       network,
@@ -162,25 +170,43 @@ export async function createRealStellarAccount(
         const friendbotResponse = await fetch(friendbotUrl)
 
         if (!friendbotResponse.ok) {
-          const errorData = await friendbotResponse.json().catch(() => ({}))
-          throw new Error(
-            `Friendbot funding failed: ${friendbotResponse.status} ${JSON.stringify(errorData)}`
-          )
+          const errorData = (await friendbotResponse.json().catch(() => ({}))) as {
+            detail?: string
+            title?: string
+            type?: string
+          }
+          const detail = String(errorData.detail || "").toLowerCase()
+          const alreadyFunded =
+            friendbotResponse.status === 400 &&
+            (detail.includes("already funded") || detail.includes("starting balance"))
+
+          if (alreadyFunded) {
+            updateStatus({
+              status: "creating",
+              message: "Cuenta ya fondeada en testnet. Continuando…",
+            })
+            account = await server.loadAccount(publicKey)
+            accountExists = true
+          } else {
+            throw new Error(
+              `Friendbot funding failed: ${friendbotResponse.status} ${JSON.stringify(errorData)}`
+            )
+          }
+        } else {
+          const friendbotData = await friendbotResponse.json()
+          updateStatus({
+            status: "creating",
+            message: "Account funded! Waiting for account creation...",
+            transactionHash: friendbotData.hash,
+          })
+
+          // Wait a moment for account to be created
+          await new Promise((resolve) => setTimeout(resolve, 2000))
+
+          // Reload account
+          account = await server.loadAccount(publicKey)
+          accountExists = true
         }
-
-        const friendbotData = await friendbotResponse.json()
-        updateStatus({
-          status: "creating",
-          message: "Account funded! Waiting for account creation...",
-          transactionHash: friendbotData.hash,
-        })
-
-        // Wait a moment for account to be created
-        await new Promise((resolve) => setTimeout(resolve, 2000))
-
-        // Reload account
-        account = await server.loadAccount(publicKey)
-        accountExists = true
       } else {
         // Mainnet: Provide funding instructions
         updateStatus({
@@ -219,31 +245,35 @@ export async function createRealStellarAccount(
       )
 
       if (trustlineResult.success) {
-        updateStatus({
+        return updateStatus({
           status: "complete",
           message: "✅ Account created with USDC trustline!",
+          publicKey,
+          network,
+          accountExists: true,
           trustlineExists: true,
           transactionHash: trustlineResult.transactionHash,
         })
-      } else {
-        updateStatus({
-          status: "complete",
-          message: "Account created, but USDC trustline failed",
-          trustlineExists: false,
-          error: trustlineResult.error,
-        })
       }
-    } else {
-      updateStatus({
-        status: "complete",
-        message: "✅ Account created!",
+
+      return updateStatus({
+        status: "error",
+        message: "USDC trustline failed",
+        publicKey,
+        network,
+        accountExists: true,
         trustlineExists: false,
+        error: trustlineResult.error,
       })
     }
 
     return updateStatus({
       status: "complete",
       message: "✅ Wallet ready!",
+      publicKey,
+      network,
+      accountExists: true,
+      trustlineExists: false,
     })
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
@@ -396,13 +426,18 @@ export async function getOrCreateRealWallet(
     skipTrustline?: boolean
   } = {}
 ): Promise<AccountCreationStatus> {
-  // Get credential ID from session
-  const credentialId = getCredentialIdFromSession()
+  const sessionPk =
+    typeof window !== "undefined" ? getPublicKeyFromSession() : null
+  const credentialId = await getCurrentCredentialId(sessionPk || undefined)
 
   if (!credentialId) {
     throw new Error(
       "No credential ID found. Please authenticate with a passkey first."
     )
+  }
+
+  if (typeof window !== "undefined") {
+    storeCredentialIdInSession(credentialId)
   }
 
   // Get userId from session if not provided

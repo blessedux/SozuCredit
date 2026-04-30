@@ -112,13 +112,15 @@ export async function GET(request: Request) {
 export async function PUT(request: Request) {
   try {
     const { username, display_name, profile_picture } = await request.json()
-    
-    // Username is immutable - cannot be changed after registration
-    // This ensures 1 passkey = 1 tag = 1 wallet address mapping
-    if (username) {
-      return NextResponse.json({ 
-        error: "Username (Sozu tag) cannot be changed. It is permanently linked to your passkey and wallet address." 
-      }, { status: 403 })
+
+    // Validate tag format if provided
+    if (username !== undefined && username !== null) {
+      if (typeof username !== "string" || username.length < 3 || username.length > 30) {
+        return NextResponse.json({ error: "Tag must be between 3 and 30 characters" }, { status: 400 })
+      }
+      if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+        return NextResponse.json({ error: "Tag can only contain letters, numbers, and underscores" }, { status: 400 })
+      }
     }
     
     const supabase = await createClient()
@@ -147,10 +149,26 @@ export async function PUT(request: Request) {
     // Use service client to update profile (works in both dev and prod mode)
     if (supabaseServiceKey && supabaseUrl) {
       const serviceClient = createServiceClient(supabaseUrl, supabaseServiceKey)
+
+      // Check username availability (excluding current user's own row)
+      if (username && typeof username === "string") {
+        const { data: existingProfile } = await serviceClient
+          .from("profiles")
+          .select("id")
+          .eq("username", username)
+          .neq("id", userId)
+          .maybeSingle()
+        if (existingProfile) {
+          return NextResponse.json({ error: "This Sozu tag is already taken." }, { status: 409 })
+        }
+      }
+
+      const updateData: { display_name?: string; profile_picture?: string; username?: string } = {}
       
-      // Update profile (username is immutable, only allow display_name and profile_picture)
-      const updateData: { display_name?: string; profile_picture?: string } = {}
-      
+      if (username && typeof username === "string") {
+        updateData.username = username.trim()
+      }
+
       if (display_name && typeof display_name === "string") {
         updateData.display_name = display_name.trim()
       }
@@ -162,7 +180,7 @@ export async function PUT(request: Request) {
       // If no fields to update, return error
       if (Object.keys(updateData).length === 0) {
         return NextResponse.json({ 
-          error: "No valid fields to update. Username cannot be changed." 
+          error: "No valid fields to update." 
         }, { status: 400 })
       }
       
@@ -219,8 +237,12 @@ export async function PUT(request: Request) {
     }
     
     // Fallback: try with regular client
-    const updateData: { display_name?: string; profile_picture?: string } = {}
+    const updateData: { display_name?: string; profile_picture?: string; username?: string } = {}
     
+    if (username && typeof username === "string") {
+      updateData.username = username.trim()
+    }
+
     if (display_name && typeof display_name === "string") {
       updateData.display_name = display_name.trim()
     }
@@ -231,7 +253,7 @@ export async function PUT(request: Request) {
     
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json({ 
-        error: "No valid fields to update. Username cannot be changed." 
+        error: "No valid fields to update." 
       }, { status: 400 })
     }
     

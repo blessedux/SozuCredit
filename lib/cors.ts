@@ -23,7 +23,8 @@ export function corsHeaders(request: NextRequest) {
   return {
     "Access-Control-Allow-Origin": isAllowedOrigin ? origin || "*" : "https://your-app.vercel.app",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, x-user-id",
+    "Access-Control-Allow-Headers":
+      "Content-Type, Authorization, x-user-id, x-sozu-internal-secret",
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Max-Age": "86400",
   }

@@ -4,8 +4,6 @@ import { challengeStore } from "@/lib/webauthn/config"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
-import { getStellarWallet } from "@/lib/turnkey/stellar-wallet"
-import { createStellarWalletServerSide } from "@/lib/stellar/wallet-server"
 
 export async function OPTIONS(request: NextRequest) {
   return handleOPTIONS(request)
@@ -462,33 +460,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create Stellar wallet for user (non-blocking)
-    // Registration succeeds even if wallet creation fails
-    // Use service client since we don't have an authenticated Supabase session here yet
-    try {
-      console.log("[Register] Checking for existing wallet for userId:", authData.user.id)
-      const existingWallet = await getStellarWallet(authData.user.id, true) // Use service client
-      if (!existingWallet) {
-        console.log("[Register] No Stellar wallet found for userId:", authData.user.id, "- creating new wallet")
-        const wallet = await createStellarWalletServerSide(authData.user.id)
-        console.log("[Register] Created wallet with Stellar SDK, stored in database...")
-        const storedWallet = await getStellarWallet(authData.user.id, true) // Get the stored wallet
-        if (storedWallet) {
-          console.log("[Register] ✅ Stellar wallet created and stored successfully:", {
-            userId: authData.user.id,
-            publicKey: storedWallet.publicKey ? `${storedWallet.publicKey.substring(0, 10)}...` : "NULL",
-            walletId: storedWallet.turnkeyWalletId || storedWallet.publicKey,
-          })
-        }
-      } else {
-        console.log("[Register] ✅ Stellar wallet already exists for userId:", authData.user.id, "publicKey:", existingWallet.publicKey ? `${existingWallet.publicKey.substring(0, 10)}...` : "NULL")
-      }
-    } catch (walletError) {
-      // Log error but don't fail registration
-      console.error("[Register] ❌ Error with wallet for userId:", authData.user.id, "Error:", walletError)
-      console.warn("[Register] Registration will proceed without wallet. Wallet can be created later via API.")
-      // Registration continues successfully
-    }
+    // Non-custodial: we do not create wallets on the server. The client derives the key from the
+    // passkey and registers the public key via POST /api/wallet/stellar/create with body { publicKey }.
+    console.log("[Register] Wallet will be registered client-side after key derivation (non-custodial)")
 
     console.log("[Register] Registration successful for user:", authData.user.id)
 

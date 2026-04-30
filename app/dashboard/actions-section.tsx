@@ -111,6 +111,32 @@ async function ActionsContent({ userId }: { userId: string }) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Urban Treasure (City) Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Urban Treasure</CardTitle>
+          <CardDescription>Find and redeem treasures at spots in your city</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button asChild className="w-full">
+            <Link href="/city">Open City Map</Link>
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Expense Tracker Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Expense Tracker</CardTitle>
+          <CardDescription>Track spending, scan receipts, and see reports</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button asChild className="w-full">
+            <Link href="/tracker">Open Tracker</Link>
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   )
 }

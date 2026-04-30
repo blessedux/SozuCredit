@@ -2,341 +2,143 @@
 
 import type React from 'react';
 import { useState, useEffect } from 'react';
-import { motion, useReducedMotion } from 'framer-motion';
 
 import { cn } from '@/lib/utils';
 
 type FallingPatternProps = React.ComponentProps<'div'> & {
-	/** Primary color of the falling elements (default: 'var(--primary)') */
 	color?: string;
-	/** Background color (default: 'var(--background)') */
 	backgroundColor?: string;
-	/** Animation duration in seconds (default: 150) */
 	duration?: number;
-	/** Blur intensity for the overlay effect (default: '1em') */
 	blurIntensity?: string;
-	/** Pattern density - affects spacing (default: 1) */
 	density?: number;
-	/** Use video fallback on mobile (default: false) */
 	useVideoFallback?: boolean;
-	/** Video source for mobile fallback */
 	videoSrc?: string;
-	/** Pause animation when modal is open (default: false) */
 	pauseAnimation?: boolean;
 };
 
 export function FallingPattern({
 	color = 'var(--primary)',
 	backgroundColor = 'var(--background)',
-	duration = 150,
-	blurIntensity = '1em',
+	duration = 120,
 	density = 1,
-	className,
 	useVideoFallback = false,
 	videoSrc,
+	pauseAnimation = false,
+	className,
 }: FallingPatternProps) {
-	// Initialize with false to match server-side render (prevents hydration mismatch)
 	const [isMobile, setIsMobile] = useState(false);
-	const [shouldUseVideo, setShouldUseVideo] = useState(false);
-	const [videoError, setVideoError] = useState(false);
-	const prefersReducedMotion = useReducedMotion();
+	const [mounted, setMounted] = useState(false);
+	const [reducedMotion, setReducedMotion] = useState(false);
 
-	// Detect mobile device and performance capabilities (client-side only)
 	useEffect(() => {
-		if (typeof window === 'undefined') return;
-		
-		const checkDevice = () => {
-			
-			const detectedMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
-				(window.innerWidth < 768); // Mobile breakpoint
-			
-			setIsMobile(detectedMobile);
-			
-			// Use video fallback on mobile if enabled and video src provided
-			// On mobile, we ONLY want video (or black fallback), never animated pattern
-			if (detectedMobile && useVideoFallback && videoSrc) {
-				console.log('[FallingPattern] Mobile detected, enabling video background');
-				setShouldUseVideo(true);
-			} else if (detectedMobile && useVideoFallback) {
-				console.log('[FallingPattern] Mobile detected but no video src provided');
-				// On mobile without video, show black background only
-				setShouldUseVideo(false);
-			} else {
-				setShouldUseVideo(false);
-			}
-		};
+		setMounted(true);
+		const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+		setReducedMotion(mq.matches);
+		const handleChange = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
+		mq.addEventListener('change', handleChange);
 
-		checkDevice();
-		window.addEventListener('resize', checkDevice);
-		return () => window.removeEventListener('resize', checkDevice);
-	}, [useVideoFallback, videoSrc]);
-
-	// Mobile-optimized: More columns for better coverage
-	const generateMobileBackgroundImage = () => {
-		const patterns = [
-			// Column 1
-			`radial-gradient(3px 60px at 0px 150px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(3px 60px at 0px 250px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(1px 1px at 0px 75px, ${color} 100%, transparent 150%)`,
-			// Column 2
-			`radial-gradient(3px 60px at 50px 150px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(3px 60px at 50px 250px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(1px 1px at 50px 75px, ${color} 100%, transparent 150%)`,
-			// Column 3
-			`radial-gradient(3px 60px at 100px 150px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(3px 60px at 100px 250px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(1px 1px at 100px 75px, ${color} 100%, transparent 150%)`,
-			// Column 4
-			`radial-gradient(3px 60px at 150px 150px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(3px 60px at 150px 250px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(1px 1px at 150px 75px, ${color} 100%, transparent 150%)`,
-			// Column 5
-			`radial-gradient(3px 60px at 200px 150px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(3px 60px at 200px 250px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(1px 1px at 200px 75px, ${color} 100%, transparent 150%)`,
-			// Column 6
-			`radial-gradient(3px 60px at 250px 150px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(3px 60px at 250px 250px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(1px 1px at 250px 75px, ${color} 100%, transparent 150%)`,
-			// Column 7
-			`radial-gradient(3px 60px at 300px 150px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(3px 60px at 300px 250px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(1px 1px at 300px 75px, ${color} 100%, transparent 150%)`,
-			// Column 8
-			`radial-gradient(3px 60px at 350px 150px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(3px 60px at 350px 250px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(1px 1px at 350px 75px, ${color} 100%, transparent 150%)`,
-		];
-		return patterns.join(', ');
-	};
-
-	// Desktop: Full pattern set
-	const generateBackgroundImage = () => {
-		const patterns = [
-			// Row 1
-			`radial-gradient(4px 100px at 0px 235px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(4px 100px at 300px 235px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(1.5px 1.5px at 150px 117.5px, ${color} 100%, transparent 150%)`,
-			// Row 2
-			`radial-gradient(4px 100px at 0px 252px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(4px 100px at 300px 252px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(1.5px 1.5px at 150px 126px, ${color} 100%, transparent 150%)`,
-			// Row 3
-			`radial-gradient(4px 100px at 0px 150px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(4px 100px at 300px 150px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(1.5px 1.5px at 150px 75px, ${color} 100%, transparent 150%)`,
-			// Row 4
-			`radial-gradient(4px 100px at 0px 253px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(4px 100px at 300px 253px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(1.5px 1.5px at 150px 126.5px, ${color} 100%, transparent 150%)`,
-			// Row 5
-			`radial-gradient(4px 100px at 0px 204px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(4px 100px at 300px 204px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(1.5px 1.5px at 150px 102px, ${color} 100%, transparent 150%)`,
-			// Row 6
-			`radial-gradient(4px 100px at 0px 134px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(4px 100px at 300px 134px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(1.5px 1.5px at 150px 67px, ${color} 100%, transparent 150%)`,
-			// Row 7
-			`radial-gradient(4px 100px at 0px 179px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(4px 100px at 300px 179px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(1.5px 1.5px at 150px 89.5px, ${color} 100%, transparent 150%)`,
-			// Row 8
-			`radial-gradient(4px 100px at 0px 299px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(4px 100px at 300px 299px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(1.5px 1.5px at 150px 149.5px, ${color} 100%, transparent 150%)`,
-			// Row 9
-			`radial-gradient(4px 100px at 0px 215px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(4px 100px at 300px 215px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(1.5px 1.5px at 150px 107.5px, ${color} 100%, transparent 150%)`,
-			// Row 10
-			`radial-gradient(4px 100px at 0px 281px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(4px 100px at 300px 281px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(1.5px 1.5px at 150px 140.5px, ${color} 100%, transparent 150%)`,
-			// Row 11
-			`radial-gradient(4px 100px at 0px 158px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(4px 100px at 300px 158px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(1.5px 1.5px at 150px 79px, ${color} 100%, transparent 150%)`,
-			// Row 12
-			`radial-gradient(4px 100px at 0px 210px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(4px 100px at 300px 210px, ${color} 0%, ${color} 40%, transparent 100%)`,
-			`radial-gradient(1.5px 1.5px at 150px 105px, ${color} 100%, transparent 150%)`,
-		];
-
-		return patterns.join(', ');
-	};
-
-	const backgroundSizes = [
-		'300px 235px',
-		'300px 235px',
-		'300px 235px',
-		'300px 252px',
-		'300px 252px',
-		'300px 252px',
-		'300px 150px',
-		'300px 150px',
-		'300px 150px',
-		'300px 253px',
-		'300px 253px',
-		'300px 253px',
-		'300px 204px',
-		'300px 204px',
-		'300px 204px',
-		'300px 134px',
-		'300px 134px',
-		'300px 134px',
-		'300px 179px',
-		'300px 179px',
-		'300px 179px',
-		'300px 299px',
-		'300px 299px',
-		'300px 299px',
-		'300px 215px',
-		'300px 215px',
-		'300px 215px',
-		'300px 281px',
-		'300px 281px',
-		'300px 281px',
-		'300px 158px',
-		'300px 158px',
-		'300px 158px',
-		'300px 210px',
-		'300px 210px',
-	].join(', ');
-
-	// Mobile-optimized positions (shorter animation) - 24 patterns (8 columns x 3 per column)
-	const mobileStartPositions = '0px 100px, 0px 200px, 0px 50px, 50px 100px, 50px 200px, 50px 50px, 100px 100px, 100px 200px, 100px 50px, 150px 100px, 150px 200px, 150px 50px, 200px 100px, 200px 200px, 200px 50px, 250px 100px, 250px 200px, 250px 50px, 300px 100px, 300px 200px, 300px 50px, 350px 100px, 350px 200px, 350px 50px';
-	const mobileEndPositions = '0px 3000px, 0px 3200px, 0px 2950px, 50px 3000px, 50px 3200px, 50px 2950px, 100px 3000px, 100px 3200px, 100px 2950px, 150px 3000px, 150px 3200px, 150px 2950px, 200px 3000px, 200px 3200px, 200px 2950px, 250px 3000px, 250px 3200px, 250px 2950px, 300px 3000px, 300px 3200px, 300px 2950px, 350px 3000px, 350px 3200px, 350px 2950px';
-	
-	// Desktop: Full positions
-	const startPositions =
-		'0px 220px, 3px 220px, 151.5px 337.5px, 25px 24px, 28px 24px, 176.5px 150px, 50px 16px, 53px 16px, 201.5px 91px, 75px 224px, 78px 224px, 226.5px 230.5px, 100px 19px, 103px 19px, 251.5px 121px, 125px 120px, 128px 120px, 276.5px 187px, 150px 31px, 153px 31px, 301.5px 120.5px, 175px 235px, 178px 235px, 326.5px 384.5px, 200px 121px, 203px 121px, 351.5px 228.5px, 225px 224px, 228px 224px, 376.5px 364.5px, 250px 26px, 253px 26px, 401.5px 105px, 275px 75px, 278px 75px, 426.5px 180px';
-	const endPositions =
-		'0px 6800px, 3px 6800px, 151.5px 6917.5px, 25px 13632px, 28px 13632px, 176.5px 13758px, 50px 5416px, 53px 5416px, 201.5px 5491px, 75px 17175px, 78px 17175px, 226.5px 17301.5px, 100px 5119px, 103px 5119px, 251.5px 5221px, 125px 8428px, 128px 8428px, 276.5px 8495px, 150px 9876px, 153px 9876px, 301.5px 9965.5px, 175px 13391px, 178px 13391px, 326.5px 13540.5px, 200px 14741px, 203px 14741px, 351.5px 14848.5px, 225px 18770px, 228px 18770px, 376.5px 18910.5px, 250px 5082px, 253px 5082px, 401.5px 5161px, 275px 6375px, 278px 6375px, 426.5px 6480px';
-
-	// Mobile: ONLY video background (or black fallback), never animated pattern
-	if (isMobile && useVideoFallback) {
-		// If video should be used and src is provided, show video
-		if (shouldUseVideo && videoSrc && !videoError) {
-			// Detect video format from URL extension
-			const videoType = videoSrc.endsWith('.webm') 
-				? 'video/webm' 
-				: videoSrc.endsWith('.mp4') 
-					? 'video/mp4' 
-					: 'video/mp4'; // Default to mp4
-			
-			return (
-				<div className={cn('relative h-full w-full', className)}>
-					<video
-						autoPlay
-						loop
-						muted
-						playsInline
-						className="absolute inset-0 w-full h-full object-cover"
-						style={{ backgroundColor }}
-						onError={(e) => {
-							console.error('[FallingPattern] Video error:', e);
-							setVideoError(true);
-						}}
-						onLoadStart={() => {
-							console.log('[FallingPattern] Video loading started');
-						}}
-						onCanPlay={() => {
-							console.log('[FallingPattern] Video can play');
-						}}
-					>
-						<source src={videoSrc} type={videoType} />
-					</video>
-					{/* Black overlay with minimal blur for video */}
-					<div
-						className="absolute inset-0 z-10"
-						style={{
-							backgroundColor: 'rgba(0, 0, 0, 0.1)', // Subtle darkening
-							backdropFilter: 'blur(0.5em)',
-						}}
-					/>
-				</div>
+		const checkMobile = () => {
+			setIsMobile(
+				/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || window.innerWidth < 768
 			);
-		}
-		
-		// Mobile fallback: Black background only (no animated pattern)
+		};
+		checkMobile();
+		window.addEventListener('resize', checkMobile);
+		return () => {
+			mq.removeEventListener('change', handleChange);
+			window.removeEventListener('resize', checkMobile);
+		};
+	}, []);
+
+	// Server render: plain div to avoid hydration mismatch
+	if (!mounted) {
+		return <div className={cn('relative h-full w-full', className)} style={{ backgroundColor }} />;
+	}
+
+	// Mobile: prefer video fallback if provided; otherwise keep the same animation but slightly lighter.
+	if (isMobile && useVideoFallback && videoSrc) {
 		return (
-			<div 
-				className={cn('relative h-full w-full', className)}
-				style={{ backgroundColor }}
-			/>
+			<div className={cn('relative h-full w-full overflow-hidden', className)} style={{ backgroundColor }}>
+				<video
+					className="absolute inset-0 h-full w-full object-cover opacity-70"
+					src={videoSrc}
+					autoPlay
+					muted
+					loop
+					playsInline
+					preload="auto"
+				/>
+				{/* subtle overlay to keep contrast */}
+				<div className="absolute inset-0 bg-black/40" />
+			</div>
 		);
 	}
 
-	// Desktop: ONLY animated pattern (never video)
-	const useMobileOptimized = prefersReducedMotion;
-	const finalBackgroundImage = useMobileOptimized 
-		? generateMobileBackgroundImage()
-		: generateBackgroundImage();
-	const finalBackgroundSize = useMobileOptimized
-		? '400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px, 400px 300px'
-		: backgroundSizes;
-	const finalStartPositions = useMobileOptimized ? mobileStartPositions : startPositions;
-	const finalEndPositions = useMobileOptimized ? mobileEndPositions : endPositions;
-	const finalDuration = useMobileOptimized ? duration * 0.6 : duration; // Faster on mobile
-	// Use blurIntensity by default to prevent hydration mismatch
-	// isMobile will be set in useEffect, but we need consistent initial render
-	const finalBlurIntensity = blurIntensity;
+	// 9-layer pattern (3 columns × 3 gradient groups per tile)
+	// Tile is 300×300px, repeated to fill, translated down by CSS animation
+	const makePattern = (c: string) => [
+		// Column A (x = 0)
+		`radial-gradient(3px 80px at 0px 120px, ${c} 0%, ${c} 45%, transparent 100%)`,
+		`radial-gradient(3px 80px at 0px 240px, ${c} 0%, ${c} 45%, transparent 100%)`,
+		`radial-gradient(1.5px 1.5px at 0px 60px, ${c} 100%, transparent 150%)`,
+		// Column B (x = 100)
+		`radial-gradient(3px 80px at 100px 150px, ${c} 0%, ${c} 45%, transparent 100%)`,
+		`radial-gradient(3px 80px at 100px 270px, ${c} 0%, ${c} 45%, transparent 100%)`,
+		`radial-gradient(1.5px 1.5px at 100px 75px, ${c} 100%, transparent 150%)`,
+		// Column C (x = 200)
+		`radial-gradient(3px 80px at 200px 100px, ${c} 0%, ${c} 45%, transparent 100%)`,
+		`radial-gradient(3px 80px at 200px 220px, ${c} 0%, ${c} 45%, transparent 100%)`,
+		`radial-gradient(1.5px 1.5px at 200px 50px, ${c} 100%, transparent 150%)`,
+	].join(', ');
+
+	// Each of the 9 gradients tiles at 300×300
+	const bgSize = Array(9).fill('300px 300px').join(', ');
+
+	const effectiveDuration = isMobile ? Math.max(180, duration) : duration;
+	const effectiveDensity = isMobile ? Math.max(1, density * 1.2) : density;
+	const animName = `fp-fall-${effectiveDuration}`;
 
 	return (
 		<div className={cn('relative h-full w-full overflow-hidden', className)}>
-			<motion.div
-				initial={{ opacity: 0 }}
-				animate={{ opacity: 1 }}
-				transition={{ duration: 0.2 }}
-				className="size-full"
-			>
-				<motion.div
-					className="relative size-full z-0"
-					style={{
-						backgroundColor,
-						backgroundImage: finalBackgroundImage,
-						backgroundSize: finalBackgroundSize,
-						filter: 'brightness(1.2) contrast(1.1)',
-						// Performance optimizations for mobile
-						willChange: 'background-position',
-						transform: 'translateZ(0)', // Force hardware acceleration
-					}}
-					variants={{
-						initial: {
-							backgroundPosition: finalStartPositions,
-						},
-						animate: prefersReducedMotion
-							? {
-									backgroundPosition: finalStartPositions,
-									transition: { duration: 0 },
-								}
-							: {
-									backgroundPosition: [finalStartPositions, finalEndPositions],
-									transition: {
-										duration: finalDuration,
-										ease: 'linear',
-										repeat: Number.POSITIVE_INFINITY,
-									},
-								},
-					}}
-					initial="initial"
-					animate="animate"
-				/>
-			</motion.div>
+			{/* Keyframe injected as a style tag — avoids globals.css coupling */}
+			<style>{`
+				@keyframes ${animName} {
+					from { transform: translateY(0); }
+					to   { transform: translateY(300px); }
+				}
+			`}</style>
+
+			{/* Tall tile that falls via transform — compositor-only, no repaint */}
 			<div
-				className="absolute inset-0 z-10 dark:brightness-[0.98]"
 				style={{
-					// Use consistent blur to prevent hydration mismatch
-					// Mobile optimization happens via CSS media queries if needed
-					backdropFilter: `blur(${blurIntensity})`,
-					backgroundImage: `radial-gradient(circle at 50% 50%, transparent 0, transparent 2px, ${backgroundColor} 2px)`,
-					backgroundSize: `${8 * density}px ${8 * density}px`,
-					// Performance: reduce repaints
+					position: 'absolute',
+					inset: 0,
+					backgroundColor,
+					// Extend 300px above so the seam is invisible
+					top: '-300px',
+					bottom: 0,
+					backgroundImage: makePattern(color),
+					backgroundSize: bgSize,
+					backgroundRepeat: 'repeat',
+					backgroundPosition: 'left top',
+					filter: 'brightness(1.15) contrast(1.1)',
+					animation: reducedMotion || pauseAnimation
+						? 'none'
+						: `${animName} ${effectiveDuration}s linear infinite`,
 					willChange: 'transform',
+				}}
+			/>
+
+			{/* Dotted overlay — static, no blur, keeps the grid texture */}
+			<div
+				style={{
+					position: 'absolute',
+					inset: 0,
+					backgroundImage: `radial-gradient(circle at 50% 50%, transparent 0, transparent 2px, ${backgroundColor} 2px)`,
+					backgroundSize: `${8 * effectiveDensity}px ${8 * effectiveDensity}px`,
+					zIndex: 1,
 				}}
 			/>
 		</div>
 	);
 }
-

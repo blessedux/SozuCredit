@@ -207,7 +207,7 @@ export function WelcomeModal() {
                   <div className="flex items-start gap-3">
                     <GrowthIcon className="w-5 h-5 text-white/60 mt-0.5 flex-shrink-0" />
                     <p className="text-sm text-white/70">
-                      Usa dinero digital para ganar hasta <span className="font-semibold text-white">15% APY</span> por defecto usando defindex y blend protocol.
+                      Usa dinero digital para ganar hasta <span className="font-semibold text-white">15% APY</span>.
                     </p>
                   </div>
                   
