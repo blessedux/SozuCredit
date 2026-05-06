@@ -6,7 +6,8 @@
 "use client"
 
 import { memo, useState, useCallback, useRef, useEffect } from "react"
-import { X, Copy, Check, Eye, EyeOff, Key, LogOut, TrendingUp, Banknote, User, Sparkles } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { X, Copy, Check, Eye, EyeOff, Key, LogOut, TrendingUp, Banknote, User, Sparkles, Mail, Settings } from "lucide-react"
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -45,12 +46,16 @@ const ProfileTab = memo(function ProfileTab({
   effectiveWalletAddress,
   walletNetwork,
   onTagUpdated,
+  onOpenLedger,
+  onOpenSettings,
 }: {
   username: string
   walletAddress: string
   effectiveWalletAddress: string
   walletNetwork: "testnet" | "mainnet"
   onTagUpdated: (newTag: string) => void
+  onOpenLedger: () => void
+  onOpenSettings: () => void
 }) {
   const t = getWalletTexts("es")
 
@@ -256,6 +261,28 @@ const ProfileTab = memo(function ProfileTab({
         </Button>
       </div>
 
+      <div className="space-y-2">
+        <p className="text-xs uppercase tracking-widest text-white/40 font-medium">Cashflow</p>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onOpenLedger}
+          className="w-full bg-transparent border-white/20 text-white hover:bg-white/10 justify-start gap-2"
+        >
+          <Mail className="w-4 h-4 shrink-0" />
+          Libro por correo (Vaults)
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onOpenSettings}
+          className="w-full bg-transparent border-white/20 text-white hover:bg-white/10 justify-start gap-2"
+        >
+          <Settings className="w-4 h-4 shrink-0" />
+          Ajustes (Gmail, cuenta)
+        </Button>
+      </div>
+
       {/* Copy Stellar Address */}
       <div className="space-y-2">
         <p className="text-xs uppercase tracking-widest text-white/40 font-medium">Stellar Address</p>
@@ -399,6 +426,7 @@ export const ProfileSheet = memo(function ProfileSheet({
   onWalletCreated,
   onSwipeHandlers,
 }: ProfileSheetProps) {
+  const router = useRouter()
   const t = getWalletTexts("es")
   const effectiveWalletAddress = walletAddress || getPublicKeyFromSession() || ""
   const [activeTab, setActiveTab] = useState<Tab>("profile")
@@ -499,6 +527,14 @@ export const ProfileSheet = memo(function ProfileSheet({
               effectiveWalletAddress={effectiveWalletAddress}
               walletNetwork={walletNetwork}
               onTagUpdated={(newTag) => setCurrentUsername(newTag)}
+              onOpenLedger={() => {
+                onClose()
+                router.push("/ledger")
+              }}
+              onOpenSettings={() => {
+                onClose()
+                router.push("/settings")
+              }}
             />
           )}
           {activeTab === "cashout" && (

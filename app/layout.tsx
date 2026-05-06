@@ -4,7 +4,6 @@ import { Inter } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
 import { PWARegister } from "@/components/pwa-register"
-import { SharedBackground } from "@/components/shared-background"
 import { Toaster } from "@/components/ui/sonner"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -54,7 +53,6 @@ export default function RootLayout({
   return (
     <html lang="en" className="bg-black" style={{ backgroundColor: '#000000' }}>
       <body className={`${inter.className} antialiased bg-black`} style={{ backgroundColor: '#000000' }}>
-        <SharedBackground />
         {children}
         <Analytics />
         <PWARegister />

@@ -182,7 +182,10 @@ export default function CleanupPage() {
             <li>Browser passkeys must be deleted manually via browser settings or Keychain Access</li>
             <li>Database passkeys must be deleted via Supabase SQL Editor</li>
             <li>After cleanup, you'll need to register a new passkey</li>
-            <li>See <code className="bg-gray-800 px-2 py-1 rounded">docs/PASSKEY_RESET_GUIDE.md</code> for complete instructions</li>
+            <li>
+              See <code className="bg-gray-800 px-2 py-1 rounded">docs/authentication-and-accounts.md</code> for
+              complete instructions
+            </li>
           </ul>
         </div>
       </div>

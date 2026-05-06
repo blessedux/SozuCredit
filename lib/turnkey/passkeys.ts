@@ -39,6 +39,8 @@ export interface PasskeyCredential {
     signature?: string
     attestationObject?: string
     userHandle?: string | null
+    /** From `AuthenticatorAttestationResponse.getTransports()` — required for hybrid / QR sign-in. */
+    transports?: AuthenticatorTransport[]
   }
 }
 
@@ -153,7 +155,6 @@ export async function verifyRegistration(
           response: {
             ...credential.response,
             publicKey,
-            transports: ["internal"], // Platform authenticator
           },
         },
       }),
@@ -306,6 +307,11 @@ export async function createPasskey(
       console.log("[createPasskey] UserHandle from userId:", userHandle)
     }
 
+    const transports =
+      typeof response.getTransports === "function"
+        ? (response.getTransports() as AuthenticatorTransport[])
+        : ([] as AuthenticatorTransport[])
+
     return {
       id: credential.id,
       rawId: arrayBufferToBase64URL(credential.rawId),
@@ -314,6 +320,7 @@ export async function createPasskey(
         clientDataJSON: arrayBufferToBase64URL(response.clientDataJSON),
         attestationObject: arrayBufferToBase64URL(response.attestationObject),
         userHandle: userHandle,
+        ...(transports.length > 0 ? { transports } : {}),
       },
     }
   } catch (error) {
