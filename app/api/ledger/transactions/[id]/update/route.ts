@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { after, NextResponse } from "next/server"
 import { z } from "zod"
 import { getApiUserClient } from "@/lib/ledger/supabase-admin"
 import {
@@ -13,6 +13,7 @@ import {
 
 const updateSchema = z.object({
   merchant: z.string().optional().nullable(),
+  note: z.string().max(500).optional().nullable(),
   card_last_four: z.union([z.string().regex(/^\d{4}$/), z.null()]).optional(),
   cardholder_name: z.union([z.string().max(120), z.null()]).optional(),
   amount: z.number().positive().optional(),
@@ -76,6 +77,12 @@ export async function POST(
         ? trimDisplayName(parsed.data.merchant)
         : trimDisplayName(existing.merchant)
       : null
+  const existingDisplay = trimDisplayName(existing.merchant)
+  const shouldApplyAlias =
+    rememberAlias &&
+    Boolean(legalForAlias) &&
+    Boolean(displayForAlias) &&
+    displayForAlias !== existingDisplay
 
   const nextType = parsed.data.type ?? existing.type
   const vaultIdInput = parsed.data.source_vault_id
@@ -102,6 +109,7 @@ export async function POST(
 
   const patch: Record<string, unknown> = {}
   if (parsed.data.merchant !== undefined) patch.merchant = parsed.data.merchant
+  if (parsed.data.note !== undefined) patch.note = parsed.data.note
   if (parsed.data.card_last_four !== undefined) patch.card_last_four = parsed.data.card_last_four
   if (parsed.data.cardholder_name !== undefined) patch.cardholder_name = parsed.data.cardholder_name
   if (parsed.data.amount != null) patch.amount = parsed.data.amount
@@ -120,7 +128,7 @@ export async function POST(
     patch.source_vault_id = null
   }
 
-  if (rememberAlias && legalForAlias) {
+  if (shouldApplyAlias && legalForAlias) {
     const prevLegal = existing.merchant_legal?.trim()
     patch.merchant_legal = prevLegal || legalForAlias
   }
@@ -144,41 +152,44 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 })
   }
 
-  if (rememberAlias && legalForAlias && displayForAlias) {
+  if (shouldApplyAlias && legalForAlias && displayForAlias) {
     const key = merchantLegalKey(legalForAlias)
     const iso = new Date().toISOString()
-    const [aliasRes, bulkRes, legacyRes] = await Promise.all([
-      ctx.db.from("ledger_merchant_aliases").upsert(
-        {
-          user_id: ctx.userId,
-          legal_key: key,
-          display_name: displayForAlias,
-          updated_at: iso,
-        },
-        { onConflict: "user_id,legal_key" }
-      ),
-      ctx.db
-        .from("ledger_transactions")
-        .update({ merchant: displayForAlias })
-        .eq("user_id", ctx.userId)
-        .eq("merchant_legal", legalForAlias),
-      ctx.db
-        .from("ledger_transactions")
-        .update({ merchant: displayForAlias, merchant_legal: legalForAlias })
-        .eq("user_id", ctx.userId)
-        .is("merchant_legal", null)
-        .eq("merchant", legalForAlias),
-    ])
+    after(async () => {
+      const [aliasRes, bulkRes, legacyRes] = await Promise.all([
+        ctx.db.from("ledger_merchant_aliases").upsert(
+          {
+            user_id: ctx.userId,
+            legal_key: key,
+            display_name: displayForAlias,
+            updated_at: iso,
+          },
+          { onConflict: "user_id,legal_key" }
+        ),
+        ctx.db
+          .from("ledger_transactions")
+          .update({ merchant: displayForAlias })
+          .eq("user_id", ctx.userId)
+          .eq("merchant_legal", legalForAlias),
+        ctx.db
+          .from("ledger_transactions")
+          .update({ merchant: displayForAlias, merchant_legal: legalForAlias })
+          .eq("user_id", ctx.userId)
+          .is("merchant_legal", null)
+          .eq("merchant", legalForAlias),
+      ])
 
-    if (aliasRes.error) {
-      return NextResponse.json({ error: aliasRes.error.message }, { status: 500 })
-    }
-    if (bulkRes.error) {
-      return NextResponse.json({ error: bulkRes.error.message }, { status: 500 })
-    }
-    if (legacyRes.error) {
-      return NextResponse.json({ error: legacyRes.error.message }, { status: 500 })
-    }
+      if (aliasRes.error || bulkRes.error || legacyRes.error) {
+        console.error("ledger alias propagation failed", {
+          userId: ctx.userId,
+          txId: id,
+          legalKey: key,
+          aliasError: aliasRes.error?.message ?? null,
+          bulkError: bulkRes.error?.message ?? null,
+          legacyError: legacyRes.error?.message ?? null,
+        })
+      }
+    })
   }
 
   return NextResponse.json(enrichLedgerTransactionRow(data as LedgerTransactionRowInput))

@@ -82,48 +82,69 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { data: row, error: selErr } = await ctx.db
+    let row:
+      | {
+          preferred_fiat_currency?: string | null
+          custom_categories?: string[] | null
+          custom_income_categories?: string[] | null
+        }
+      | null = null
+    let missingIncomeColumn = false
+
+    const { data: fullRow, error: fullSelErr } = await ctx.db
       .from("ledger_settings")
       .select("preferred_fiat_currency, custom_categories, custom_income_categories")
       .eq("user_id", ctx.userId)
       .maybeSingle()
 
-    if (selErr) {
-      if (isMissingLedgerTable(selErr)) {
+    if (fullSelErr) {
+      if (isMissingLedgerTable(fullSelErr)) {
         return NextResponse.json({ error: "Ledger tables not installed" }, { status: 503 })
       }
-      return NextResponse.json({ error: selErr.message }, { status: 500 })
+      const msg = fullSelErr.message ?? ""
+      if (msg.includes("custom_income_categories") || msg.includes("column")) {
+        missingIncomeColumn = true
+        const { data: legacyRow, error: legacySelErr } = await ctx.db
+          .from("ledger_settings")
+          .select("preferred_fiat_currency, custom_categories")
+          .eq("user_id", ctx.userId)
+          .maybeSingle()
+        if (legacySelErr) {
+          return NextResponse.json({ error: legacySelErr.message }, { status: 500 })
+        }
+        row = legacyRow as typeof row
+      } else {
+        return NextResponse.json({ error: fullSelErr.message }, { status: 500 })
+      }
+    } else {
+      row = fullRow as typeof row
     }
 
     const prevExpense = (row?.custom_categories as string[] | null) ?? []
-    const prevIncome = (row?.custom_income_categories as string[] | null) ?? []
+    const prevIncome = missingIncomeColumn
+      ? (row?.custom_categories as string[] | null) ?? []
+      : (row?.custom_income_categories as string[] | null) ?? []
 
-    const nextExpense = kind === "expense" ? sanitizeCustomCategorySlugs([...prevExpense, slug]) : prevExpense
+    const nextExpense =
+      kind === "expense" || (kind === "income" && missingIncomeColumn)
+        ? sanitizeCustomCategorySlugs([...prevExpense, slug])
+        : prevExpense
     const nextIncome =
       kind === "income" ? sanitizeCustomIncomeCategorySlugs([...prevIncome, slug]) : prevIncome
 
-    const { error: upErr } = await ctx.db.from("ledger_settings").upsert(
-      {
-        user_id: ctx.userId,
-        preferred_fiat_currency: row?.preferred_fiat_currency ?? null,
-        custom_categories: nextExpense,
-        custom_income_categories: nextIncome,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id" }
-    )
+    const payload: Record<string, unknown> = {
+      user_id: ctx.userId,
+      preferred_fiat_currency: row?.preferred_fiat_currency ?? null,
+      custom_categories: nextExpense,
+      updated_at: new Date().toISOString(),
+    }
+    if (!missingIncomeColumn) payload.custom_income_categories = nextIncome
+
+    const { error: upErr } = await ctx.db.from("ledger_settings").upsert(payload, { onConflict: "user_id" })
 
     if (upErr) {
       if (isMissingLedgerTable(upErr)) {
         return NextResponse.json({ error: "Ledger tables not installed" }, { status: 503 })
-      }
-      if (upErr.message?.includes("custom_income_categories") || upErr.message?.includes("column")) {
-        return NextResponse.json(
-          {
-            error: "Run the migration that adds custom_income_categories to ledger_settings.",
-          },
-          { status: 503 }
-        )
       }
       return NextResponse.json({ error: upErr.message }, { status: 500 })
     }
@@ -133,7 +154,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, slug, categories, incomeCategories })
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
-    if (msg.includes("custom_categories") || msg.includes("column")) {
+    if (msg.includes("custom_categories")) {
       return NextResponse.json(
         { error: "Run the ledger migration that adds custom_categories to ledger_settings." },
         { status: 503 }

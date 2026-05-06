@@ -4,6 +4,8 @@ import { Suspense, lazy, useEffect, useState, useRef, useCallback, useMemo } fro
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Wallet } from "lucide-react"
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
+import { faCoins } from "@fortawesome/free-solid-svg-icons"
 import { Button } from "@/components/ui/button"
 import { WalletSkeleton } from "@/components/ui/wallet-skeleton"
 import { WalletErrorBoundary } from "@/components/wallet/wallet-error-boundary"
@@ -320,7 +322,7 @@ export default function WalletPage() {
           >
             <WalletErrorBoundary>
               <div className="relative mx-auto w-full max-w-7xl xl:max-w-[1320px] px-4 pt-16 pb-8 sm:px-6 md:py-12 lg:px-10 xl:px-12">
-                {/* Testnet badge + ledger link: stacked on narrow screens, row on desktop */}
+                {/* Testnet badge + cashflow shortcut: stacked on narrow screens, row on desktop */}
                 <div
                   className={`mb-6 flex flex-col items-center gap-3 sm:mb-8 lg:items-center ${
                     walletNetwork === "testnet" ? "lg:flex-row lg:justify-between" : ""
@@ -333,11 +335,15 @@ export default function WalletPage() {
                   )}
                   <Link
                     href="/ledger"
-                    className={`text-center text-xs text-white/50 underline-offset-4 transition-colors hover:text-white/80 sm:text-sm lg:max-w-xl ${
-                      walletNetwork === "testnet" ? "lg:text-right" : ""
+                    className={`group inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.03] px-2 py-1.5 text-sm text-white/85 transition-colors hover:border-white/30 hover:bg-white/[0.08] ${
+                      walletNetwork === "testnet" ? "lg:ml-auto" : ""
                     }`}
+                    aria-label="Abrir cashflow"
                   >
-                    Libro por correo (cashflow) — separado del saldo on-chain
+                    <span className="px-2">Cashflow</span>
+                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white/90 transition-colors group-hover:bg-white/20">
+                      <FontAwesomeIcon icon={faCoins} style={{ color: "rgb(255, 255, 255)" }} />
+                    </span>
                   </Link>
                 </div>
 

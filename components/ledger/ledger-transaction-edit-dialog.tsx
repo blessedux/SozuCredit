@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -23,6 +24,7 @@ import {
 } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
 import { parseHeuristicReceipt } from "@/lib/gmail/parse-heuristic"
 import { ledgerUserHeaders } from "@/lib/ledger/client-headers"
 import { resolveMerchantLegalFromTx } from "@/lib/ledger/merchant-alias"
@@ -36,6 +38,7 @@ export type LedgerTransactionEditRow = {
   merchant: string | null
   /** Bank / receipt legal commerce name when known (e.g. Chile "Detalle Comercio"). */
   merchant_legal?: string | null
+  note?: string | null
   amount: string | number
   currency: string
   type: string
@@ -96,6 +99,7 @@ export function LedgerTransactionEditDialog({
 
   const [editAmountStr, setEditAmountStr] = useState("")
   const [editCurrency, setEditCurrency] = useState("CLP")
+  const [editNote, setEditNote] = useState("")
   const [currencyPopoverOpen, setCurrencyPopoverOpen] = useState(false)
 
   const [categoryPopoverOpen, setCategoryPopoverOpen] = useState(false)
@@ -106,6 +110,8 @@ export function LedgerTransactionEditDialog({
   const [savedFlash, setSavedFlash] = useState(false)
   const savedFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const dialogRowIdRef = useRef<string | null>(null)
+  const saveInFlightRef = useRef(false)
+  const [emailBodyOpen, setEmailBodyOpen] = useState(false)
 
   const [vaultOptions, setVaultOptions] = useState<VaultOption[]>([])
   const [vaultsLoading, setVaultsLoading] = useState(false)
@@ -169,6 +175,7 @@ export function LedgerTransactionEditDialog({
       .toUpperCase()
       .slice(0, 8))
     setCurrencyPopoverOpen(false)
+    setEditNote((row.note ?? "").trim())
     setEditCategory(String(row.category ?? "unknown").trim().toLowerCase())
     setEditType(row.type)
     setRememberManualRule(false)
@@ -180,6 +187,7 @@ export function LedgerTransactionEditDialog({
     setRememberDismissRule(false)
     setDialogError(null)
     setEditSourceVaultId(row.source_vault_id?.trim() ? row.source_vault_id : LEDGER_VAULT_SELECT_NONE)
+    setEmailBodyOpen(false)
   }, [open, row])
 
   useEffect(() => {
@@ -210,6 +218,7 @@ export function LedgerTransactionEditDialog({
 
   async function saveManualEdits() {
     if (!row) return
+    if (saveInFlightRef.current) return
     const parsedAmt = parseLedgerAmountInput(editAmountStr)
     if (parsedAmt == null) {
       setDialogError("Revisá el monto (ej: 25000 o 25.000).")
@@ -221,77 +230,112 @@ export function LedgerTransactionEditDialog({
       return
     }
 
+    const nextMerchant = editMerchant.trim() || null
+    const nextCurrency = curNorm
+    const nextCategory = editCategory
+    const nextType = editType
+    const nextNote = editNote.trim() || null
+    const nextSourceVaultId =
+      editType === "income" || editType === "refund"
+        ? editSourceVaultId === LEDGER_VAULT_SELECT_NONE
+          ? null
+          : editSourceVaultId
+        : null
+
+    const previousPatch: Partial<LedgerTransactionEditRow> = {
+      merchant: row.merchant ?? null,
+      amount: Number(row.amount),
+      currency: String(row.currency ?? "CLP"),
+      note: row.note ?? null,
+      category: String(row.category ?? "unknown"),
+      type: String(row.type ?? "unknown"),
+      source_vault_id: row.source_vault_id ?? null,
+      source_vault_name: row.source_vault_name ?? null,
+      merchant_legal: row.merchant_legal ?? null,
+      card_last_four: row.card_last_four ?? null,
+      cardholder_name: row.cardholder_name ?? null,
+      institution_label: row.institution_label,
+    }
+    const optimisticPatch: Partial<LedgerTransactionEditRow> = {
+      merchant: nextMerchant,
+      amount: parsedAmt,
+      currency: nextCurrency,
+      note: nextNote,
+      category: nextCategory,
+      type: nextType,
+      source_vault_id: nextSourceVaultId,
+    }
+
     setSaveLoading(true)
+    saveInFlightRef.current = true
     setDialogError(null)
-    let showSavedFlash = false
+    onSaved(row.id, optimisticPatch)
     try {
+      clearSavedFlashTimer()
+      setSavedFlash(true)
+      savedFlashTimerRef.current = setTimeout(() => {
+        setSavedFlash(false)
+        savedFlashTimerRef.current = null
+      }, 2000)
+      setSaveLoading(false)
+
       const res = await fetch(`/api/ledger/transactions/${row.id}/update`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...ledgerUserHeaders() },
         body: JSON.stringify({
-          merchant: editMerchant.trim() || null,
+          merchant: nextMerchant,
           amount: parsedAmt,
-          currency: curNorm,
-          category: editCategory,
-          type: editType,
+          currency: nextCurrency,
+          note: nextNote,
+          category: nextCategory,
+          type: nextType,
           remember_merchant_alias:
             rememberMerchantAlias && Boolean(commerceLegalName?.trim()),
-          source_vault_id:
-            editType === "income" || editType === "refund"
-              ? editSourceVaultId === LEDGER_VAULT_SELECT_NONE
-                ? null
-                : editSourceVaultId
-              : null,
+          source_vault_id: nextSourceVaultId,
         }),
       })
       const json = (await res.json().catch(() => ({}))) as { error?: string } & Partial<LedgerTransactionEditRow>
       if (!res.ok) {
+        onSaved(row.id, previousPatch)
+        setSavedFlash(false)
         setDialogError(typeof json.error === "string" ? json.error : "No se pudo guardar")
         return
       }
       onSaved(row.id, {
-        merchant: (json.merchant !== undefined ? json.merchant : editMerchant.trim()) || null,
+        merchant: (json.merchant !== undefined ? json.merchant : nextMerchant) || null,
         merchant_legal:
           (json as { merchant_legal?: string | null }).merchant_legal ?? row.merchant_legal ?? null,
         amount: Number(json.amount ?? parsedAmt),
-        currency: String(json.currency ?? curNorm),
-        category: String(json.category ?? editCategory),
-        type: String(json.type ?? editType),
+        currency: String(json.currency ?? nextCurrency),
+        note: (json as { note?: string | null }).note ?? nextNote,
+        category: String(json.category ?? nextCategory),
+        type: String(json.type ?? nextType),
         card_last_four: (json as { card_last_four?: string | null }).card_last_four ?? row.card_last_four ?? null,
         cardholder_name: (json as { cardholder_name?: string | null }).cardholder_name ?? row.cardholder_name ?? null,
-        source_vault_id: (json as { source_vault_id?: string | null }).source_vault_id ?? null,
+        source_vault_id: (json as { source_vault_id?: string | null }).source_vault_id ?? nextSourceVaultId,
         source_vault_name: (json as { source_vault_name?: string | null }).source_vault_name ?? null,
         institution_label: (json as { institution_label?: string }).institution_label ?? row.institution_label,
       })
-      showSavedFlash = true
 
       if (rememberManualRule) {
-        const rr = await fetch("/api/ledger/category-rules", {
+        void fetch("/api/ledger/category-rules", {
           method: "POST",
           headers: { "Content-Type": "application/json", ...ledgerUserHeaders() },
           body: JSON.stringify({
             from_transaction_id: row.id,
-            category: editCategory,
-            type: editType,
+            category: nextCategory,
+            type: nextType,
             skip_sync: false,
           }),
         })
-        if (!rr.ok) {
-          const j = (await rr.json().catch(() => ({}))) as { error?: string }
-          setDialogError(typeof j.error === "string" ? j.error : "Movimiento guardado; regla no creada")
-          showSavedFlash = false
-        }
       }
+    } catch {
+      onSaved(row.id, previousPatch)
+      setSavedFlash(false)
+      setDialogError("Red no disponible")
     } finally {
       setSaveLoading(false)
-      if (showSavedFlash) {
-        clearSavedFlashTimer()
-        setSavedFlash(true)
-        savedFlashTimerRef.current = setTimeout(() => {
-          setSavedFlash(false)
-          savedFlashTimerRef.current = null
-        }, 2000)
-      }
+      saveInFlightRef.current = false
     }
   }
 
@@ -500,6 +544,15 @@ export function LedgerTransactionEditDialog({
                   </p>
                 )}
               </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-white/50">Nota (breve)</Label>
+                <Textarea
+                  value={editNote}
+                  onChange={(e) => setEditNote(e.target.value.slice(0, 500))}
+                  placeholder="Opcional: contexto del movimiento"
+                  className="min-h-20 bg-white/5 border-white/20 text-white placeholder:text-white/40 resize-y"
+                />
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-2">
                   <Label className="text-xs text-white/50">Tipo</Label>
@@ -664,7 +717,19 @@ export function LedgerTransactionEditDialog({
               {parsedFromEmail ? (
                 <div className="space-y-2 min-w-0">
                   <p className="text-xs font-medium text-white/50">Detectado en el correo</p>
-                  <EmailParsedSummary parsed={parsedFromEmail} />
+                  <EmailParsedSummary
+                    parsed={parsedFromEmail}
+                    onAmountClick={row.raw_text?.trim() ? () => setEmailBodyOpen((prev) => !prev) : undefined}
+                  />
+                  {row.raw_text?.trim() ? (
+                    <Collapsible open={emailBodyOpen} onOpenChange={setEmailBodyOpen}>
+                      <CollapsibleContent className="mt-2">
+                        <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/30 p-3 text-[11px] leading-relaxed text-white/75">
+                          {row.raw_text}
+                        </pre>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  ) : null}
                 </div>
               ) : row.source === "gmail" && !row.raw_text?.trim() ? (
                 <p className="text-[11px] text-white/45 leading-snug">
@@ -743,8 +808,10 @@ export function LedgerTransactionEditDialog({
 
 function EmailParsedSummary({
   parsed,
+  onAmountClick,
 }: {
   parsed: ReturnType<typeof parseHeuristicReceipt>
+  onAmountClick?: () => void
 }) {
   const rows: { label: string; value: string }[] = []
   if (parsed.merchant?.trim()) {
@@ -778,10 +845,24 @@ function EmailParsedSummary({
   return (
     <ul className="rounded-md border border-white/10 bg-black/25 px-3 py-2.5 space-y-2 text-xs min-w-0">
       {rows.map((r) => (
-        <li key={r.label} className="min-w-0 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 items-baseline">
-          <span className="text-white/45 shrink-0">{r.label}</span>
-          <span className="text-white/90 break-words min-w-0">{r.value}</span>
-        </li>
+        r.label === "Monto" && onAmountClick ? (
+          <li key={r.label}>
+            <button
+              type="button"
+              onClick={onAmountClick}
+              aria-label="Mostrar u ocultar cuerpo del correo"
+              className="w-full min-w-0 rounded-md border border-white/15 bg-black/45 px-2.5 py-2 text-left transition-colors hover:bg-black/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+            >
+              <span className="block text-[11px] text-white/45">{r.label}</span>
+              <span className="block text-white/95 break-words min-w-0">{r.value}</span>
+            </button>
+          </li>
+        ) : (
+          <li key={r.label} className="min-w-0 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 items-baseline">
+            <span className="text-white/45 shrink-0">{r.label}</span>
+            <span className="text-white/90 break-words min-w-0">{r.value}</span>
+          </li>
+        )
       ))}
     </ul>
   )

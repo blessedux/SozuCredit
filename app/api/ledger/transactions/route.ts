@@ -20,6 +20,7 @@ const NO_STORE_HEADERS = { "Cache-Control": "no-store, max-age=0" } as const
 const createSchema = z.object({
   date: z.string().datetime({ offset: true }).or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)),
   merchant: z.string().optional().nullable(),
+  note: z.string().max(500).optional().nullable(),
   amount: z.number().positive(),
   currency: z.string().min(3).max(8),
   type: z.enum(["income", "expense", "transfer", "refund", "unknown"]),
@@ -49,7 +50,7 @@ export async function GET(request: Request) {
   let q = ctx.db
     .from("ledger_transactions")
     .select(
-      `id, user_id, source_email_id, source_vault_id, date, merchant, merchant_legal, amount, currency, type, category, confidence, raw_text, created_at,
+      `id, user_id, source_email_id, source_vault_id, date, merchant, merchant_legal, note, amount, currency, type, category, confidence, raw_text, created_at,
        card_last_four, cardholder_name,
        email_sources ( from_addr ),
        ledger_vaults ( id, name )`
@@ -144,6 +145,7 @@ export async function POST(request: Request) {
     source_vault_id: vaultId,
     date: dateIso,
     merchant: parsed.data.merchant ?? null,
+    note: parsed.data.note ?? null,
     amount: parsed.data.amount,
     currency: parsed.data.currency.toUpperCase(),
     type: parsed.data.type as LedgerTransactionType,

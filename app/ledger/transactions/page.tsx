@@ -11,9 +11,10 @@ import {
   isWithinInterval,
 } from "date-fns"
 import { es } from "date-fns/locale"
-import { ChevronDown, ChevronLeft, ChevronRight, Plus, Search } from "lucide-react"
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Plus, Search } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { ledgerUserHeaders } from "@/lib/ledger/client-headers"
 import type { LedgerChartWindow } from "@/lib/ledger/ledger-chart-window"
@@ -138,6 +139,12 @@ function LedgerTransactionsContent() {
   const [vaultOptions, setVaultOptions] = useState<{ id: string; name: string }[]>([])
   const [vaultsLoading, setVaultsLoading] = useState(false)
   const [tableSearch, setTableSearch] = useState("")
+  const [tableCurrencyFilter, setTableCurrencyFilter] = useState("all")
+  const [selectedRowIds, setSelectedRowIds] = useState<string[]>([])
+  const [bulkDismissing, setBulkDismissing] = useState(false)
+  const [inlineEditCategoryRowId, setInlineEditCategoryRowId] = useState<string | null>(null)
+  const [inlineEditCategoryValue, setInlineEditCategoryValue] = useState<string>("unknown")
+  const [inlineEditCategorySavingId, setInlineEditCategorySavingId] = useState<string | null>(null)
 
   const tableCategoryFilter = useMemo(() => {
     const raw = searchParams.get("category")?.trim().toLowerCase()
@@ -229,6 +236,11 @@ function LedgerTransactionsContent() {
     router.replace("/ledger/transactions", { scroll: false })
   }, [searchParams, rows, loading, router])
 
+  useEffect(() => {
+    const ids = new Set(rows.map((r) => r.id))
+    setSelectedRowIds((prev) => prev.filter((id) => ids.has(id)))
+  }, [rows])
+
   const monthsWithData = useMemo(() => {
     const seen = new Map<string, Date>()
     for (const r of rows) {
@@ -237,6 +249,10 @@ function LedgerTransactionsContent() {
       if (!seen.has(key)) seen.set(key, startOfMonth(d))
     }
     return [...seen.values()].sort((a, b) => b.getTime() - a.getTime())
+  }, [rows])
+
+  const tableCurrencies = useMemo(() => {
+    return [...new Set(rows.map((r) => r.currency.toUpperCase()))].filter(Boolean).sort((a, b) => a.localeCompare(b))
   }, [rows])
 
   const filteredRows = useMemo(() => {
@@ -252,6 +268,7 @@ function LedgerTransactionsContent() {
         if (!isWithinInterval(new Date(r.date), { start, end })) return false
       }
       if (tableCategoryFilter && r.category !== tableCategoryFilter) return false
+      if (tableCurrencyFilter !== "all" && r.currency.toUpperCase() !== tableCurrencyFilter) return false
       if (q) {
         const haystack = [
           r.merchant ?? "",
@@ -270,7 +287,15 @@ function LedgerTransactionsContent() {
       }
       return true
     })
-  }, [rows, viewMonth, tableCategoryFilter, tableWindowBounds, tableSearch])
+  }, [rows, viewMonth, tableCategoryFilter, tableWindowBounds, tableSearch, tableCurrencyFilter])
+
+  const selectedIdsSet = useMemo(() => new Set(selectedRowIds), [selectedRowIds])
+  const selectedVisibleCount = useMemo(
+    () => filteredRows.reduce((acc, row) => acc + (selectedIdsSet.has(row.id) ? 1 : 0), 0),
+    [filteredRows, selectedIdsSet]
+  )
+  const allVisibleSelected = filteredRows.length > 0 && selectedVisibleCount === filteredRows.length
+  const someVisibleSelected = selectedVisibleCount > 0 && selectedVisibleCount < filteredRows.length
 
   const monthRowsForViz = useMemo(() => {
     const start = viewMonth
@@ -339,6 +364,102 @@ function LedgerTransactionsContent() {
   function mergeRowPatch(id: string, patch: Partial<Row>) {
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)))
     setDetailRow((r) => (r && r.id === id ? { ...r, ...patch } : r))
+  }
+
+  function toggleRowSelection(id: string, checked: boolean) {
+    setSelectedRowIds((prev) => {
+      if (checked) {
+        if (prev.includes(id)) return prev
+        return [...prev, id]
+      }
+      return prev.filter((x) => x !== id)
+    })
+  }
+
+  function toggleSelectAllVisible(checked: boolean) {
+    if (!checked) {
+      const visibleIds = new Set(filteredRows.map((r) => r.id))
+      setSelectedRowIds((prev) => prev.filter((id) => !visibleIds.has(id)))
+      return
+    }
+    setSelectedRowIds((prev) => {
+      const merged = new Set(prev)
+      for (const r of filteredRows) merged.add(r.id)
+      return [...merged]
+    })
+  }
+
+  async function saveInlineCategory(row: Row) {
+    if (inlineEditCategorySavingId) return
+    const nextCategory = inlineEditCategoryValue.trim().toLowerCase()
+    if (!nextCategory || nextCategory === row.category) {
+      setInlineEditCategoryRowId(null)
+      return
+    }
+    const prevCategory = row.category
+    mergeRowPatch(row.id, { category: nextCategory })
+    setInlineEditCategoryRowId(null)
+    setInlineEditCategorySavingId(row.id)
+    setError(null)
+    try {
+      const res = await fetch(`/api/ledger/transactions/${row.id}/update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...ledgerUserHeaders() },
+        body: JSON.stringify({ category: nextCategory }),
+      })
+      const json = (await res.json().catch(() => ({}))) as { error?: string; category?: string }
+      if (!res.ok) {
+        mergeRowPatch(row.id, { category: prevCategory })
+        setError(typeof json.error === "string" ? json.error : "No se pudo guardar categoría")
+        return
+      }
+      mergeRowPatch(row.id, { category: String(json.category ?? nextCategory) })
+    } catch {
+      mergeRowPatch(row.id, { category: prevCategory })
+      setError("Red no disponible")
+    } finally {
+      setInlineEditCategorySavingId(null)
+    }
+  }
+
+  async function dismissSelectedAsNonExpense() {
+    if (selectedRowIds.length === 0 || bulkDismissing) return
+    setBulkDismissing(true)
+    setError(null)
+    const targetIds = [...selectedRowIds]
+    try {
+      const outcomes = await Promise.all(
+        targetIds.map(async (id) => {
+          try {
+            const res = await fetch(`/api/ledger/transactions/${id}/update`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", ...ledgerUserHeaders() },
+              body: JSON.stringify({ dismissed: true }),
+            })
+            if (res.ok) return { id, ok: true as const }
+            const j = (await res.json().catch(() => ({}))) as { error?: string }
+            return { id, ok: false as const, error: typeof j.error === "string" ? j.error : "No se pudo ocultar" }
+          } catch {
+            return { id, ok: false as const, error: "Red no disponible" }
+          }
+        })
+      )
+      const successIds = outcomes.filter((o) => o.ok).map((o) => o.id)
+      if (successIds.length > 0) {
+        const removed = new Set(successIds)
+        setRows((prev) => prev.filter((r) => !removed.has(r.id)))
+        setSelectedRowIds((prev) => prev.filter((id) => !removed.has(id)))
+        setDetailRow((prev) => (prev && removed.has(prev.id) ? null : prev))
+      }
+      const failed = outcomes.filter((o) => !o.ok)
+      if (failed.length > 0) {
+        setError(
+          `Se ocultaron ${successIds.length} movimiento${successIds.length === 1 ? "" : "s"}, pero ${failed.length} fallaron.`
+        )
+      }
+    } finally {
+      setBulkDismissing(false)
+    }
   }
 
   async function submitManualNewCategory() {
@@ -519,7 +640,7 @@ function LedgerTransactionsContent() {
               Tabla completa por mes. Abrí una fila para editar, clasificar con IA (Open Router, modelo gratuito) o
               ocultar correos basura. Las reglas opcionales ayudan en futuros syncs de Gmail.
             </p>
-            {(tableCategoryFilter || tableWindowFilter) ? (
+            {(tableCategoryFilter || tableWindowFilter || tableCurrencyFilter !== "all") ? (
               <div className="flex flex-wrap items-center gap-2">
                 {tableWindowFilter ? (
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-400/35 bg-violet-500/15 px-2.5 py-1 text-[11px] text-violet-100/95">
@@ -533,12 +654,21 @@ function LedgerTransactionsContent() {
                     <span className="capitalize font-medium">{tableCategoryFilter.replace(/_/g, " ")}</span>
                   </span>
                 ) : null}
+                {tableCurrencyFilter !== "all" ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/35 bg-emerald-500/15 px-2.5 py-1 text-[11px] text-emerald-100/95">
+                    <span className="text-white/50">Moneda:</span>
+                    <span className="font-medium">{tableCurrencyFilter}</span>
+                  </span>
+                ) : null}
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   className="h-7 text-[11px] text-white/55 hover:text-white hover:bg-white/10"
-                  onClick={() => router.replace("/ledger/transactions", { scroll: false })}
+                  onClick={() => {
+                    setTableCurrencyFilter("all")
+                    router.replace("/ledger/transactions", { scroll: false })
+                  }}
                 >
                   Quitar filtros
                 </Button>
@@ -758,6 +888,21 @@ function LedgerTransactionsContent() {
                 aria-label="Buscar en tabla de movimientos"
               />
             </div>
+            <Select value={tableCurrencyFilter} onValueChange={setTableCurrencyFilter}>
+              <SelectTrigger className="h-9 w-[9.5rem] border-white/20 bg-white/5 text-white">
+                <SelectValue placeholder="Moneda" />
+              </SelectTrigger>
+              <SelectContent className="z-[210] border-white/15 bg-neutral-950 text-white shadow-xl">
+                <SelectItem value="all" className="text-white/90 focus:bg-white/10 focus:text-white">
+                  Todas
+                </SelectItem>
+                {tableCurrencies.map((cur) => (
+                  <SelectItem key={cur} value={cur} className="text-white/90 focus:bg-white/10 focus:text-white">
+                    {cur}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -832,6 +977,36 @@ function LedgerTransactionsContent() {
           </p>
         ) : null}
 
+        {selectedRowIds.length > 0 ? (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+            <p className="text-xs text-amber-100/90">
+              {selectedRowIds.length} seleccionado{selectedRowIds.length === 1 ? "" : "s"}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-amber-400/40 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25"
+                disabled={bulkDismissing}
+                onClick={() => void dismissSelectedAsNonExpense()}
+              >
+                {bulkDismissing ? "Ocultando…" : "No es gasto (ocultar seleccionados)"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-white/60 hover:text-white hover:bg-white/10"
+                disabled={bulkDismissing}
+                onClick={() => setSelectedRowIds([])}
+              >
+                Limpiar selección
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
         <div className="rounded-xl border border-white/10 overflow-hidden bg-white/[0.02]">
           {loading ? (
             <div className="max-h-[min(70vh,520px)] overflow-hidden px-2 py-4 sm:px-3">
@@ -866,6 +1041,19 @@ function LedgerTransactionsContent() {
                     </button>
                   </>
                 )
+              ) : tableCurrencyFilter !== "all" ? (
+                <>
+                  No hay movimientos en moneda {tableCurrencyFilter} para{" "}
+                  {format(viewMonth, "MMMM yyyy", { locale: es })}. Cambia la moneda o{" "}
+                  <button
+                    type="button"
+                    className="underline underline-offset-2 text-white/55 hover:text-white"
+                    onClick={() => setTableCurrencyFilter("all")}
+                  >
+                    quita el filtro
+                  </button>
+                  .
+                </>
               ) : tableCategoryFilter ? (
                 <>
                   No hay movimientos «{tableCategoryFilter.replace(/_/g, " ")}» en{" "}
@@ -888,6 +1076,16 @@ function LedgerTransactionsContent() {
               <Table className="min-w-[min(100%,720px)] w-full table-auto">
                 <TableHeader>
                   <TableRow className="border-white/10 hover:bg-transparent">
+                    <TableHead className="sticky top-0 z-[2] w-10 bg-neutral-950/95 backdrop-blur-sm text-white/60">
+                      <div className="flex items-center justify-center">
+                        <Checkbox
+                          checked={allVisibleSelected || (someVisibleSelected ? "indeterminate" : false)}
+                          onCheckedChange={(v) => toggleSelectAllVisible(v === true)}
+                          aria-label="Seleccionar todos los movimientos visibles"
+                          className="border-white/30 data-[state=checked]:bg-white data-[state=checked]:text-black"
+                        />
+                      </div>
+                    </TableHead>
                     <TableHead className="sticky top-0 z-[1] bg-neutral-950/95 backdrop-blur-sm text-white/60 whitespace-nowrap">
                       Fecha
                     </TableHead>
@@ -932,6 +1130,20 @@ function LedgerTransactionsContent() {
                         }
                       }}
                     >
+                      <TableCell
+                        className="align-top"
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-center">
+                          <Checkbox
+                            checked={selectedIdsSet.has(r.id)}
+                            onCheckedChange={(v) => toggleRowSelection(r.id, v === true)}
+                            aria-label={`Seleccionar movimiento ${r.id}`}
+                            className="border-white/30 data-[state=checked]:bg-white data-[state=checked]:text-black"
+                          />
+                        </div>
+                      </TableCell>
                       <TableCell className="text-white/90 text-xs whitespace-nowrap align-top">
                         {formatLedgerTxTableMoment(r.date, r.source)}
                       </TableCell>
@@ -943,7 +1155,60 @@ function LedgerTransactionsContent() {
                       </TableCell>
                       <TableCell className="text-xs whitespace-nowrap align-top">{r.currency}</TableCell>
                       <TableCell className="text-xs capitalize whitespace-nowrap align-top">{r.type}</TableCell>
-                      <TableCell className="text-xs whitespace-nowrap align-top">{r.category}</TableCell>
+                      <TableCell className="text-xs whitespace-nowrap align-top" onClick={(e) => e.stopPropagation()}>
+                        <div className="relative h-6 w-[9.75rem]">
+                          {inlineEditCategoryRowId === r.id ? (
+                            <div className="absolute inset-0 flex items-center gap-1 animate-in fade-in-0 zoom-in-95 duration-150">
+                              <Select value={inlineEditCategoryValue} onValueChange={setInlineEditCategoryValue}>
+                                <SelectTrigger
+                                  className="h-6 min-h-0 w-[8rem] border-white/20 bg-white/5 px-2 text-[11px] text-white"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent
+                                  className="z-[230] max-h-64 border-white/15 bg-neutral-950 text-white shadow-xl"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {(r.type === "income" || r.type === "refund" ? incomeCategories : categories).map((c) => (
+                                    <SelectItem key={c} value={c} className="text-white/90 focus:bg-white/10 focus:text-white">
+                                      {c}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                type="button"
+                                size="icon"
+                                className="h-6 w-6 shrink-0 bg-emerald-400 text-black hover:bg-emerald-300"
+                                disabled={inlineEditCategorySavingId === r.id}
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  void saveInlineCategory(r)
+                                }}
+                                aria-label="Guardar categoría"
+                              >
+                                <Check className="size-3" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className="h-6 w-full truncate rounded px-1 text-left text-xs text-white/90 hover:bg-white/10"
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                const list = r.type === "income" || r.type === "refund" ? incomeCategories : categories
+                                setInlineEditCategoryRowId(r.id)
+                                setInlineEditCategoryValue(list.includes(r.category) ? r.category : "unknown")
+                              }}
+                            >
+                              {r.category}
+                            </button>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-xs whitespace-normal align-top max-w-[8rem] break-words">
                         {r.institution_label ?? "—"}
                       </TableCell>

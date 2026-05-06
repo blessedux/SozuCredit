@@ -67,7 +67,14 @@ export async function fetchMergedIncomeCategories(
 
   if (error) {
     if (error.message?.includes("custom_income_categories") || error.message?.includes("column")) {
-      return [...DEFAULT_INCOME_CATEGORIES]
+      const { data: legacy, error: legacyErr } = await db
+        .from("ledger_settings")
+        .select("custom_categories")
+        .eq("user_id", userId)
+        .maybeSingle()
+      if (legacyErr) return [...DEFAULT_INCOME_CATEGORIES]
+      const fallbackCustom = (legacy?.custom_categories as string[] | null) ?? []
+      return mergeIncomeCategoryLists(fallbackCustom)
     }
     throw new Error(error.message)
   }

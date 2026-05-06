@@ -7,6 +7,7 @@ import { Flame, Hourglass, Target, Waves } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   Table,
   TableBody,
@@ -171,6 +172,7 @@ type PreviewTx = {
   date: string
   merchant: string | null
   merchant_legal?: string | null
+  note?: string | null
   card_last_four?: string | null
   cardholder_name?: string | null
   amount: string | number
@@ -187,6 +189,40 @@ type PreviewTx = {
   institution_kind?: InstitutionKind
 }
 
+function isCurrentUtcMonth(isoLike: string): boolean {
+  const d = new Date(isoLike)
+  if (Number.isNaN(d.getTime())) return false
+  const now = new Date()
+  return d.getUTCFullYear() === now.getUTCFullYear() && d.getUTCMonth() === now.getUTCMonth()
+}
+
+function summaryContributionForTx(tx: PreviewTx, primaryCurrency: string): { income: number; expense: number } {
+  if (String(tx.currency ?? "").toUpperCase() !== String(primaryCurrency ?? "").toUpperCase()) {
+    return { income: 0, expense: 0 }
+  }
+  if (!isCurrentUtcMonth(tx.date)) return { income: 0, expense: 0 }
+
+  const amountAbs = Math.abs(Number(tx.amount))
+  if (!Number.isFinite(amountAbs)) return { income: 0, expense: 0 }
+
+  if (tx.type === "income" || tx.type === "refund") return { income: amountAbs, expense: 0 }
+  if (tx.type === "expense") return { income: 0, expense: amountAbs }
+  return { income: 0, expense: 0 }
+}
+
+function patchSummaryWithEditedTx(summary: Summary, before: PreviewTx, after: PreviewTx): Summary {
+  const prev = summaryContributionForTx(before, summary.primaryCurrency)
+  const next = summaryContributionForTx(after, summary.primaryCurrency)
+  const incomeThisMonth = Math.max(0, summary.incomeThisMonth - prev.income + next.income)
+  const expensesThisMonth = Math.max(0, summary.expensesThisMonth - prev.expense + next.expense)
+  return {
+    ...summary,
+    incomeThisMonth,
+    expensesThisMonth,
+    netCashflow: incomeThisMonth - expensesThisMonth,
+  }
+}
+
 function previewTxToEditRow(p: PreviewTx): LedgerTransactionEditRow {
   const c = p.confidence
   return {
@@ -194,6 +230,7 @@ function previewTxToEditRow(p: PreviewTx): LedgerTransactionEditRow {
     date: p.date,
     merchant: p.merchant,
     merchant_legal: p.merchant_legal ?? null,
+    note: p.note ?? null,
     card_last_four: p.card_last_four ?? null,
     cardholder_name: p.cardholder_name ?? null,
     amount: p.amount,
@@ -234,6 +271,7 @@ export default function LedgerHomePage() {
   /** Matches \"Este mes\" / \"7 días\" / \"Hoy UTC\" donut tabs — preview table uses same UTC window + optional category. */
   const [chartWindow, setChartWindow] = useState<LedgerChartWindow>("month")
   const [detailTx, setDetailTx] = useState<PreviewTx | null>(null)
+  const [calculationModal, setCalculationModal] = useState<"burn" | "runway" | null>(null)
   const [ledgerCategories, setLedgerCategories] = useState<string[]>(() => [...DEFAULT_CATEGORIES])
   const [ledgerIncomeCategories, setLedgerIncomeCategories] = useState<string[]>(() => [
     ...DEFAULT_INCOME_CATEGORIES,
@@ -470,6 +508,10 @@ export default function LedgerHomePage() {
   }
 
   const cur = data.primaryCurrency
+  const burnRunway = data.burnRunway
+  const impliedNetBurnFromGross = burnRunway
+    ? Math.max(0, burnRunway.avgMonthlyGrossExpensePrimary - burnRunway.avgMonthlyGrossIncomePrimary)
+    : 0
 
   return (
     <div className="space-y-6 lg:space-y-8">
@@ -496,13 +538,33 @@ export default function LedgerHomePage() {
           </section>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-4">
-            <section className="rounded-xl border border-orange-500/20 bg-orange-500/[0.04] p-5 text-left lg:flex lg:flex-col">
+            <section
+              role="button"
+              tabIndex={burnRunway ? 0 : -1}
+              className={`rounded-xl border border-orange-500/20 bg-orange-500/[0.04] p-5 text-left lg:flex lg:flex-col transition-colors ${
+                burnRunway
+                  ? "cursor-pointer hover:bg-orange-500/[0.09] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/40"
+                  : ""
+              }`}
+              onClick={() => {
+                if (!burnRunway) return
+                setCalculationModal("burn")
+              }}
+              onKeyDown={(e) => {
+                if (!burnRunway) return
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault()
+                  setCalculationModal("burn")
+                }
+              }}
+            >
               <div className="flex gap-3">
                 <Flame className="mt-0.5 h-5 w-5 shrink-0 text-orange-400/90" aria-hidden />
                 <div className="min-w-0 flex-1 space-y-2">
                   <p className="text-xs uppercase tracking-widest text-white/40">Ritmo de gasto (bruto)</p>
                   {data.burnRunway ? (
                     <>
+                      <p className="text-[10px] uppercase tracking-wider text-orange-100/80">Tocar para ver cálculo</p>
                       <p className="text-2xl font-bold tabular-nums text-orange-100 lg:text-3xl">
                         {formatFiatAmount(data.burnRunway.avgMonthlyGrossExpensePrimary, cur)}
                         <span className="block text-[11px] font-normal text-white/40 mt-1.5 normal-case tracking-normal">
@@ -582,13 +644,33 @@ export default function LedgerHomePage() {
               </div>
             </section>
 
-            <section className="rounded-xl border border-violet-500/20 bg-violet-500/[0.04] p-5 text-left lg:flex lg:flex-col">
+            <section
+              role="button"
+              tabIndex={burnRunway ? 0 : -1}
+              className={`rounded-xl border border-violet-500/20 bg-violet-500/[0.04] p-5 text-left lg:flex lg:flex-col transition-colors ${
+                burnRunway
+                  ? "cursor-pointer hover:bg-violet-500/[0.09] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/40"
+                  : ""
+              }`}
+              onClick={() => {
+                if (!burnRunway) return
+                setCalculationModal("runway")
+              }}
+              onKeyDown={(e) => {
+                if (!burnRunway) return
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault()
+                  setCalculationModal("runway")
+                }
+              }}
+            >
               <div className="flex gap-3">
                 <Hourglass className="mt-0.5 h-5 w-5 shrink-0 text-violet-300/90" aria-hidden />
                 <div className="min-w-0 flex-1 space-y-2">
                   <p className="text-xs uppercase tracking-widest text-white/40">Runway</p>
                   {data.burnRunway ? (
                     <>
+                      <p className="text-[10px] uppercase tracking-wider text-violet-100/80">Tocar para ver cálculo</p>
                       <p className="text-2xl font-bold tabular-nums text-violet-100 lg:text-3xl">
                         {runwayHeadline(data.burnRunway)}
                       </p>
@@ -1046,6 +1128,11 @@ export default function LedgerHomePage() {
         onCategoriesChange={setLedgerCategories}
         onIncomeCategoriesChange={setLedgerIncomeCategories}
         onSaved={(id, patch) => {
+          const before = detailTx && detailTx.id === id ? detailTx : previewTx.find((tx) => tx.id === id) ?? null
+          if (before) {
+            const after = { ...before, ...patch } as PreviewTx
+            setData((prev) => (prev ? patchSummaryWithEditedTx(prev, before, after) : prev))
+          }
           mergePreviewPatch(id, patch as Partial<PreviewTx>)
           void refreshAll({ silent: true })
         }}
@@ -1055,6 +1142,140 @@ export default function LedgerHomePage() {
           void refreshAll({ silent: true })
         }}
       />
+
+      <Dialog open={calculationModal !== null} onOpenChange={(open) => !open && setCalculationModal(null)}>
+        <DialogContent className="max-h-[88dvh] overflow-y-auto border-white/15 bg-neutral-950 text-white sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {calculationModal === "burn" ? "Como se calcula tu ritmo de gasto" : "Como se calcula tu runway"}
+            </DialogTitle>
+            <DialogDescription className="text-white/60">
+              Mismos numeros que usa `/api/ledger/summary` para pintar estas tarjetas.
+            </DialogDescription>
+          </DialogHeader>
+          {burnRunway ? (
+            calculationModal === "burn" ? (
+              <div className="space-y-4 text-sm">
+                <p className="text-white/75 leading-relaxed">
+                  El valor principal de la tarjeta de Burn Rate es <strong className="text-white">gasto bruto mensual promedio</strong>. La quema neta se calcula aparte como{" "}
+                  <strong className="text-white">gasto - ingreso</strong> (minimo 0).
+                </p>
+                <div className="rounded-lg border border-white/10 bg-black/30 p-3 space-y-1.5 text-[13px]">
+                  <p className="text-white/45">Ventana de calculo</p>
+                  <p className="text-white/90">{grossExpenseBasisCaption(burnRunway)}</p>
+                  <p className="text-white/45">{burnRunwayBasisCaption(burnRunway)}</p>
+                  <p className="text-white/55">
+                    Meses cerrados considerados: <span className="tabular-nums text-white/80">{burnRunway.completedMonthsSampled}</span>
+                  </p>
+                </div>
+                <div className="rounded-lg border border-orange-500/25 bg-orange-500/[0.08] p-3 space-y-2">
+                  <CalcLine
+                    label="Gasto bruto mensual promedio"
+                    value={formatFiatAmount(burnRunway.avgMonthlyGrossExpensePrimary, cur)}
+                  />
+                  <CalcLine
+                    label="Ingreso bruto mensual promedio"
+                    value={formatFiatAmount(burnRunway.avgMonthlyGrossIncomePrimary, cur)}
+                  />
+                  <CalcLine
+                    label="Quema neta promedio (max(0, gasto - ingreso))"
+                    value={formatFiatAmount(burnRunway.burnRateMonthlyPrimary, cur)}
+                  />
+                  <CalcLine
+                    label="Chequeo formula con tus numeros"
+                    value={formatFiatAmount(impliedNetBurnFromGross, cur)}
+                  />
+                  <CalcLine
+                    label="Proyeccion gasto bruto mes actual (lineal)"
+                    value={formatFiatAmount(burnRunway.projectedGrossExpenseThisMonthPrimary, cur)}
+                  />
+                </div>
+                {burnRunway.plannedMonthlyBurnPrimary > 0 ? (
+                  <div className="rounded-lg border border-violet-500/25 bg-violet-500/[0.08] p-3 space-y-2">
+                    <CalcLine
+                      label="Plan mensual (obligaciones)"
+                      value={formatFiatAmount(burnRunway.plannedMonthlyBurnPrimary, cur)}
+                    />
+                    <CalcLine
+                      label="Diferencia vs plan (neto - plan)"
+                      value={`${burnRunway.burnVsPlanDelta && burnRunway.burnVsPlanDelta > 0 ? "+" : ""}${formatFiatAmount(
+                        burnRunway.burnVsPlanDelta ?? 0,
+                        cur
+                      )}`}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="space-y-4 text-sm">
+                <p className="text-white/75 leading-relaxed">
+                  El runway usa <strong className="text-white">recursos disponibles</strong> divididos por tu <strong className="text-white">gasto bruto mensual promedio</strong>.
+                </p>
+                <div className="rounded-lg border border-white/10 bg-black/30 p-3 space-y-1.5 text-[13px]">
+                  <p className="text-white/45">Formula base</p>
+                  <p className="text-white/90">
+                    Runway = (liquidez + ingreso bruto mensual promedio) / gasto bruto mensual promedio
+                  </p>
+                </div>
+                <div className="rounded-lg border border-violet-500/25 bg-violet-500/[0.08] p-3 space-y-2">
+                  <CalcLine
+                    label="Liquidez estimada (wallet + vaults asset)"
+                    value={formatFiatAmount(burnRunway.liquidPrimaryEquivalent, cur)}
+                  />
+                  <CalcLine
+                    label="Ingreso bruto mensual promedio"
+                    value={formatFiatAmount(burnRunway.avgMonthlyGrossIncomePrimary, cur)}
+                  />
+                  <CalcLine
+                    label="Recursos para runway (liquidez + ingreso)"
+                    value={formatFiatAmount(burnRunway.runwayResourcePrimary, cur)}
+                  />
+                  <CalcLine
+                    label="Gasto bruto mensual promedio"
+                    value={formatFiatAmount(burnRunway.avgMonthlyGrossExpensePrimary, cur)}
+                  />
+                  <CalcLine
+                    label="Runway resultante"
+                    value={burnRunway.runwayMonths == null ? "—" : runwayMonthsHuman(burnRunway.runwayMonths)}
+                  />
+                </div>
+                <div className="rounded-lg border border-white/10 bg-black/30 p-3 space-y-2">
+                  <CalcLine
+                    label="Wallet USDC (original)"
+                    value={burnRunway.walletUsdc == null ? "—" : `${burnRunway.walletUsdc.toFixed(2)} USDC`}
+                  />
+                  <CalcLine
+                    label="Wallet convertido a moneda principal"
+                    value={
+                      burnRunway.walletPrimaryEquivalent == null
+                        ? "—"
+                        : formatFiatAmount(burnRunway.walletPrimaryEquivalent, cur)
+                    }
+                  />
+                  <CalcLine
+                    label="Vaults asset (equivalente moneda principal)"
+                    value={formatFiatAmount(burnRunway.vaultAssetsPrimaryEquivalent, cur)}
+                  />
+                </div>
+                {burnRunway.runwayMonthsAtPlannedBurn != null && burnRunway.plannedMonthlyBurnPrimary > 0 ? (
+                  <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/[0.08] p-3 space-y-2">
+                    <CalcLine
+                      label="Runway si gastas solo el plan mensual"
+                      value={runwayMonthsHuman(burnRunway.runwayMonthsAtPlannedBurn)}
+                    />
+                    <CalcLine
+                      label="Plan mensual usado"
+                      value={formatFiatAmount(burnRunway.plannedMonthlyBurnPrimary, cur)}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            )
+          ) : (
+            <p className="text-sm text-white/60">No hay datos para explicar calculo en este momento.</p>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <p className="text-xs text-white/45 leading-relaxed px-1">
         El flujo neto es un estimado a partir de correos y entradas manuales; no sustituye tu saldo USDC en Stellar.
@@ -1161,4 +1382,13 @@ function categorySlicesToDonut(rows: CategorySlice[]): DonutDatum[] {
     pct: row.pct,
     meta: `${row.count} mov.`,
   }))
+}
+
+function CalcLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="text-white/60">{label}</span>
+      <span className="tabular-nums text-white/90 text-right">{value}</span>
+    </div>
+  )
 }
