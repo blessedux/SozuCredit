@@ -29,7 +29,9 @@ import {
   appendGoalFromSuggestion,
   readGoalsStore,
   writeGoalsStore,
+  type LedgerGoalPriority,
   type LedgerGoalType,
+  type LedgerIncomeProject,
   type LedgerStoredGoal,
   type LedgerStoredMilestone,
 } from "@/lib/ledger/goals-local-storage"
@@ -59,6 +61,29 @@ function goalTypeLabel(t: LedgerGoalType): string {
     default:
       return "Objetivo específico"
   }
+}
+
+function goalPriorityLabel(p: LedgerGoalPriority): string {
+  switch (p) {
+    case "high":
+      return "Alta"
+    case "low":
+      return "Baja"
+    default:
+      return "Media"
+  }
+}
+
+function dueDateSortValue(dateIso: string | null): number {
+  if (!dateIso) return Number.POSITIVE_INFINITY
+  const value = Date.parse(dateIso)
+  return Number.isFinite(value) ? value : Number.POSITIVE_INFINITY
+}
+
+const GOAL_PRIORITY_ORDER: Record<LedgerGoalPriority, number> = {
+  high: 0,
+  medium: 1,
+  low: 2,
 }
 
 function buildDraftSummary(parts: {
@@ -96,15 +121,27 @@ export default function LedgerGoalsPage() {
   const [coachOpen, setCoachOpen] = useState(false)
 
   const [goals, setGoals] = useState<LedgerStoredGoal[]>(() => readGoalsStore().goals)
+  const [incomeProjects, setIncomeProjects] = useState<LedgerIncomeProject[]>(() => readGoalsStore().income_projects)
 
   const [goalType, setGoalType] = useState<LedgerGoalType>("save_amount")
+  const [priority, setPriority] = useState<LedgerGoalPriority>("medium")
   const [title, setTitle] = useState("")
   const [targetAmount, setTargetAmount] = useState("")
   const [currency, setCurrency] = useState("CLP")
   const [targetDate, setTargetDate] = useState("")
+  const [projectedIncomeAmount, setProjectedIncomeAmount] = useState("")
+  const [projectedIncomeDate, setProjectedIncomeDate] = useState("")
+  const [formError, setFormError] = useState<string | null>(null)
+  const [projectError, setProjectError] = useState<string | null>(null)
   const [milestoneRows, setMilestoneRows] = useState<{ label: string; due: string; amount: string }[]>([
     { label: "", due: "", amount: "" },
   ])
+  const [projectTitle, setProjectTitle] = useState("")
+  const [projectAmount, setProjectAmount] = useState("")
+  const [projectCurrency, setProjectCurrency] = useState("CLP")
+  const [projectEstimatedDate, setProjectEstimatedDate] = useState("")
+  const [projectLinkedGoalId, setProjectLinkedGoalId] = useState<string>("none")
+  const [projectNote, setProjectNote] = useState("")
 
   useEffect(() => {
     let cancelled = false
@@ -126,6 +163,7 @@ export default function LedgerGoalsPage() {
         error: json.error,
       })
       setCurrency(String(json.primaryCurrency ?? "CLP").toUpperCase())
+      setProjectCurrency(String(json.primaryCurrency ?? "CLP").toUpperCase())
       setSummaryLoading(false)
     })()
     return () => {
@@ -137,10 +175,51 @@ export default function LedgerGoalsPage() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages, coachLoading])
 
-  const persistGoals = useCallback((next: LedgerStoredGoal[]) => {
-    setGoals(next)
-    writeGoalsStore({ goals: next })
+  const persistStore = useCallback((nextGoals: LedgerStoredGoal[], nextIncomeProjects: LedgerIncomeProject[]) => {
+    setGoals(nextGoals)
+    setIncomeProjects(nextIncomeProjects)
+    writeGoalsStore({ goals: nextGoals, income_projects: nextIncomeProjects })
   }, [])
+
+  const projectedFromGoals = useMemo(
+    () =>
+      goals.reduce((sum, g) => {
+        const value = g.projected_income_amount
+        return typeof value === "number" && Number.isFinite(value) ? sum + value : sum
+      }, 0),
+    [goals]
+  )
+
+  const projectedFromProjects = useMemo(
+    () =>
+      incomeProjects.reduce((sum, p) => {
+        const value = p.amount
+        return typeof value === "number" && Number.isFinite(value) ? sum + value : sum
+      }, 0),
+    [incomeProjects]
+  )
+
+  const orderedGoals = useMemo(
+    () =>
+      goals.toSorted((a, b) => {
+        const p = GOAL_PRIORITY_ORDER[a.priority] - GOAL_PRIORITY_ORDER[b.priority]
+        if (p !== 0) return p
+        const d = dueDateSortValue(a.target_date_iso) - dueDateSortValue(b.target_date_iso)
+        if (d !== 0) return d
+        return Date.parse(b.created_at) - Date.parse(a.created_at)
+      }),
+    [goals]
+  )
+
+  const orderedIncomeProjects = useMemo(
+    () =>
+      incomeProjects.toSorted((a, b) => {
+        const d = dueDateSortValue(a.estimated_date_iso) - dueDateSortValue(b.estimated_date_iso)
+        if (d !== 0) return d
+        return Date.parse(b.created_at) - Date.parse(a.created_at)
+      }),
+    [incomeProjects]
+  )
 
   const ledgerContextForApi = useMemo(() => {
     if (!summary || summary.error) return null
@@ -217,10 +296,13 @@ export default function LedgerGoalsPage() {
 
   const applySuggestionToForm = useCallback((s: GoalsCoachSuggestedGoal) => {
     setGoalType(s.goal_type)
+    setPriority("medium")
     setTitle(s.title)
     setCurrency(s.currency.trim().toUpperCase())
     setTargetAmount(s.target_amount != null && Number.isFinite(s.target_amount) ? String(s.target_amount) : "")
     setTargetDate(s.target_date_iso?.trim() ?? "")
+    setProjectedIncomeAmount("")
+    setProjectedIncomeDate("")
     if (s.milestones.length > 0) {
       setMilestoneRows(
         s.milestones.map((m) => ({
@@ -236,10 +318,11 @@ export default function LedgerGoalsPage() {
   const saveFromForm = useCallback(() => {
     const t = title.trim()
     if (!t) {
-      setCoachError("Agregá un título a la meta antes de guardar.")
+      setFormError("Agregá un título a la meta antes de guardar.")
       return
     }
     const amt = targetAmount.trim() ? Number(targetAmount.replace(",", ".")) : null
+    const projectedAmt = projectedIncomeAmount.trim() ? Number(projectedIncomeAmount.replace(",", ".")) : null
     const ms: LedgerStoredMilestone[] = milestoneRows
       .map((row) => {
         const label = row.label.trim()
@@ -259,45 +342,125 @@ export default function LedgerGoalsPage() {
       id: crypto.randomUUID(),
       goal_type: goalType,
       title: t,
+      priority,
       target_amount: amt != null && Number.isFinite(amt) ? amt : null,
       currency: currency.trim().toUpperCase() || "CLP",
       target_date_iso: targetDate.trim() || null,
+      projected_income_amount: projectedAmt != null && Number.isFinite(projectedAmt) ? projectedAmt : null,
+      projected_income_date_iso: projectedIncomeDate.trim() || null,
       milestones: ms,
       created_at: new Date().toISOString(),
     }
-    persistGoals([goal, ...goals])
-    setCoachError(null)
-  }, [title, targetAmount, currency, targetDate, milestoneRows, goalType, goals, persistGoals])
+    persistStore([goal, ...goals], incomeProjects)
+    setFormError(null)
+  }, [
+    title,
+    targetAmount,
+    projectedIncomeAmount,
+    currency,
+    targetDate,
+    projectedIncomeDate,
+    milestoneRows,
+    goalType,
+    priority,
+    goals,
+    incomeProjects,
+    persistStore,
+  ])
 
   const saveSuggestionDirect = useCallback(
     (s: GoalsCoachSuggestedGoal) => {
       const goal = appendGoalFromSuggestion(s)
-      persistGoals([goal, ...goals])
+      persistStore([goal, ...goals], incomeProjects)
       setLastSuggestion(null)
     },
-    [goals, persistGoals]
+    [goals, incomeProjects, persistStore]
   )
 
   const removeGoal = useCallback(
     (id: string) => {
-      persistGoals(goals.filter((g) => g.id !== id))
+      persistStore(
+        goals.filter((g) => g.id !== id),
+        incomeProjects.map((p) => (p.linked_goal_id === id ? { ...p, linked_goal_id: null } : p))
+      )
     },
-    [goals, persistGoals]
+    [goals, incomeProjects, persistStore]
   )
 
   const toggleMilestone = useCallback(
     (goalId: string, mid: string) => {
-      persistGoals(
+      persistStore(
         goals.map((g) => {
           if (g.id !== goalId) return g
           return {
             ...g,
             milestones: g.milestones.map((m) => (m.id === mid ? { ...m, done: !m.done } : m)),
           }
-        })
+        }),
+        incomeProjects
       )
     },
-    [goals, persistGoals]
+    [goals, incomeProjects, persistStore]
+  )
+
+  const updateGoalPriority = useCallback(
+    (goalId: string, nextPriority: LedgerGoalPriority) => {
+      persistStore(
+        goals.map((g) => (g.id === goalId ? { ...g, priority: nextPriority } : g)),
+        incomeProjects
+      )
+    },
+    [goals, incomeProjects, persistStore]
+  )
+
+  const addIncomeProject = useCallback(() => {
+    const t = projectTitle.trim()
+    if (!t) {
+      setProjectError("Agregá un nombre de proyecto o gig.")
+      return
+    }
+    const amt = projectAmount.trim() ? Number(projectAmount.replace(",", ".")) : null
+    if (projectAmount.trim() && (amt == null || !Number.isFinite(amt))) {
+      setProjectError("El monto estimado no es válido.")
+      return
+    }
+    const entry: LedgerIncomeProject = {
+      id: crypto.randomUUID(),
+      title: t,
+      amount: amt != null && Number.isFinite(amt) ? amt : null,
+      currency: projectCurrency.trim().toUpperCase() || "CLP",
+      estimated_date_iso: projectEstimatedDate.trim() || null,
+      linked_goal_id: projectLinkedGoalId === "none" ? null : projectLinkedGoalId,
+      note: projectNote.trim() || null,
+      created_at: new Date().toISOString(),
+    }
+    persistStore(goals, [entry, ...incomeProjects])
+    setProjectTitle("")
+    setProjectAmount("")
+    setProjectEstimatedDate("")
+    setProjectLinkedGoalId("none")
+    setProjectNote("")
+    setProjectError(null)
+  }, [
+    projectTitle,
+    projectAmount,
+    projectCurrency,
+    projectEstimatedDate,
+    projectLinkedGoalId,
+    projectNote,
+    goals,
+    incomeProjects,
+    persistStore,
+  ])
+
+  const removeIncomeProject = useCallback(
+    (id: string) => {
+      persistStore(
+        goals,
+        incomeProjects.filter((p) => p.id !== id)
+      )
+    },
+    [goals, incomeProjects, persistStore]
   )
 
   return (
@@ -346,6 +509,24 @@ export default function LedgerGoalsPage() {
         </p>
       )}
 
+      <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100/90">
+        <p className="text-[11px] uppercase tracking-widest text-emerald-200/70">Proyección de ingresos</p>
+        <p className="mt-1">
+          Desde metas:{" "}
+          <span className="font-medium tabular-nums">
+            {formatFiatAmount(projectedFromGoals, summary?.primaryCurrency ?? currency)}
+          </span>
+          {" · "}Desde proyectos/gigs:{" "}
+          <span className="font-medium tabular-nums">
+            {formatFiatAmount(projectedFromProjects, summary?.primaryCurrency ?? projectCurrency)}
+          </span>
+          {" · "}Total proyectado:{" "}
+          <span className="font-semibold tabular-nums">
+            {formatFiatAmount(projectedFromGoals + projectedFromProjects, summary?.primaryCurrency ?? currency)}
+          </span>
+        </p>
+      </div>
+
       <div className="space-y-6 max-w-3xl">
           <section className="rounded-xl border border-white/15 bg-white/[0.03] p-5 space-y-4">
             <p className="text-xs uppercase tracking-widest text-white/40">Nueva meta</p>
@@ -373,6 +554,19 @@ export default function LedgerGoalsPage() {
                 />
               </div>
               <div className="space-y-2">
+                <Label className="text-white/70">Prioridad</Label>
+                <Select value={priority} onValueChange={(v) => setPriority(v as LedgerGoalPriority)}>
+                  <SelectTrigger className="w-full bg-black/40 border-white/15 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="high">Alta</SelectItem>
+                    <SelectItem value="medium">Media</SelectItem>
+                    <SelectItem value="low">Baja</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
                 <Label className="text-white/70">Monto objetivo</Label>
                 <Input
                   value={targetAmount}
@@ -397,6 +591,25 @@ export default function LedgerGoalsPage() {
                   value={targetDate}
                   onChange={(e) => setTargetDate(e.target.value)}
                   className="bg-black/40 border-white/15 text-white scheme-dark max-w-xs"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-white/70">Ingreso proyectado</Label>
+                <Input
+                  value={projectedIncomeAmount}
+                  onChange={(e) => setProjectedIncomeAmount(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="Opcional"
+                  className="bg-black/40 border-white/15 text-white placeholder:text-white/35"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-white/70">Fecha ingreso proyectado</Label>
+                <Input
+                  type="date"
+                  value={projectedIncomeDate}
+                  onChange={(e) => setProjectedIncomeDate(e.target.value)}
+                  className="bg-black/40 border-white/15 text-white scheme-dark"
                 />
               </div>
             </div>
@@ -477,39 +690,67 @@ export default function LedgerGoalsPage() {
             <Button type="button" className="bg-white text-black hover:bg-white/90" onClick={saveFromForm}>
               Guardar meta
             </Button>
+            {formError ? <p className="text-xs text-rose-300/95">{formError}</p> : null}
           </section>
 
           <section className="rounded-xl border border-white/15 bg-white/[0.03] p-5 space-y-3">
             <p className="text-xs uppercase tracking-widest text-white/40">Tus metas ({goals.length})</p>
+            <p className="text-[11px] text-white/40">Ordenadas por prioridad y fecha objetivo.</p>
             {goals.length === 0 ? (
               <p className="text-sm text-white/45">
                 Todavía no guardaste metas. Podés usar el botón del coach (abajo a la derecha) para armar la primera.
               </p>
             ) : (
               <ul className="space-y-3">
-                {goals.map((g) => (
+                {orderedGoals.map((g) => (
                   <li key={g.id} className="rounded-lg border border-white/10 bg-black/25 p-3 space-y-2">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
                         <p className="text-[10px] uppercase text-white/40">{goalTypeLabel(g.goal_type)}</p>
                         <p className="font-medium text-white">{g.title}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <span className="rounded-full border border-white/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white/70">
+                            Prioridad {goalPriorityLabel(g.priority)}
+                          </span>
+                          <span className="rounded-full border border-emerald-300/30 px-2 py-0.5 text-[10px] uppercase tracking-wide text-emerald-200/90">
+                            {g.milestones.filter((m) => m.done).length}/{g.milestones.length} hitos
+                          </span>
+                        </div>
                         <p className="text-xs text-white/55 mt-1">
                           {g.target_amount != null
                             ? `${formatFiatAmount(g.target_amount, g.currency)}`
                             : "Sin monto fijo"}
                           {g.target_date_iso ? ` · objetivo ${g.target_date_iso}` : ""}
                         </p>
+                        {g.projected_income_amount != null ? (
+                          <p className="text-xs text-emerald-200/85 mt-1 tabular-nums">
+                            Ingreso proyectado {formatFiatAmount(g.projected_income_amount, g.currency)}
+                            {g.projected_income_date_iso ? ` · estimado ${g.projected_income_date_iso}` : ""}
+                          </p>
+                        ) : null}
                       </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="text-white/40 hover:text-rose-300 shrink-0"
-                        aria-label="Eliminar meta"
-                        onClick={() => removeGoal(g.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Select value={g.priority} onValueChange={(v) => updateGoalPriority(g.id, v as LedgerGoalPriority)}>
+                          <SelectTrigger className="h-8 w-[112px] bg-black/40 border-white/15 text-xs text-white">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="high">Alta</SelectItem>
+                            <SelectItem value="medium">Media</SelectItem>
+                            <SelectItem value="low">Baja</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="text-white/40 hover:text-rose-300 shrink-0"
+                          aria-label="Eliminar meta"
+                          onClick={() => removeGoal(g.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                     {g.milestones.length > 0 ? (
                       <ul className="space-y-1.5 pt-1 border-t border-white/10">
@@ -545,6 +786,114 @@ export default function LedgerGoalsPage() {
             <p className="text-[11px] text-white/35 leading-relaxed">
               Las metas se guardan en este dispositivo (local). Más adelante podrán sincronizarse con tu cuenta.
             </p>
+          </section>
+
+          <section className="rounded-xl border border-white/15 bg-white/[0.03] p-5 space-y-4">
+            <p className="text-xs uppercase tracking-widest text-white/40">Proyectos / gigs para proyección</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2 sm:col-span-2">
+                <Label className="text-white/70">Nombre del proyecto o gig</Label>
+                <Input
+                  value={projectTitle}
+                  onChange={(e) => setProjectTitle(e.target.value)}
+                  placeholder="Ej.: Consultoría dashboard retail"
+                  className="bg-black/40 border-white/15 text-white placeholder:text-white/35"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-white/70">Ingreso estimado</Label>
+                <Input
+                  value={projectAmount}
+                  onChange={(e) => setProjectAmount(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="Opcional"
+                  className="bg-black/40 border-white/15 text-white placeholder:text-white/35"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-white/70">Moneda</Label>
+                <Input
+                  value={projectCurrency}
+                  onChange={(e) => setProjectCurrency(e.target.value.toUpperCase())}
+                  className="bg-black/40 border-white/15 text-white"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-white/70">Fecha estimada</Label>
+                <Input
+                  type="date"
+                  value={projectEstimatedDate}
+                  onChange={(e) => setProjectEstimatedDate(e.target.value)}
+                  className="bg-black/40 border-white/15 text-white scheme-dark"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-white/70">Meta asociada (opcional)</Label>
+                <Select value={projectLinkedGoalId} onValueChange={setProjectLinkedGoalId}>
+                  <SelectTrigger className="w-full bg-black/40 border-white/15 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sin asociar</SelectItem>
+                    {orderedGoals.map((g) => (
+                      <SelectItem key={g.id} value={g.id}>
+                        {g.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label className="text-white/70">Nota</Label>
+                <Textarea
+                  value={projectNote}
+                  onChange={(e) => setProjectNote(e.target.value)}
+                  rows={2}
+                  placeholder="Fuente, probabilidad, estado comercial…"
+                  className="resize-none bg-black/40 border-white/15 text-white placeholder:text-white/35"
+                />
+              </div>
+            </div>
+            <Button type="button" className="bg-white text-black hover:bg-white/90" onClick={addIncomeProject}>
+              Guardar proyecto/gig
+            </Button>
+            {projectError ? <p className="text-xs text-rose-300/95">{projectError}</p> : null}
+
+            {orderedIncomeProjects.length === 0 ? (
+              <p className="text-sm text-white/45">Todavía no agregaste proyectos o gigs de ingresos proyectados.</p>
+            ) : (
+              <ul className="space-y-2">
+                {orderedIncomeProjects.map((p) => (
+                  <li key={p.id} className="rounded-lg border border-white/10 bg-black/25 p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="space-y-0.5">
+                        <p className="text-sm font-medium text-white">{p.title}</p>
+                        <p className="text-xs text-emerald-200/85 tabular-nums">
+                          {p.amount != null ? formatFiatAmount(p.amount, p.currency) : "Monto pendiente"}
+                          {p.estimated_date_iso ? ` · estimado ${p.estimated_date_iso}` : ""}
+                        </p>
+                        {p.linked_goal_id ? (
+                          <p className="text-[11px] text-white/50">
+                            Meta: {goals.find((g) => g.id === p.linked_goal_id)?.title ?? "No disponible"}
+                          </p>
+                        ) : null}
+                        {p.note ? <p className="text-[11px] text-white/45">{p.note}</p> : null}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="text-white/40 hover:text-rose-300 shrink-0"
+                        aria-label="Eliminar proyecto o gig"
+                        onClick={() => removeIncomeProject(p.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
       </div>
     </div>

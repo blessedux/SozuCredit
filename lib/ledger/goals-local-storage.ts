@@ -3,6 +3,7 @@ import type { GoalsCoachSuggestedGoal } from "@/lib/ledger/goals-coach-openroute
 export const LEDGER_GOALS_STORAGE_KEY = "ledger_goals_store:v1"
 
 export type LedgerGoalType = "pay_debt" | "save_amount" | "specific"
+export type LedgerGoalPriority = "high" | "medium" | "low"
 
 export type LedgerStoredMilestone = {
   id: string
@@ -16,15 +17,30 @@ export type LedgerStoredGoal = {
   id: string
   goal_type: LedgerGoalType
   title: string
+  priority: LedgerGoalPriority
   target_amount: number | null
   currency: string
   target_date_iso: string | null
+  projected_income_amount: number | null
+  projected_income_date_iso: string | null
   milestones: LedgerStoredMilestone[]
+  created_at: string
+}
+
+export type LedgerIncomeProject = {
+  id: string
+  title: string
+  amount: number | null
+  currency: string
+  estimated_date_iso: string | null
+  linked_goal_id: string | null
+  note: string | null
   created_at: string
 }
 
 export type LedgerGoalsStore = {
   goals: LedgerStoredGoal[]
+  income_projects: LedgerIncomeProject[]
 }
 
 function newId(): string {
@@ -33,7 +49,80 @@ function newId(): string {
 }
 
 export function emptyGoalsStore(): LedgerGoalsStore {
-  return { goals: [] }
+  return { goals: [], income_projects: [] }
+}
+
+function normalizeGoal(raw: unknown): LedgerStoredGoal | null {
+  if (!raw || typeof raw !== "object") return null
+  const row = raw as Record<string, unknown>
+  const id = typeof row.id === "string" ? row.id : newId()
+  const goalType: LedgerGoalType =
+    row.goal_type === "pay_debt" || row.goal_type === "specific" || row.goal_type === "save_amount"
+      ? row.goal_type
+      : "specific"
+  const title = typeof row.title === "string" ? row.title.trim() : ""
+  if (!title) return null
+  const priority: LedgerGoalPriority =
+    row.priority === "high" || row.priority === "low" || row.priority === "medium" ? row.priority : "medium"
+  const targetAmount = typeof row.target_amount === "number" && Number.isFinite(row.target_amount) ? row.target_amount : null
+  const currency = typeof row.currency === "string" && row.currency.trim() ? row.currency.trim().toUpperCase() : "CLP"
+  const targetDate = typeof row.target_date_iso === "string" && row.target_date_iso.trim() ? row.target_date_iso.trim() : null
+  const projectedIncomeAmount =
+    typeof row.projected_income_amount === "number" && Number.isFinite(row.projected_income_amount)
+      ? row.projected_income_amount
+      : null
+  const projectedIncomeDate =
+    typeof row.projected_income_date_iso === "string" && row.projected_income_date_iso.trim()
+      ? row.projected_income_date_iso.trim()
+      : null
+  const milestonesRaw = Array.isArray(row.milestones) ? row.milestones : []
+  const milestones: LedgerStoredMilestone[] = milestonesRaw
+    .map((m) => {
+      if (!m || typeof m !== "object") return null
+      const mr = m as Record<string, unknown>
+      const label = typeof mr.label === "string" ? mr.label.trim() : ""
+      if (!label) return null
+      return {
+        id: typeof mr.id === "string" ? mr.id : newId(),
+        label,
+        due_date_iso: typeof mr.due_date_iso === "string" && mr.due_date_iso.trim() ? mr.due_date_iso.trim() : null,
+        amount: typeof mr.amount === "number" && Number.isFinite(mr.amount) ? mr.amount : null,
+        done: Boolean(mr.done),
+      }
+    })
+    .filter(Boolean) as LedgerStoredMilestone[]
+  const createdAt = typeof row.created_at === "string" && row.created_at.trim() ? row.created_at.trim() : new Date().toISOString()
+  return {
+    id,
+    goal_type: goalType,
+    title,
+    priority,
+    target_amount: targetAmount,
+    currency,
+    target_date_iso: targetDate,
+    projected_income_amount: projectedIncomeAmount,
+    projected_income_date_iso: projectedIncomeDate,
+    milestones,
+    created_at: createdAt,
+  }
+}
+
+function normalizeIncomeProject(raw: unknown): LedgerIncomeProject | null {
+  if (!raw || typeof raw !== "object") return null
+  const row = raw as Record<string, unknown>
+  const title = typeof row.title === "string" ? row.title.trim() : ""
+  if (!title) return null
+  return {
+    id: typeof row.id === "string" ? row.id : newId(),
+    title,
+    amount: typeof row.amount === "number" && Number.isFinite(row.amount) ? row.amount : null,
+    currency: typeof row.currency === "string" && row.currency.trim() ? row.currency.trim().toUpperCase() : "CLP",
+    estimated_date_iso:
+      typeof row.estimated_date_iso === "string" && row.estimated_date_iso.trim() ? row.estimated_date_iso.trim() : null,
+    linked_goal_id: typeof row.linked_goal_id === "string" && row.linked_goal_id.trim() ? row.linked_goal_id.trim() : null,
+    note: typeof row.note === "string" && row.note.trim() ? row.note.trim() : null,
+    created_at: typeof row.created_at === "string" && row.created_at.trim() ? row.created_at.trim() : new Date().toISOString(),
+  }
 }
 
 export function readGoalsStore(): LedgerGoalsStore {
@@ -41,9 +130,13 @@ export function readGoalsStore(): LedgerGoalsStore {
   try {
     const raw = localStorage.getItem(LEDGER_GOALS_STORAGE_KEY)
     if (!raw) return emptyGoalsStore()
-    const parsed = JSON.parse(raw) as LedgerGoalsStore
-    if (!parsed || !Array.isArray(parsed.goals)) return emptyGoalsStore()
-    return { goals: parsed.goals }
+    const parsed = JSON.parse(raw) as { goals?: unknown; income_projects?: unknown }
+    const goalsRaw = Array.isArray(parsed?.goals) ? parsed.goals : []
+    const projectsRaw = Array.isArray(parsed?.income_projects) ? parsed.income_projects : []
+    return {
+      goals: goalsRaw.map(normalizeGoal).filter(Boolean) as LedgerStoredGoal[],
+      income_projects: projectsRaw.map(normalizeIncomeProject).filter(Boolean) as LedgerIncomeProject[],
+    }
   } catch {
     return emptyGoalsStore()
   }
@@ -107,9 +200,12 @@ export function appendGoalFromSuggestion(s: GoalsCoachSuggestedGoal): LedgerStor
     id: newId(),
     goal_type: s.goal_type,
     title: s.title.trim(),
+    priority: "medium",
     target_amount: s.target_amount ?? null,
     currency: s.currency.trim().toUpperCase(),
     target_date_iso: s.target_date_iso?.trim() || null,
+    projected_income_amount: null,
+    projected_income_date_iso: null,
     milestones: s.milestones.map((m) => ({
       id: newId(),
       label: m.label.trim(),

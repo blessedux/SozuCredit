@@ -570,7 +570,10 @@ export default function LedgerVaultsPage() {
       target_date_iso: editTargetDate.trim() || null,
       milestones: ms,
     }
-    writeGoalsStore({ goals: store.goals.map((g) => (g.id === editGoalId ? updated : g)) })
+    writeGoalsStore({
+      goals: store.goals.map((g) => (g.id === editGoalId ? updated : g)),
+      income_projects: store.income_projects,
+    })
     setDebtGoals(
       readGoalsStore()
         .goals.filter((g) => g.goal_type === "pay_debt")

@@ -20,6 +20,11 @@ const postSchema = z.object({
 
 const DEFAULT_EXPENSE_SET = new Set<string>(DEFAULT_CATEGORIES as readonly string[])
 const DEFAULT_INCOME_SET = new Set<string>(DEFAULT_INCOME_CATEGORIES as readonly string[])
+type LedgerSettingsCategoryRow = {
+  preferred_fiat_currency?: string | null
+  custom_categories?: string[] | null
+  custom_income_categories?: string[] | null
+}
 
 export async function POST(request: Request) {
   const ctx = await getApiUserClient(request)
@@ -82,13 +87,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    let row:
-      | {
-          preferred_fiat_currency?: string | null
-          custom_categories?: string[] | null
-          custom_income_categories?: string[] | null
-        }
-      | null = null
+    let row: LedgerSettingsCategoryRow | null = null
     let missingIncomeColumn = false
 
     const { data: fullRow, error: fullSelErr } = await ctx.db
@@ -112,12 +111,12 @@ export async function POST(request: Request) {
         if (legacySelErr) {
           return NextResponse.json({ error: legacySelErr.message }, { status: 500 })
         }
-        row = legacyRow as typeof row
+        row = (legacyRow as LedgerSettingsCategoryRow | null) ?? null
       } else {
         return NextResponse.json({ error: fullSelErr.message }, { status: 500 })
       }
     } else {
-      row = fullRow as typeof row
+      row = (fullRow as LedgerSettingsCategoryRow | null) ?? null
     }
 
     const prevExpense = (row?.custom_categories as string[] | null) ?? []
