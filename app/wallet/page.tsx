@@ -1,8 +1,11 @@
 "use client"
 
 import { Suspense, lazy, useEffect, useState, useRef, useCallback, useMemo } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Wallet } from "lucide-react"
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
+import { faCoins } from "@fortawesome/free-solid-svg-icons"
 import { Button } from "@/components/ui/button"
 import { WalletSkeleton } from "@/components/ui/wallet-skeleton"
 import { WalletErrorBoundary } from "@/components/wallet/wallet-error-boundary"
@@ -290,7 +293,7 @@ export default function WalletPage() {
     const t = getWalletTexts("es")
     return (
       <WalletErrorBoundary>
-        <div className="relative h-screen w-full overflow-hidden">
+        <div className="relative h-screen w-full overflow-hidden bg-black">
           <div className="relative z-10 min-h-screen flex items-center justify-center">
             <div className="text-center">
               <p className="text-red-400">{t.somethingWentWrong}: {error}</p>
@@ -303,8 +306,7 @@ export default function WalletPage() {
 
   return (
     <WalletErrorBoundary>
-      <div className="relative h-screen w-full overflow-hidden">
-        {/* Show skeleton during initial load or balance loading - animated background stays visible */}
+      <div className="relative h-screen w-full overflow-hidden bg-black">
         {(isLoading || isBalanceLoading) ? (
           <div className="relative z-10 h-full">
             <WalletSkeleton />
@@ -313,74 +315,99 @@ export default function WalletPage() {
           <div
             ref={scrollContainerRef}
             onScroll={handleScroll}
-            className="relative z-10 h-full overflow-y-auto touch-pan-y pb-24 md:pb-28 opacity-0 animate-fade-in"
+            className="relative z-10 h-full overflow-y-auto touch-pan-y pb-28 md:pb-32 lg:pb-36"
             onTouchStart={swipeHandlers.onTouchStart}
             onTouchMove={swipeHandlers.onTouchMove}
             onTouchEnd={swipeHandlers.onTouchEnd}
           >
             <WalletErrorBoundary>
-              <div className="container mx-auto px-6 pt-16 pb-8 md:py-12 relative">
-                {/* Testnet badge */}
-                {walletNetwork === "testnet" && (
-                  <div className="flex justify-center mb-4">
-                    <span className="px-3 py-1 rounded-full text-xs font-bold tracking-widest uppercase border border-yellow-500/40 text-yellow-400 bg-yellow-500/10">
+              <div className="relative mx-auto w-full max-w-7xl xl:max-w-[1320px] px-4 pt-16 pb-8 sm:px-6 md:py-12 lg:px-10 xl:px-12">
+                {/* Testnet badge + cashflow shortcut: stacked on narrow screens, row on desktop */}
+                <div
+                  className={`mb-6 flex flex-col items-center gap-3 sm:mb-8 lg:items-center ${
+                    walletNetwork === "testnet" ? "lg:flex-row lg:justify-between" : ""
+                  }`}
+                >
+                  {walletNetwork === "testnet" && (
+                    <span className="inline-flex px-3 py-1.5 rounded-full text-xs font-bold tracking-widest uppercase border border-yellow-500/40 text-yellow-400 bg-yellow-500/10">
                       Testnet
                     </span>
-                  </div>
-                )}
+                  )}
+                  <Link
+                    href="/ledger"
+                    className={`group inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.03] px-2 py-1.5 text-sm text-white/85 transition-colors hover:border-white/30 hover:bg-white/[0.08] ${
+                      walletNetwork === "testnet" ? "lg:ml-auto" : ""
+                    }`}
+                    aria-label="Abrir cashflow"
+                  >
+                    <span className="px-2">Cashflow</span>
+                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white/90 transition-colors group-hover:bg-white/20">
+                      <FontAwesomeIcon icon={faCoins} style={{ color: "rgb(255, 255, 255)" }} />
+                    </span>
+                  </Link>
+                </div>
 
-                <Suspense fallback={<div className="h-32 bg-white/5 animate-pulse rounded-lg mb-8" />}>
-                  <BalanceDisplay
-                    animatedBalance={animatedBalance}
-                    isBalanceVisible={isBalanceVisible}
-                    apyValue={apyValue}
-                    apyLoading={apyLoading}
-                    defindexBalanceApy={defindexBalance?.apy ?? null}
-                    onToggleVisibility={toggleBalanceVisibility}
-                    onOpenBalanceAudit={() => setIsBalanceAuditOpen(true)}
-                    onFetchAPY={handleFetchAPY}
-                  />
-                </Suspense>
+                <div
+                  className={
+                    walletAddress
+                      ? "flex flex-col gap-8 lg:grid lg:grid-cols-12 lg:items-start lg:gap-8 xl:gap-10"
+                      : "mx-auto flex max-w-lg flex-col"
+                  }
+                >
+                  <div className="min-w-0 lg:col-span-5 xl:col-span-4">
+                    <Suspense fallback={<div className="h-32 bg-white/5 animate-pulse rounded-lg mb-8" />}>
+                      <BalanceDisplay
+                        animatedBalance={animatedBalance}
+                        isBalanceVisible={isBalanceVisible}
+                        apyValue={apyValue}
+                        apyLoading={apyLoading}
+                        defindexBalanceApy={defindexBalance?.apy ?? null}
+                        onToggleVisibility={toggleBalanceVisibility}
+                        onOpenBalanceAudit={() => setIsBalanceAuditOpen(true)}
+                        onFetchAPY={handleFetchAPY}
+                      />
+                    </Suspense>
 
-                {/* Single CTA below balance (testnet only) */}
-                {walletAddress && walletNetwork === "testnet" && activationNeeded && (
-                  <div className="mt-4 mb-8">
-                    <Button
-                      onClick={handleActivateWallet}
-                      disabled={isActivating}
-                      className="w-full h-12 text-base font-semibold bg-white text-black hover:bg-white/90 rounded-lg"
-                    >
-                      {isActivating ? "Activando…" : "Activar billetera"}
-                    </Button>
-                    {activationMessage && (
-                      <p className="mt-2 text-xs text-white/60">{activationMessage}</p>
+                    {walletAddress && walletNetwork === "testnet" && activationNeeded && (
+                      <div className="mt-4 lg:mt-6">
+                        <Button
+                          onClick={handleActivateWallet}
+                          disabled={isActivating}
+                          className="h-12 min-h-[48px] w-full text-base font-semibold bg-white text-black hover:bg-white/90 rounded-lg"
+                        >
+                          {isActivating ? "Activando…" : "Activar billetera"}
+                        </Button>
+                        {activationMessage && (
+                          <p className="mt-2 text-xs text-white/60">{activationMessage}</p>
+                        )}
+                      </div>
+                    )}
+
+                    {!walletAddress && (
+                      <div className="mt-2 lg:mt-4">
+                        <Button
+                          onClick={() => setIsProfileSheetOpen(true)}
+                          className="h-14 min-h-[48px] w-full text-lg font-semibold bg-white text-black hover:bg-white/90 transition-all duration-200 rounded-lg shadow-lg hover:shadow-xl"
+                        >
+                          <Wallet className="mr-2 h-5 w-5" />
+                          {getWalletTexts("es").createNewWallet}
+                        </Button>
+                      </div>
                     )}
                   </div>
-                )}
 
-                {/* Transaction History */}
-                <Suspense fallback={<div className="h-64 bg-white/5 animate-pulse rounded-lg mb-8" />}>
-                  <TransactionHistory
-                    transactions={transactionHistory}
-                    walletAddress={walletAddress}
-                    walletNetwork={walletNetwork}
-                    addressToTagMap={addressToTagMap}
-                    isLoading={isLoadingTransactions}
-                  />
-                </Suspense>
-
-                {/* Create New Wallet Button */}
-                {!walletAddress && (
-                  <div className="mb-8">
-                    <Button
-                      onClick={() => setIsProfileSheetOpen(true)}
-                      className="w-full h-14 text-lg font-semibold bg-white text-black hover:bg-white/90 transition-all duration-200 rounded-lg shadow-lg hover:shadow-xl"
-                    >
-                      <Wallet className="w-5 h-5 mr-2" />
-                      {getWalletTexts("es").createNewWallet}
-                    </Button>
+                  <div className="min-w-0 lg:col-span-7 xl:col-span-8">
+                    <Suspense fallback={<div className="h-64 bg-white/5 animate-pulse rounded-lg mb-8" />}>
+                      <TransactionHistory
+                        transactions={transactionHistory}
+                        walletAddress={walletAddress}
+                        walletNetwork={walletNetwork}
+                        addressToTagMap={addressToTagMap}
+                        isLoading={isLoadingTransactions}
+                      />
+                    </Suspense>
                   </div>
-                )}
+                </div>
               </div>
             </WalletErrorBoundary>
 

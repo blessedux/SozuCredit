@@ -46,8 +46,8 @@ cd sozu-credit
 # Install dependencies
 pnpm install
 
-# Set up environment variables
-cp .env.example .env.local
+# Create environment file (see Local development)
+# cp .env.example .env.local   # if your checkout includes .env.example
 
 # Run development server
 pnpm dev
@@ -250,50 +250,53 @@ Complete courses to unlock credit opportunities:
 
 ---
 
-## 📊 Database Schema
+## 📊 Database schema
 
-### Core Tables
+Authoritative DDL lives in **`supabase/migrations/`** (apply via Supabase CLI or dashboard). Feature areas include profiles and passkeys, trust and vouches, Stellar wallet metadata, Gmail-derived ledger tables, and vault/category extensions.
 
-- **Users** — Passkeys, Stellar wallets, profiles
-- **Trust Points** — Balance, vouches, reputation
-- **USDC Holdings** — Wallet balance + vault balance
-- **Vault Deposits** — Deposit history, yield earnings
-- **Vouches** — Who vouched for whom, trust points transferred
-- **Education Progress** — Course completions, certifications
-
-See `scripts/001_create_schema.sql` for full schema.
+See **[Email ledger and Gmail](./docs/email-ledger-and-gmail.md)** for the ingestion model.
 
 ---
 
-# Turnkey (for Passkeys and Stellar Wallet Management)
+## Local development
 
+Create `.env.local` at the repo root. Typical variables:
+
+```env
+# Turnkey (dashboard API key — store securely; private material is shown once)
 NEXT_PUBLIC_TURNKEY_API_BASE_URL=https://api.turnkey.com
-NEXT_PUBLIC_TURNKEY_ORG_ID=your_turnkey_organization_id
-NEXT_PUBLIC_TURNKEY_API_PUBLIC_KEY=your_turnkey_api_public_key
-NEXT_PUBLIC_TURNKEY_API_PRIVATE_KEY=your_turnkey_api_private_key
+NEXT_PUBLIC_TURNKEY_ORG_ID=
+NEXT_PUBLIC_TURNKEY_API_PUBLIC_KEY=
+NEXT_PUBLIC_TURNKEY_API_PRIVATE_KEY=
 
-# Note: You need BOTH public and private keys from your API key pair
-
-# When creating an API key in Turnkey dashboard, save both keys securely
-
-# The private key is only shown once and cannot be retrieved later
-
-# Stellar
-
-STELLAR_NETWORK=testnet # or 'mainnet'
-STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org # Auto-set based on STELLAR_NETWORK if not provided
-
-# USDC Asset
-
+# Stellar (classic)
+STELLAR_NETWORK=testnet
+STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org
 USDC_ASSET_CODE=USDC
 USDC_ISSUER=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
 
-# Vault Protocol
-
-VAULT_PROTOCOL=blend # or 'stellar_amm'
+# Vault / strategy integration (see docs)
+VAULT_PROTOCOL=blend
 VAULT_MIN_DEPOSIT=10
-
 ```
+
+Soroban / DeFindex variables are documented in **[Wallet, Stellar, and DeFindex](./docs/wallet-stellar-defindex.md)**.
+
+---
+
+## 📚 Documentation index
+
+| Topic | Guide |
+|--------|--------|
+| Architecture and platform | [docs/architecture-and-platform.md](./docs/architecture-and-platform.md) |
+| Authentication and accounts | [docs/authentication-and-accounts.md](./docs/authentication-and-accounts.md) |
+| Wallet, Stellar, DeFindex | [docs/wallet-stellar-defindex.md](./docs/wallet-stellar-defindex.md) |
+| Email ledger and Gmail | [docs/email-ledger-and-gmail.md](./docs/email-ledger-and-gmail.md) |
+| Payments and settlement | [docs/payments-and-settlement.md](./docs/payments-and-settlement.md) |
+| Trust, vouches, credit | [docs/community-trust-and-credit.md](./docs/community-trust-and-credit.md) |
+| Development (PWA icons, scripts, testing) | [docs/development-guide.md](./docs/development-guide.md) |
+| Consolidated history note | [docs/project-history.md](./docs/project-history.md) |
+| Ledger merchant categorization (LLM) | [lib/ledger/merchant-categorization-llm-rules.md](./lib/ledger/merchant-categorization-llm-rules.md) |
 
 ---
 
@@ -342,12 +345,3 @@ VAULT_MIN_DEPOSIT=10
 
 **Vouched, not Verified. Credit for everyone.**
 
----
-
-## 📚 Additional Resources
-
-- [Defindex/Blend Protocol Plan](./DEFINDEX_BLEND_PROTOCOL_PLAN.md)
-- [Auth Flow Documentation](./AUTH_FLOW_FIX.md)
-- [Testing Guide](./TESTING_AUTH_FLOW.md)
-- [Mobile Optimization](./MOBILE_ANIMATION_OPTIMIZATION.md)
-```

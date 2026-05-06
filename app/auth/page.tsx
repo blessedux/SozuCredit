@@ -1,6 +1,5 @@
 "use client"
 
-import { FallingPattern } from "@/components/ui/falling-pattern"
 import { WelcomeModal } from "@/components/welcome-modal"
 import { TagInputModal } from "@/components/tag-input-modal"
 import { WalletSkeleton } from "@/components/ui/wallet-skeleton"
@@ -18,7 +17,6 @@ import {
 import { createClient } from "@/lib/supabase/client"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useState, useRef, useEffect, Suspense } from "react"
-import { useIsMobile } from "@/hooks/use-mobile"
 
 function AuthPageContent() {
   const [isAuthenticating, setIsAuthenticating] = useState(false)
@@ -28,19 +26,9 @@ function AuthPageContent() {
   const [pendingTag, setPendingTag] = useState<string | null>(null)
   const [registrationUsername, setRegistrationUsername] = useState("")
   const [referralCode, setReferralCode] = useState<string | null>(null)
-  const [isLoaded, setIsLoaded] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirectingRef = useRef(false)
-  const isMobile = useIsMobile()
-
-  // Mark as loaded after component mounts to show animated background
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoaded(true)
-    }, 100)
-    return () => clearTimeout(timer)
-  }, [])
 
   // Extract invite code from URL params
   useEffect(() => {
@@ -609,18 +597,6 @@ function AuthPageContent() {
         </div>
       </div>
 
-      {/* Falling Pattern Background - Fades in after initial load */}
-      <div className={`absolute inset-0 z-0 transition-opacity duration-1000 ${isLoaded && !isAuthenticated ? "opacity-100" : "opacity-0"
-        }`}>
-        <FallingPattern
-          className="h-full w-full"
-          backgroundColor="oklch(0 0 0)"
-          color="oklch(1 0 0)"
-          useVideoFallback
-          videoSrc={process.env.NEXT_PUBLIC_BG_VIDEO_SRC}
-        />
-      </div>
-
       {/* Main Content Area - Shows skeleton UI after authentication */}
       <div className="flex-1 overflow-y-auto">
         {isAuthenticated && (
@@ -630,11 +606,9 @@ function AuthPageContent() {
         )}
       </div>
 
-      <div className={`z-[1] w-full px-6 pb-8 transition-all duration-700 flex justify-center ${isAuthenticated
+      <div className={`z-[1] flex w-full flex-col items-center gap-4 px-6 pb-8 transition-all duration-700 ${isAuthenticated
         ? "scale-95 opacity-0"
-        : isLoaded
-          ? "scale-100 opacity-100"
-          : "scale-100 opacity-0"
+        : "scale-100 opacity-100"
         }`}>
         <Button
           onClick={handleAuth}
@@ -667,6 +641,9 @@ function AuthPageContent() {
             )}
           </AnimatePresence>
         </Button>
+        <p className="max-w-sm px-2 text-center text-[11px] leading-snug text-white/40">
+          Sign in with Face ID / biometrics
+        </p>
       </div>
 
       {/* Welcome Modal - Shows on first visit */}

@@ -60,8 +60,7 @@
 - `lib/defindex/auto-deposit.ts` - Minor cleanup
 - `package.json` - Added npm scripts for automation
 - `components/ui/sliding-number.tsx` - Minor updates
-- `docs/DEFINDEX_ENV_SETUP.md` - Documentation updates
-- `docs/DEFINDEX_CONTRACT_ADDRESSES.md` - Contract documentation
+- `docs/wallet-stellar-defindex.md` - DeFindex env + contract reference (consolidated doc)
 
 ## 🚀 User Experience Improvements
 

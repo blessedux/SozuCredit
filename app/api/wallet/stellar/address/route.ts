@@ -38,10 +38,12 @@ export async function GET(request: Request) {
     const wallet = await getStellarWallet(userId, !user)
 
     if (!wallet) {
-      console.error("[Stellar Address API] ❌ Wallet not found for userId:", userId)
+      console.log("[Stellar Address API] No wallet row yet for userId:", userId)
+      // 200 + null avoids browser/devtools treating this like a missing route (HTTP 404).
+      // Clients treat absent `publicKey` the same as the former 404 branch.
       return NextResponse.json(
-        { error: "Wallet not found. Please create a wallet first." },
-        { status: 404, headers: corsHeaders(request as any) }
+        { publicKey: null, network: null },
+        { status: 200, headers: corsHeaders(request as any) }
       )
     }
 

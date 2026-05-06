@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import { allowCredentialTransportsForRequest } from "@/lib/webauthn/credential-transports"
 import { generateChallenge } from "@/lib/webauthn/utils"
 import { challengeStore, cleanupChallenges } from "@/lib/webauthn/config"
 import { NextResponse } from "next/server"
@@ -56,10 +57,7 @@ export async function POST(request: NextRequest) {
               allowCredentials: passkeys.map((pk) => ({
                 id: pk.credential_id,
                 type: "public-key",
-                // Use stored transports if available, otherwise omit to allow all transports
-                transports: pk.transports && pk.transports.length > 0 
-                  ? pk.transports as AuthenticatorTransport[]
-                  : undefined, // Omit transports to allow browser to use any available transport
+                transports: allowCredentialTransportsForRequest(pk.transports as string[] | null),
               })),
               timeout: 60000,
               userVerification: "required",

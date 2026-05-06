@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
+import { allowCredentialTransportsForRequest } from "@/lib/webauthn/credential-transports"
 import { generateChallenge } from "@/lib/webauthn/utils"
 import { challengeStore, cleanupChallenges, getRpID, rpName } from "@/lib/webauthn/config"
 export async function OPTIONS(request: NextRequest) {
@@ -101,9 +102,7 @@ export async function POST(request: NextRequest) {
         allowCredentials: passkeys.map((pk) => ({
           id: pk.credential_id,
           type: "public-key",
-          transports: pk.transports && pk.transports.length > 0 
-            ? pk.transports as AuthenticatorTransport[]
-            : undefined,
+          transports: allowCredentialTransportsForRequest(pk.transports as string[] | null),
         })),
         timeout: 60000,
         userVerification: "required",
