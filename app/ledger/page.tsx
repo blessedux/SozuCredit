@@ -31,6 +31,7 @@ import { walletBalancesFetchInit, walletBalancesUrl } from "@/lib/ledger/wallet-
 import { formatLedgerTxTableMoment } from "@/lib/ledger/transaction-date"
 import { parseMonthlyObligationsPlan, type MonthlyObligationLine } from "@/lib/ledger/monthly-obligations-plan"
 import { DEFAULT_CATEGORIES, DEFAULT_INCOME_CATEGORIES } from "@/lib/ledger/types"
+import { useAppHaptics } from "@/hooks/use-app-haptics"
 
 type CategorySlice = {
   category: string
@@ -255,6 +256,7 @@ const ledgerFetchInit = {
 
 export default function LedgerHomePage() {
   const pathname = usePathname()
+  const { play: ledgerHaptic } = useAppHaptics()
 
   const [data, setData] = useState<Summary | null>(null)
   const [walletUsdc, setWalletUsdc] = useState<number | null>(null)
@@ -713,7 +715,10 @@ export default function LedgerHomePage() {
                 variant="ghost"
                 size="sm"
                 className="h-7 text-[11px] text-white/50 hover:text-white hover:bg-white/10"
-                onClick={() => void refreshAll({ silent: true })}
+                onClick={() => {
+                  ledgerHaptic()
+                  void refreshAll({ silent: true })
+                }}
               >
                 Refrescar
               </Button>
@@ -808,12 +813,14 @@ export default function LedgerHomePage() {
           <TabsList className="grid w-full grid-cols-2 h-auto gap-1 rounded-lg bg-white/10 p-1 text-white/70">
             <TabsTrigger
               value="category"
+              onClick={() => ledgerHaptic()}
               className="rounded-md text-xs data-[state=active]:bg-white data-[state=active]:text-black"
             >
               Por categoría
             </TabsTrigger>
             <TabsTrigger
               value="origin"
+              onClick={() => ledgerHaptic()}
               className="rounded-md text-xs data-[state=active]:bg-white data-[state=active]:text-black"
             >
               Por origen
@@ -829,18 +836,21 @@ export default function LedgerHomePage() {
               <TabsList className="grid w-full grid-cols-3 h-auto gap-1 rounded-lg bg-white/10 p-1 text-white/70">
                 <TabsTrigger
                   value="month"
+                  onClick={() => ledgerHaptic()}
                   className="rounded-md text-[11px] data-[state=active]:bg-white data-[state=active]:text-black"
                 >
                   Este mes
                 </TabsTrigger>
                 <TabsTrigger
                   value="week"
+                  onClick={() => ledgerHaptic()}
                   className="rounded-md text-[11px] data-[state=active]:bg-white data-[state=active]:text-black"
                 >
                   7 días
                 </TabsTrigger>
                 <TabsTrigger
                   value="day"
+                  onClick={() => ledgerHaptic()}
                   className="rounded-md text-[11px] data-[state=active]:bg-white data-[state=active]:text-black"
                 >
                   Hoy UTC
@@ -885,18 +895,21 @@ export default function LedgerHomePage() {
               <TabsList className="grid w-full grid-cols-3 h-auto gap-1 rounded-lg bg-white/10 p-1 text-white/70">
                 <TabsTrigger
                   value="month"
+                  onClick={() => ledgerHaptic()}
                   className="rounded-md text-[11px] data-[state=active]:bg-white data-[state=active]:text-black"
                 >
                   Este mes
                 </TabsTrigger>
                 <TabsTrigger
                   value="week"
+                  onClick={() => ledgerHaptic()}
                   className="rounded-md text-[11px] data-[state=active]:bg-white data-[state=active]:text-black"
                 >
                   7 días
                 </TabsTrigger>
                 <TabsTrigger
                   value="day"
+                  onClick={() => ledgerHaptic()}
                   className="rounded-md text-[11px] data-[state=active]:bg-white data-[state=active]:text-black"
                 >
                   Hoy UTC
@@ -965,7 +978,10 @@ export default function LedgerHomePage() {
                     variant="ghost"
                     size="sm"
                     className="h-7 text-[11px] text-white/55 hover:text-white hover:bg-white/10"
-                    onClick={() => setChartWindow("month")}
+                    onClick={() => {
+                      ledgerHaptic()
+                      setChartWindow("month")
+                    }}
                   >
                     Mes UTC
                   </Button>
@@ -982,7 +998,10 @@ export default function LedgerHomePage() {
                     variant="ghost"
                     size="sm"
                     className="h-7 text-[11px] text-white/55 hover:text-white hover:bg-white/10"
-                    onClick={() => setCategoryFilter(null)}
+                    onClick={() => {
+                      ledgerHaptic()
+                      setCategoryFilter(null)
+                    }}
                   >
                     Quitar categoría
                   </Button>
@@ -994,8 +1013,17 @@ export default function LedgerHomePage() {
               )}
             </div>
           </div>
-          <Button variant="outline" size="sm" asChild className="border-white/20 bg-white/5 text-white hover:bg-white/10 shrink-0 gap-1.5">
-            <Link href={fullTableHref} className="inline-flex items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            asChild
+            className="border-white/20 bg-white/5 text-white hover:bg-white/10 shrink-0 gap-1.5"
+          >
+            <Link
+              href={fullTableHref}
+              onClick={() => ledgerHaptic()}
+              className="inline-flex items-center gap-1.5"
+            >
               <Waves className="size-3.5 text-sky-300/90 shrink-0" aria-hidden />
               Ver tabla completa
             </Link>

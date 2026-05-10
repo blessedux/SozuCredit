@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ArrowLeft, BookOpen, Table2, Target, Vault } from "lucide-react"
+import { useAppHaptics } from "@/hooks/use-app-haptics"
 
 const links = [
   { href: "/ledger", label: "Resumen", icon: BookOpen },
@@ -17,6 +18,7 @@ const ledgerMainWidth =
 
 export default function LedgerLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const { play: hapticNav } = useAppHaptics()
 
   return (
     <div className="relative z-10 min-h-screen bg-black text-white pb-28">
@@ -43,6 +45,7 @@ export default function LedgerLayout({ children }: { children: React.ReactNode }
                 href={href}
                 scroll={false}
                 prefetch
+                onClick={() => hapticNav()}
                 className={`flex-1 flex flex-col items-center gap-0.5 py-2 rounded-lg text-xs font-medium transition-colors ${
                   active ? "bg-white/15 text-white border border-white/20" : "text-white/50 hover:text-white/80"
                 }`}
