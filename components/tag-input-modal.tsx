@@ -1,36 +1,60 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { useState, useEffect, useRef, useCallback } from "react"
+import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Check, X, Loader2 } from "lucide-react"
+import { Check, Loader2, Fingerprint, Hash } from "lucide-react"
 
-interface TagInputModalProps {
+export interface TagInputModalProps {
   isOpen: boolean
   onClose: () => void
-  onConfirm: (tag: string) => void
+  /** Reserved name → create account (passkey registration). */
+  onRegister: (tag: string) => void
+  /** Taken name → passkey authentication. */
+  onLoginPasskey: (tag: string) => Promise<{ ok: boolean; cancelled?: boolean; error?: string }>
+  /** Taken name + PIN when user has set a backup PIN. */
+  onLoginPin: (tag: string, pin: string) => Promise<{ ok: boolean; error?: string }>
+  /** After passkey cancel: reopen on sign-in step with this tag. */
+  resumeWithTag?: string | null
+  /** After register cancel: reopen name step with this tag. */
+  prefillTag?: string | null
 }
 
 type AvailabilityStatus = "idle" | "checking" | "available" | "taken" | "error"
 
-export function TagInputModal({ isOpen, onClose, onConfirm }: TagInputModalProps) {
+type Step = "tag" | "signin"
+
+export function TagInputModal({
+  isOpen,
+  onClose,
+  onRegister,
+  onLoginPasskey,
+  onLoginPin,
+  resumeWithTag,
+  prefillTag,
+}: TagInputModalProps) {
+  const [step, setStep] = useState<Step>("tag")
   const [tag, setTag] = useState("")
+  const [pin, setPin] = useState("")
   const [error, setError] = useState("")
+  const [learnOpen, setLearnOpen] = useState(false)
   const [availabilityStatus, setAvailabilityStatus] = useState<AvailabilityStatus>("idle")
   const [availabilityMessage, setAvailabilityMessage] = useState("")
+  const [pinEnabled, setPinEnabled] = useState(false)
+  const [passkeyBusy, setPasskeyBusy] = useState(false)
+  const [pinBusy, setPinBusy] = useState(false)
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   const validateTag = (value: string): boolean => {
-    // Tag must be 3-30 characters, letters, numbers, and underscores only
     if (value.length < 3 || value.length > 30) {
-      setError("Tag must be between 3 and 30 characters")
+      setError("3–30 characters")
       setAvailabilityStatus("idle")
       return false
     }
     if (!/^[a-zA-Z0-9_]+$/.test(value)) {
-      setError("Tag can only contain letters, numbers, and underscores")
+      setError("Letters, numbers, underscore only")
       setAvailabilityStatus("idle")
       return false
     }
@@ -38,10 +62,11 @@ export function TagInputModal({ isOpen, onClose, onConfirm }: TagInputModalProps
     return true
   }
 
-  const checkUsernameAvailability = async (username: string) => {
+  const checkUsernameAvailability = useCallback(async (username: string) => {
     if (!username || username.length < 3) {
       setAvailabilityStatus("idle")
       setAvailabilityMessage("")
+      setPinEnabled(false)
       return
     }
 
@@ -51,201 +76,306 @@ export function TagInputModal({ isOpen, onClose, onConfirm }: TagInputModalProps
     try {
       const response = await fetch("/api/auth/username/check", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username }),
       })
-
       const data = await response.json()
 
       if (data.available) {
         setAvailabilityStatus("available")
-        setAvailabilityMessage(data.message || "This tag is available")
+        setAvailabilityMessage(typeof data.message === "string" ? data.message : "")
+        setPinEnabled(false)
       } else {
         setAvailabilityStatus("taken")
-        setAvailabilityMessage(data.message || "This tag is already taken")
+        setAvailabilityMessage(typeof data.message === "string" ? data.message : "")
+        setPinEnabled(Boolean(data.pinEnabled))
       }
-    } catch (error) {
-      console.error("[TagInputModal] Error checking username availability:", error)
+    } catch {
       setAvailabilityStatus("error")
-      setAvailabilityMessage("Unable to check availability. Please try again.")
+      setAvailabilityMessage("Could not check. Try again.")
+      setPinEnabled(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    // Clear previous timer
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current)
-    }
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
 
     const trimmedTag = tag.trim()
-
-    // Reset availability status when tag is empty
     if (!trimmedTag) {
       setAvailabilityStatus("idle")
       setAvailabilityMessage("")
+      setPinEnabled(false)
       return
     }
 
-    // Only check availability if basic validation passes
-    const isValidFormat = trimmedTag.length >= 3 && 
-                          trimmedTag.length <= 30 && 
-                          /^[a-zA-Z0-9_]+$/.test(trimmedTag)
+    const isValidFormat =
+      trimmedTag.length >= 3 && trimmedTag.length <= 30 && /^[a-zA-Z0-9_]+$/.test(trimmedTag)
 
     if (!isValidFormat) {
       setAvailabilityStatus("idle")
       setAvailabilityMessage("")
+      setPinEnabled(false)
       return
     }
 
-    // Debounce the API call
     debounceTimerRef.current = setTimeout(() => {
-      checkUsernameAvailability(trimmedTag)
-    }, 400) // 400ms debounce
+      void checkUsernameAvailability(trimmedTag)
+    }, 400)
 
     return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current)
-      }
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
     }
-  }, [tag])
+  }, [tag, checkUsernameAvailability])
 
-  // Reset state when modal closes
   useEffect(() => {
     if (!isOpen) {
       setTag("")
+      setPin("")
       setError("")
+      setLearnOpen(false)
       setAvailabilityStatus("idle")
       setAvailabilityMessage("")
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current)
-      }
+      setPinEnabled(false)
+      setStep("tag")
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+      return
     }
-  }, [isOpen])
+    if (resumeWithTag) {
+      const t = resumeWithTag.replace(/^\$/, "").trim()
+      setTag(t)
+      setStep("signin")
+      setPin("")
+      setError("")
+      void checkUsernameAvailability(t)
+    } else if (prefillTag) {
+      const t = prefillTag.replace(/^\$/, "").trim()
+      setTag(t)
+      setStep("tag")
+      setPin("")
+      setError("")
+      void checkUsernameAvailability(t)
+    }
+  }, [isOpen, resumeWithTag, prefillTag, checkUsernameAvailability])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value
+    const value = e.target.value.replace(/[^a-zA-Z0-9_]/g, "")
     setTag(value)
-    // Clear format errors if basic validation passes
-    if (error) {
-      const trimmed = value.trim()
-      if (trimmed.length >= 3 && trimmed.length <= 30 && /^[a-zA-Z0-9_]+$/.test(trimmed)) {
-        setError("")
-      }
-    }
+    if (error && value.trim().length >= 3) setError("")
   }
 
-  const handleConfirm = () => {
-    const trimmedTag = tag.trim()
-    if (validateTag(trimmedTag) && availabilityStatus === "available") {
-      onConfirm(trimmedTag)
-      setTag("")
+  const trimmed = tag.trim()
+  const isTagValid =
+    trimmed.length >= 3 && trimmed.length <= 30 && /^[a-zA-Z0-9_]+$/.test(trimmed) && !error
+
+  const handlePrimaryTagStep = () => {
+    if (!validateTag(trimmed)) return
+    if (availabilityStatus === "available") {
+      onRegister(trimmed)
+      return
+    }
+    if (availabilityStatus === "taken") {
+      setStep("signin")
+      setPin("")
       setError("")
-      setAvailabilityStatus("idle")
-      setAvailabilityMessage("")
     }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handlePasskey = async () => {
+    if (!validateTag(trimmed)) return
+    setPasskeyBusy(true)
+    setError("")
+    try {
+      const result = await onLoginPasskey(trimmed)
+      if (!result.ok) {
+        if (result.cancelled) {
+          setError("")
+          setStep("signin")
+        } else {
+          setError(result.error || "Could not sign in")
+        }
+      }
+    } finally {
+      setPasskeyBusy(false)
+    }
+  }
+
+  const handlePinSubmit = async () => {
+    if (!validateTag(trimmed)) return
+    if (!/^\d{6,12}$/.test(pin)) {
+      setError("PIN: 6–12 digits")
+      return
+    }
+    setPinBusy(true)
+    setError("")
+    try {
+      const result = await onLoginPin(trimmed, pin)
+      if (!result.ok) {
+        setError(result.error || "Could not sign in")
+      }
+    } finally {
+      setPinBusy(false)
+    }
+  }
+
+  const handleKeyDownTag = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault()
-      handleConfirm()
+      handlePrimaryTagStep()
     }
   }
 
-  const isTagValid = tag.trim().length >= 3 && 
-                     tag.trim().length <= 30 && 
-                     /^[a-zA-Z0-9_]+$/.test(tag.trim()) &&
-                     !error
-
-  const canSubmit = isTagValid && availabilityStatus === "available"
+  const canProceedTag =
+    isTagValid && (availabilityStatus === "available" || availabilityStatus === "taken")
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
-        className="bg-black/95 border-white/20 text-white max-w-md"
+        className="bg-black/95 border-white/10 text-white max-w-sm shadow-none"
         showCloseButton={false}
-        onInteractOutside={(e) => {
-          e.preventDefault()
-        }}
+        onInteractOutside={(e) => e.preventDefault()}
       >
-        <DialogHeader className="space-y-4">
-          <DialogTitle className="text-2xl font-bold text-center text-white">
-            Choose Your Sozu Tag
-          </DialogTitle>
-          <DialogDescription className="text-white/80 text-center">
-            Your tag will be used as your username and to identify your passkey.
-            Choose something memorable and unique.
-          </DialogDescription>
-        </DialogHeader>
+        {step === "tag" ? (
+          <div className="space-y-8 pt-1 pb-2">
+            <div className="space-y-1 text-center">
+              <p className="text-[15px] font-light tracking-wide text-white/90">Choose your name.</p>
+              <p className="text-[13px] font-extralight tracking-wide text-white/55">Register on the internet.</p>
+              <button
+                type="button"
+                onClick={() => setLearnOpen((v) => !v)}
+                className="mt-2 text-[10px] tracking-[0.2em] uppercase text-white/35 hover:text-white/50 transition-colors"
+              >
+                Learn more
+              </button>
+              {learnOpen && (
+                <p className="text-left text-[11px] leading-relaxed text-white/45 pt-2 px-1 border-t border-white/5 mt-3">
+                  Your name (Sozu tag) is your handle. A passkey on this device protects access; you may add a backup
+                  PIN in Settings. Nothing here is financial advice.
+                </p>
+              )}
+            </div>
 
-        <div className="space-y-4 pt-4">
-          <div className="space-y-2">
-            <Label htmlFor="tag" className="text-white/80">
-              Sozu Tag
-            </Label>
-            <div className="relative">
+            <div className="space-y-3">
               <Input
-                id="tag"
                 type="text"
                 value={tag}
                 onChange={handleChange}
-                onKeyDown={handleKeyDown}
-                placeholder="e.g., alice, bob123, trader_01"
-                className={`bg-white/5 border-white/20 text-white placeholder:text-white/40 focus:border-white/40 pr-10 ${
-                  availabilityStatus === "available" ? "border-green-500/50" : 
-                  availabilityStatus === "taken" ? "border-red-500/50" : ""
+                onKeyDown={handleKeyDownTag}
+                placeholder="name"
+                className={`h-11 bg-transparent border-0 border-b rounded-none text-center text-lg font-light tracking-[0.15em] text-white placeholder:text-white/25 focus-visible:ring-0 focus-visible:border-b-white/40 px-0 ${
+                  availabilityStatus === "available"
+                    ? "border-b-emerald-500/40"
+                    : availabilityStatus === "taken"
+                      ? "border-b-white/25"
+                      : "border-b-white/15"
                 }`}
                 autoFocus
+                autoCapitalize="none"
+                autoCorrect="off"
               />
-              {tag.trim() && isTagValid && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  {availabilityStatus === "checking" && (
-                    <Loader2 className="w-4 h-4 text-white/60 animate-spin" />
-                  )}
-                  {availabilityStatus === "available" && (
-                    <Check className="w-4 h-4 text-green-500" />
-                  )}
-                  {availabilityStatus === "taken" && (
-                    <X className="w-4 h-4 text-red-500" />
-                  )}
-                  {availabilityStatus === "error" && (
-                    <X className="w-4 h-4 text-yellow-500" />
-                  )}
-                </div>
-              )}
+              <div className="min-h-[1.25rem] flex items-center justify-center gap-2">
+                {trimmed.length >= 3 && isTagValid && availabilityStatus === "checking" && (
+                  <Loader2 className="w-3.5 h-3.5 text-white/30 animate-spin" />
+                )}
+                {trimmed.length >= 3 && isTagValid && availabilityStatus === "available" && (
+                  <Check className="w-3.5 h-3.5 text-emerald-600/80" aria-hidden />
+                )}
+                {availabilityMessage && (
+                  <p
+                    className={`text-[11px] font-light ${
+                      availabilityStatus === "available"
+                        ? "text-emerald-600/70"
+                        : availabilityStatus === "taken"
+                          ? "text-white/40"
+                          : availabilityStatus === "error"
+                            ? "text-amber-500/80"
+                            : "text-white/30"
+                    }`}
+                  >
+                    {availabilityMessage}
+                  </p>
+                )}
+              </div>
+              {error && <p className="text-center text-[11px] text-amber-500/90">{error}</p>}
             </div>
-            {error && (
-              <p className="text-sm text-red-400">{error}</p>
-            )}
-            {availabilityMessage && !error && (
-              <p className={`text-sm ${
-                availabilityStatus === "available" ? "text-green-400" :
-                availabilityStatus === "taken" ? "text-red-400" :
-                availabilityStatus === "error" ? "text-yellow-400" :
-                "text-white/60"
-              }`}>
-                {availabilityMessage}
-              </p>
-            )}
-            {!error && !availabilityMessage && (
-              <p className="text-xs text-white/60">
-                3-30 characters, letters, numbers, and underscores only
-              </p>
-            )}
-          </div>
 
-          <div className="flex gap-3 pt-2">
             <Button
-              onClick={handleConfirm}
-              disabled={!tag.trim() || !!error || availabilityStatus !== "available"}
-              className="flex-1 bg-white text-black hover:bg-white/90 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              type="button"
+              onClick={handlePrimaryTagStep}
+              disabled={!canProceedTag}
+              className="w-full h-11 rounded-full bg-white/95 text-black text-sm font-normal tracking-widest hover:bg-white disabled:opacity-30"
             >
-              Continue
+              {availabilityStatus === "taken" ? "Sign in" : "Register"}
             </Button>
           </div>
-        </div>
+        ) : (
+          <div className="space-y-6 pt-1 pb-2">
+            <div className="text-center space-y-1">
+              <p className="text-[11px] tracking-[0.25em] uppercase text-white/35">Sign in</p>
+              <p className="text-base font-light text-white/90 tracking-wide">{trimmed}</p>
+            </div>
+
+            {error && <p className="text-center text-[11px] text-amber-500/90">{error}</p>}
+
+            <Button
+              type="button"
+              onClick={() => void handlePasskey()}
+              disabled={passkeyBusy}
+              className="w-full h-11 rounded-full bg-white/95 text-black text-sm font-normal tracking-widest hover:bg-white disabled:opacity-40 inline-flex items-center justify-center gap-2"
+            >
+              {passkeyBusy ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <>
+                  <Fingerprint className="w-4 h-4 opacity-70" />
+                  Passkey
+                </>
+              )}
+            </Button>
+
+            {pinEnabled ? (
+              <div className="space-y-3 pt-2 border-t border-white/10">
+                <Label className="text-[10px] tracking-[0.2em] uppercase text-white/30 flex items-center gap-1.5">
+                  <Hash className="w-3 h-3" />
+                  Backup PIN
+                </Label>
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 12))}
+                  placeholder="6–12 digits"
+                  className="h-10 bg-white/5 border-white/10 text-center text-sm tracking-widest"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => void handlePinSubmit()}
+                  disabled={pinBusy || pin.length < 6}
+                  className="w-full text-white/60 hover:text-white hover:bg-white/5 text-xs"
+                >
+                  {pinBusy ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Continue with PIN"}
+                </Button>
+              </div>
+            ) : (
+              <p className="text-[10px] text-center text-white/30 leading-relaxed">
+                No backup PIN on this account yet. Use your passkey, or set a PIN in Settings after you sign in.
+              </p>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                setStep("tag")
+                setPin("")
+                setError("")
+              }}
+              className="w-full text-[10px] tracking-[0.2em] uppercase text-white/30 hover:text-white/45 pt-2"
+            >
+              Back
+            </button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   )

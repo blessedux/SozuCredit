@@ -146,7 +146,7 @@ export async function signTransactionClientSide(
   if (!keypair) {
     // Fallback: try to get keypair by public key
     console.log("[Client Signing] Keypair not found by credential ID, trying public key lookup:", txPublicKey.substring(0, 10) + "...")
-    keypair = await getKeypairByPublicKey(txPublicKey)
+    keypair = await getKeypairByPublicKey(txPublicKey, credentialId)
   }
 
   if (!keypair) {

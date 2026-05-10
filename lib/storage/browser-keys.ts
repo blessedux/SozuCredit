@@ -6,7 +6,7 @@
  */
 
 import { Keypair } from "@stellar/stellar-sdk"
-import { get, set, remove, getByIndex, STORES } from "./indexeddb"
+import { get, set, remove, getByIndex, getAllByIndex, STORES } from "./indexeddb"
 import { deriveKeypairWithSeed, deriveStellarKeypair } from "../webauthn/key-derivation"
 
 /**
@@ -284,22 +284,50 @@ export async function deriveAndStoreKey(
 }
 
 /**
- * Get keypair by public key (lookup via index)
+ * Get keypair by public key (lookup via index).
+ * When multiple passkeys share one Stellar address, prefers `preferredCredentialId` when provided.
  */
 export async function getKeypairByPublicKey(
-  publicKey: string
+  publicKey: string,
+  preferredCredentialId?: string | null
 ): Promise<Keypair | null> {
-  const encryptedKeyData = await getByIndex<EncryptedKeyData>(
-    STORES.KEYS,
-    "publicKey",
-    publicKey
-  )
-
-  if (!encryptedKeyData) {
+  const rows = await getAllByIndex<EncryptedKeyData>(STORES.KEYS, "publicKey", publicKey)
+  if (!rows.length) {
     return null
   }
+  if (preferredCredentialId) {
+    const match = rows.find((r) => r.credentialId === preferredCredentialId)
+    if (match) {
+      return retrieveKeypair(match.credentialId, match.userId)
+    }
+  }
+  return retrieveKeypair(rows[0].credentialId, rows[0].userId)
+}
 
-  return retrieveKeypair(encryptedKeyData.credentialId)
+/**
+ * Copy the encrypted wallet seed from one WebAuthn credential wrapper to another (same Stellar address).
+ * Used after registering a second passkey so the new credential can sign on this browser.
+ */
+export async function cloneEncryptedKeyForNewCredential(
+  sourceCredentialId: string,
+  targetCredentialId: string,
+  userId: string
+): Promise<{ publicKey: string } | null> {
+  const encryptedKeyData = await get<EncryptedKeyData>(STORES.KEYS, sourceCredentialId)
+  if (!encryptedKeyData) {
+    console.warn("[Browser Keys] cloneEncryptedKey: no source key")
+    return null
+  }
+  const seed = await decryptSeed(
+    encryptedKeyData.encryptedSeed,
+    encryptedKeyData.iv,
+    sourceCredentialId
+  )
+  if (seed.length !== 32) {
+    throw new Error("Invalid seed length")
+  }
+  await storeEncryptedKey(targetCredentialId, userId, seed, encryptedKeyData.publicKey)
+  return { publicKey: encryptedKeyData.publicKey }
 }
 
 /**

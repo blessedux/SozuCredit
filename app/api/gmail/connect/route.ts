@@ -5,11 +5,14 @@ import {
   GMAIL_OAUTH_USER_COOKIE,
   gmailOAuthCookieOptions,
 } from "@/lib/gmail/oauth-cookies"
-import { getGoogleClientId, GMAIL_OAUTH_SCOPE, resolveGoogleRedirectUri } from "@/lib/gmail/oauth-config"
+import { getGoogleClientId, getGoogleClientSecret, GMAIL_OAUTH_SCOPE, resolveGoogleRedirectUri } from "@/lib/gmail/oauth-config"
+import { signGmailOAuthState } from "@/lib/gmail/oauth-state"
 
 /**
  * Returns Google OAuth URL (gmail.readonly). Sets short-lived httpOnly cookies so
  * `/api/gmail/callback` can associate the code with the user and redirect_uri.
+ * When `GOOGLE_CLIENT_SECRET` is set, also embeds an HMAC-signed `state` so mobile
+ * browsers that drop cookies on the Google round-trip can still complete linking.
  */
 export async function POST(request: Request) {
   const ctx = await getApiUserClient(request)
@@ -29,7 +32,10 @@ export async function POST(request: Request) {
     })
   }
 
-  const state = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
+  const secret = getGoogleClientSecret()
+  const state = secret
+    ? signGmailOAuthState({ uid: ctx.userId, r: redirectUri, iat: Date.now() }, secret)
+    : globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
   const scope = encodeURIComponent(GMAIL_OAUTH_SCOPE)
   const authUrl =
     `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(clientId)}` +

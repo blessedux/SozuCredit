@@ -7,6 +7,7 @@ import {
   gmailOAuthCookieOptions,
 } from "@/lib/gmail/oauth-cookies"
 import { getGoogleClientId, getGoogleClientSecret, GMAIL_OAUTH_SCOPE } from "@/lib/gmail/oauth-config"
+import { verifyGmailOAuthState } from "@/lib/gmail/oauth-state"
 
 function redirectWithCookies(
   base: string,
@@ -104,8 +105,18 @@ export async function GET(request: Request) {
   }
 
   const cookieStore = await cookies()
-  const userId = cookieStore.get(GMAIL_OAUTH_USER_COOKIE)?.value
-  const redirectUri = cookieStore.get(GMAIL_OAUTH_REDIRECT_COOKIE)?.value
+  let userId = cookieStore.get(GMAIL_OAUTH_USER_COOKIE)?.value ?? null
+  let redirectUri = cookieStore.get(GMAIL_OAUTH_REDIRECT_COOKIE)?.value ?? null
+
+  const stateParam = url.searchParams.get("state")
+  const clientSecret = getGoogleClientSecret()
+  if ((!userId || !redirectUri) && stateParam && clientSecret) {
+    const fromState = verifyGmailOAuthState(stateParam, clientSecret)
+    if (fromState) {
+      userId = fromState.uid
+      redirectUri = fromState.r
+    }
+  }
 
   if (!userId || !redirectUri) {
     return redirectWithCookies(

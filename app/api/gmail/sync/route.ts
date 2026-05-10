@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { getApiUserClient } from "@/lib/ledger/supabase-admin"
-import { runGmailSync } from "@/lib/gmail/run-sync"
+import { runGmailSync, type GmailSyncMode } from "@/lib/gmail/run-sync"
 
 export const dynamic = "force-dynamic"
 
@@ -41,12 +41,24 @@ export async function POST(request: Request) {
     )
   }
 
+  let syncMode: GmailSyncMode | undefined
   try {
-    const result = await runGmailSync({ db: ctx.db, userId: ctx.userId })
+    const body = await request.json().catch(() => ({}))
+    if (body?.mode === "incremental" || body?.mode === "full") {
+      syncMode = body.mode
+    }
+  } catch {
+    /* empty body */
+  }
+
+  try {
+    const result = await runGmailSync({ db: ctx.db, userId: ctx.userId, mode: syncMode })
     return NextResponse.json({
       ok: true,
+      mode: syncMode ?? "full",
       scanned: result.scanned,
       listedMessages: result.listedMessages,
+      skippedExisting: result.skippedExisting,
       listTruncated: result.listTruncated,
       upsertedSources: result.upsertedSources,
       createdTransactions: result.createdTransactions,

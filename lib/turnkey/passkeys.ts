@@ -492,3 +492,111 @@ function base64URLToArrayBuffer(base64url: string): ArrayBuffer {
   return bytes.buffer
 }
 
+const addPasskeyHeaders = (): Record<string, string> => {
+  if (typeof window === "undefined") return {}
+  const uid = sessionStorage.getItem("dev_username")
+  return uid ? { "x-user-id": uid } : {}
+}
+
+export async function fetchPasskeyStatus(): Promise<{
+  count: number
+  max: number
+  canAddMore: boolean
+  username?: string
+  pinSet?: boolean
+}> {
+  const res = await fetch("/api/auth/passkeys/status", { headers: addPasskeyHeaders() })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(typeof data.error === "string" ? data.error : "Failed to load passkey status")
+  }
+  return data
+}
+
+export async function initPasskeyPairing(): Promise<{
+  pairingCode: string
+  expiresInSeconds: number
+  username: string
+}> {
+  const res = await fetch("/api/auth/passkeys/pairing/init", {
+    method: "POST",
+    headers: { ...addPasskeyHeaders() },
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(typeof data.error === "string" ? data.error : "Failed to create pairing code")
+  }
+  return data
+}
+
+/**
+ * Registration-style challenge for an additional passkey (same account, max two devices).
+ */
+export async function generateAddPasskeyChallenge(options: {
+  pairingCode?: string
+  username?: string
+}): Promise<PasskeyChallenge> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" }
+  if (!options.pairingCode) {
+    Object.assign(headers, addPasskeyHeaders())
+  }
+  const res = await fetch("/api/auth/passkeys/add/challenge", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      pairingCode: options.pairingCode || undefined,
+      username: options.username || undefined,
+    }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(typeof data.error === "string" ? data.error : "Failed to start passkey setup")
+  }
+  return {
+    challenge: data.challenge,
+    rpId: data.rp.id,
+    rp: data.rp,
+    user: data.user,
+    timeout: data.timeout ?? 60000,
+    authenticatorSelection: data.authenticatorSelection,
+    userVerification: data.authenticatorSelection?.userVerification || "required",
+  }
+}
+
+export async function verifyAddPasskey(
+  credential: PasskeyCredential,
+  challenge: string,
+  options: { pairingCode?: string; username?: string }
+): Promise<{ success: boolean; credentialId?: string; walletSyncHint?: string }> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" }
+  if (!options.pairingCode) {
+    Object.assign(headers, addPasskeyHeaders())
+  }
+  const publicKey = credential.response.attestationObject || credential.id
+  const res = await fetch("/api/auth/passkeys/add/verify", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      pairingCode: options.pairingCode,
+      username: options.username,
+      challenge,
+      credential: {
+        ...credential,
+        response: {
+          ...credential.response,
+          publicKey,
+        },
+      },
+    }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(typeof data.error === "string" ? data.error : "Failed to verify new passkey")
+  }
+  return {
+    success: !!data.success,
+    credentialId: data.credentialId,
+    walletSyncHint: typeof data.walletSyncHint === "string" ? data.walletSyncHint : undefined,
+  }
+}
+

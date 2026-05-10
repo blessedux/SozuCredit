@@ -11,7 +11,7 @@ import {
   isWithinInterval,
 } from "date-fns"
 import { es } from "date-fns/locale"
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Plus, Search } from "lucide-react"
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Plus, RefreshCw, Search } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -145,6 +145,8 @@ function LedgerTransactionsContent() {
   const [inlineEditCategoryRowId, setInlineEditCategoryRowId] = useState<string | null>(null)
   const [inlineEditCategoryValue, setInlineEditCategoryValue] = useState<string>("unknown")
   const [inlineEditCategorySavingId, setInlineEditCategorySavingId] = useState<string | null>(null)
+  const [gmailSyncLoading, setGmailSyncLoading] = useState(false)
+  const [gmailSyncNote, setGmailSyncNote] = useState<string | null>(null)
 
   const tableCategoryFilter = useMemo(() => {
     const raw = searchParams.get("category")?.trim().toLowerCase()
@@ -184,6 +186,47 @@ function LedgerTransactionsContent() {
       setLoading(false)
     }
   }, [])
+
+  const handleGmailIncrementalSync = useCallback(async () => {
+    setGmailSyncLoading(true)
+    setGmailSyncNote(null)
+    try {
+      const res = await fetch("/api/gmail/sync", {
+        method: "POST",
+        headers: { ...ledgerUserHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "incremental" }),
+        signal: AbortSignal.timeout(280_000),
+      })
+      const json = (await res.json()) as {
+        error?: string
+        hint?: string
+        message?: string
+        createdTransactions?: number
+        scanned?: number
+        skippedExisting?: number
+        listedMessages?: number
+      }
+      if (!res.ok) {
+        setGmailSyncNote(json.hint || json.error || "No se pudo sincronizar Gmail.")
+        return
+      }
+      const parts: string[] = []
+      if (typeof json.createdTransactions === "number" && json.createdTransactions > 0) {
+        parts.push(`${json.createdTransactions} movimiento(s) nuevo(s).`)
+      } else {
+        parts.push("Sin movimientos nuevos desde el último sync.")
+      }
+      if (typeof json.skippedExisting === "number" && json.skippedExisting > 0) {
+        parts.push(`${json.skippedExisting} correo(s) ya importados (omitidos).`)
+      }
+      setGmailSyncNote(parts.join(" "))
+      await load()
+    } catch {
+      setGmailSyncNote("Error de red o tiempo agotado al sincronizar.")
+    } finally {
+      setGmailSyncLoading(false)
+    }
+  }, [load])
 
   useEffect(() => {
     load()
@@ -943,7 +986,22 @@ function LedgerTransactionsContent() {
                   Este mes
                 </Button>
               ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={gmailSyncLoading}
+                className="h-8 gap-1.5 border-white/20 bg-white/5 px-2.5 text-[11px] font-medium text-white/75 hover:bg-white/10 hover:text-white shrink-0"
+                title="Traer solo correos nuevos desde Gmail (no re-descarga todo el historial)"
+                onClick={() => void handleGmailIncrementalSync()}
+              >
+                <RefreshCw className={`size-3.5 ${gmailSyncLoading ? "animate-spin" : ""}`} aria-hidden />
+                Sync
+              </Button>
             </div>
+            {gmailSyncNote ? (
+              <p className="text-[11px] text-white/50 max-w-xl">{gmailSyncNote}</p>
+            ) : null}
             {monthsWithData.length > 0 ? (
               <div className="flex gap-1.5 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch]">
                 {monthsWithData.map((m) => {

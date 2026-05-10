@@ -8,6 +8,12 @@ import { fetchCategoryRulesForUser, findRuleForHaystack } from "@/lib/ledger/cat
 import { fetchMerchantAliasMap, resolveMerchantDisplayName } from "@/lib/ledger/merchant-alias"
 import type { LedgerTransactionType } from "@/lib/ledger/types"
 
+/** Incremental (ledger) sync: max Gmail list IDs to walk (smaller = faster). */
+const INCREMENTAL_MAX_MESSAGES = Math.min(
+  500,
+  Math.max(40, Number(process.env.GMAIL_SYNC_INCREMENTAL_MAX?.trim()) || 200)
+)
+
 /** Gmail returns newest-first; without paging we only ever see this many freshest threads — older mail never syncs. */
 const LIST_PAGE_SIZE = Math.min(
   500,
@@ -34,9 +40,23 @@ export type GmailSyncResult = {
   createdTransactions: number
   /** Message IDs matched the Gmail query (after paging cap). */
   listedMessages: number
-  /** True if Gmail reported another page but we stopped at GMAIL_SYNC_MAX_MESSAGES. */
+  /** IDs we did not call Gmail message.get for (already had `email_sources` row). */
+  skippedExisting: number
+  /** True if Gmail reported another page but we stopped at the list cap for this sync mode. */
   listTruncated: boolean
   errors: string[]
+}
+
+export type GmailSyncMode = "full" | "incremental"
+
+function formatGmailAfterDate(iso: string): string {
+  const d = new Date(iso)
+  if (!Number.isFinite(d.getTime())) return ""
+  d.setUTCDate(d.getUTCDate() - 1)
+  const y = d.getUTCFullYear()
+  const mo = String(d.getUTCMonth() + 1).padStart(2, "0")
+  const da = String(d.getUTCDate()).padStart(2, "0")
+  return `${y}/${mo}/${da}`
 }
 
 async function gmailFetch<T>(path: string, accessToken: string): Promise<T> {
@@ -51,7 +71,13 @@ async function gmailFetch<T>(path: string, accessToken: string): Promise<T> {
   return res.json() as Promise<T>
 }
 
-export async function runGmailSync(ctx: { db: SupabaseClient; userId: string }): Promise<GmailSyncResult> {
+export async function runGmailSync(ctx: {
+  db: SupabaseClient
+  userId: string
+  /** `incremental`: only list mail after last sync (plus skip existing). `full`: wide list + skip existing fetches. */
+  mode?: GmailSyncMode
+}): Promise<GmailSyncResult> {
+  const mode: GmailSyncMode = ctx.mode ?? "full"
   const errors: string[] = []
   let scanned = 0
   let upsertedSources = 0
@@ -59,7 +85,7 @@ export async function runGmailSync(ctx: { db: SupabaseClient; userId: string }):
 
   const { data: conn, error: connErr } = await ctx.db
     .from("gmail_connections")
-    .select("access_token, refresh_token, expires_at")
+    .select("access_token, refresh_token, expires_at, last_sync_at")
     .eq("user_id", ctx.userId)
     .maybeSingle()
 
@@ -71,6 +97,7 @@ export async function runGmailSync(ctx: { db: SupabaseClient; userId: string }):
       upsertedSources: 0,
       createdTransactions: 0,
       listedMessages: 0,
+      skippedExisting: 0,
       listTruncated: false,
       errors,
     }
@@ -83,6 +110,7 @@ export async function runGmailSync(ctx: { db: SupabaseClient; userId: string }):
       upsertedSources: 0,
       createdTransactions: 0,
       listedMessages: 0,
+      skippedExisting: 0,
       listTruncated: false,
       errors,
     }
@@ -103,12 +131,22 @@ export async function runGmailSync(ctx: { db: SupabaseClient; userId: string }):
       upsertedSources: 0,
       createdTransactions: 0,
       listedMessages: 0,
+      skippedExisting: 0,
       listTruncated: false,
       errors,
     }
   }
 
-  const q = encodeURIComponent(GMAIL_SYNC_LIST_QUERY)
+  const lastSyncAt = (conn as { last_sync_at?: string | null }).last_sync_at
+  let listQuery = GMAIL_SYNC_LIST_QUERY
+  if (mode === "incremental" && lastSyncAt) {
+    const after = formatGmailAfterDate(lastSyncAt)
+    if (after) listQuery = `${GMAIL_SYNC_LIST_QUERY} after:${after}`
+  }
+
+  const listCap = mode === "incremental" ? INCREMENTAL_MAX_MESSAGES : MAX_MESSAGES_PER_SYNC
+
+  const q = encodeURIComponent(listQuery)
   const ids: string[] = []
   let pageToken: string | undefined
   let listTruncated = false
@@ -122,7 +160,7 @@ export async function runGmailSync(ctx: { db: SupabaseClient; userId: string }):
         if (m.id) ids.push(m.id)
       }
       pageToken = list.nextPageToken ?? undefined
-      if (ids.length >= MAX_MESSAGES_PER_SYNC) {
+      if (ids.length >= listCap) {
         listTruncated = Boolean(pageToken)
         break
       }
@@ -135,13 +173,38 @@ export async function runGmailSync(ctx: { db: SupabaseClient; userId: string }):
       upsertedSources: 0,
       createdTransactions: 0,
       listedMessages: 0,
+      skippedExisting: 0,
       listTruncated: false,
       errors,
     }
   }
 
-  const cappedIds = ids.slice(0, MAX_MESSAGES_PER_SYNC)
+  const cappedIds = ids.slice(0, listCap)
   const listedMessages = cappedIds.length
+
+  const existingIds = new Set<string>()
+  if (cappedIds.length > 0) {
+    const batchSize = 150
+    for (let i = 0; i < cappedIds.length; i += batchSize) {
+      const slice = cappedIds.slice(i, i + batchSize)
+      const { data: rows, error: exErr } = await ctx.db
+        .from("email_sources")
+        .select("gmail_message_id")
+        .eq("user_id", ctx.userId)
+        .in("gmail_message_id", slice)
+      if (exErr) {
+        errors.push(`existing_lookup:${exErr.message}`)
+        break
+      }
+      for (const r of rows ?? []) {
+        const mid = (r as { gmail_message_id?: string }).gmail_message_id
+        if (mid) existingIds.add(mid)
+      }
+    }
+  }
+
+  const idsToProcess = cappedIds.filter((id) => !existingIds.has(id))
+  const skippedExisting = cappedIds.length - idsToProcess.length
 
   let categoryRules: Awaited<ReturnType<typeof fetchCategoryRulesForUser>> = []
   try {
@@ -302,8 +365,8 @@ export async function runGmailSync(ctx: { db: SupabaseClient; userId: string }):
     }
   }
 
-  for (let i = 0; i < cappedIds.length; i += SYNC_CONCURRENCY) {
-    const chunk = cappedIds.slice(i, i + SYNC_CONCURRENCY)
+  for (let i = 0; i < idsToProcess.length; i += SYNC_CONCURRENCY) {
+    const chunk = idsToProcess.slice(i, i + SYNC_CONCURRENCY)
     const batch = await Promise.all(chunk.map((id) => processMessage(id)))
     for (const r of batch) {
       scanned += r.scanned
@@ -324,6 +387,7 @@ export async function runGmailSync(ctx: { db: SupabaseClient; userId: string }):
     upsertedSources,
     createdTransactions,
     listedMessages,
+    skippedExisting,
     listTruncated,
     errors,
   }

@@ -16,19 +16,106 @@ import {
 } from "@/lib/turnkey/passkeys"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useState, useRef, useEffect, Suspense } from "react"
+import { useState, useRef, useEffect, useCallback, Suspense } from "react"
 
 function AuthPageContent() {
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isExiting, setIsExiting] = useState(false)
   const [showTagModal, setShowTagModal] = useState(false)
-  const [pendingTag, setPendingTag] = useState<string | null>(null)
-  const [registrationUsername, setRegistrationUsername] = useState("")
+  const [resumeLoginTag, setResumeLoginTag] = useState<string | null>(null)
+  const [tagModalPrefill, setTagModalPrefill] = useState<string | null>(null)
   const [referralCode, setReferralCode] = useState<string | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirectingRef = useRef(false)
+
+  const finalizePasskeyLoginSuccess = useCallback(
+    async (userId: string, username: string | undefined, credential: { id: string }) => {
+      if (username && username !== "" && username !== "user") {
+        localStorage.setItem("sozu_username", username)
+      }
+      sessionStorage.setItem("dev_username", userId)
+      sessionStorage.setItem("dev_authenticated", "true")
+      try {
+        const { alignWalletMaterialAfterLogin } = await import("@/lib/storage/post-login-wallet")
+        const { publicKey, needsWalletSync } = await alignWalletMaterialAfterLogin(userId, credential.id)
+        sessionStorage.setItem("stellar_public_key", publicKey)
+        if (needsWalletSync) {
+          console.warn("[Auth] Wallet sync may be required for this passkey on this device.")
+        }
+      } catch (keyError) {
+        console.error("[Auth] Failed to align wallet after login:", keyError)
+      }
+      setShowTagModal(false)
+      setResumeLoginTag(null)
+      setTagModalPrefill(null)
+      setIsAuthenticated(true)
+      setIsAuthenticating(false)
+      redirectingRef.current = true
+      setIsExiting(true)
+      setTimeout(() => router.push("/wallet"), 300)
+    },
+    [router]
+  )
+
+  const finalizePinLoginSuccess = useCallback(
+    async (userId: string, username: string) => {
+      localStorage.setItem("sozu_username", username)
+      sessionStorage.setItem("dev_username", userId)
+      sessionStorage.setItem("dev_authenticated", "true")
+      sessionStorage.removeItem("credential_id")
+      try {
+        const res = await fetch("/api/wallet/stellar/address", { headers: { "x-user-id": userId } })
+        const data = (await res.json()) as { publicKey?: string | null }
+        if (data.publicKey && typeof data.publicKey === "string" && data.publicKey.startsWith("G")) {
+          sessionStorage.setItem("stellar_public_key", data.publicKey)
+          const { getKeypairByPublicKey } = await import("@/lib/storage/browser-keys")
+          const kp = await getKeypairByPublicKey(data.publicKey)
+          if (kp) sessionStorage.removeItem("wallet_sync_pending")
+          else sessionStorage.setItem("wallet_sync_pending", "1")
+        }
+      } catch (e) {
+        console.warn("[Auth] PIN login: could not load wallet address", e)
+      }
+      setShowTagModal(false)
+      setResumeLoginTag(null)
+      setTagModalPrefill(null)
+      setIsAuthenticated(true)
+      setIsAuthenticating(false)
+      redirectingRef.current = true
+      setIsExiting(true)
+      setTimeout(() => router.push("/wallet"), 300)
+    },
+    [router]
+  )
+
+  const attemptLoginWithTag = useCallback(
+    async (tag: string): Promise<{ ok: boolean; cancelled?: boolean; error?: string }> => {
+      try {
+        const challenge = await generateAuthChallenge(tag)
+        let credential: Awaited<ReturnType<typeof getPasskey>>
+        try {
+          credential = await getPasskey(challenge)
+        } catch (e) {
+          if (e instanceof DOMException && (e.name === "NotAllowedError" || e.name === "AbortError")) {
+            return { ok: false, cancelled: true }
+          }
+          throw e
+        }
+        if (!credential) return { ok: false, cancelled: true }
+        const authResult = await verifyAuthentication(tag, credential, challenge?.challenge)
+        if (!authResult?.success || !authResult.userId) {
+          return { ok: false, error: "Could not sign in" }
+        }
+        await finalizePasskeyLoginSuccess(authResult.userId, authResult.username, credential)
+        return { ok: true }
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : "Could not sign in" }
+      }
+    },
+    [finalizePasskeyLoginSuccess]
+  )
 
   // Extract invite code from URL params
   useEffect(() => {
@@ -73,91 +160,20 @@ function AuthPageContent() {
     // Step 2: If username exists, try login directly (assumes passkey exists)
     if (usernameToUse) {
       console.log("[Auth] ====== Attempting login with stored username:", usernameToUse)
-
-      try {
-        // Try login with stored username
-        let credential = null
-        let challenge
-
-        try {
-          challenge = await generateAuthChallenge(usernameToUse)
-          credential = await getPasskey(challenge)
-
-          if (!credential) {
-            throw new Error("No passkey found")
-          }
-
-          // Verify authentication
-          const authResult = await verifyAuthentication(usernameToUse, credential, challenge?.challenge)
-
-          if (!authResult || !authResult.success) {
-            throw new Error("Authentication failed")
-          }
-
-          // Login successful - set authenticated state
-          console.log("[Auth] ✅ Login successful with existing passkey")
-          setIsAuthenticated(true)
-          setIsAuthenticating(false)
-
-          // Set up session
-          if (typeof window !== "undefined") {
-            const finalUserId = authResult.userId
-            if (!finalUserId) {
-              throw new Error("No userId returned")
-            }
-
-            sessionStorage.setItem("dev_username", finalUserId)
-            sessionStorage.setItem("dev_authenticated", "true")
-
-            // Derive keys if credential available
-            if (credential?.id) {
-              try {
-                const { deriveAndStoreKey } = await import("@/lib/storage/browser-keys")
-                const { storeCredentialIdInSession } = await import("@/lib/storage/key-utils")
-
-                const { publicKey } = await deriveAndStoreKey(credential.id, finalUserId)
-                sessionStorage.setItem("stellar_public_key", publicKey)
-                storeCredentialIdInSession(credential.id)
-                console.log("[Auth] ✅ Keys derived and stored for existing passkey")
-              } catch (keyError) {
-                console.error("[Auth] Failed to derive keys:", keyError)
-              }
-            }
-
-            // Redirect
-            redirectingRef.current = true
-            setIsExiting(true)
-
-            // Use router.push directly - the fade-out animation will continue during navigation
-            setTimeout(() => {
-              console.log("[Auth] Redirecting to /wallet after login...")
-              router.push("/wallet")
-            }, 300)
-          }
-          return // Success - exit early
-        } catch (loginError: any) {
-          // Login failed - could mean:
-          // 1. Passkey doesn't exist for this username
-          // 2. Wrong username
-          // 3. Passkey was deleted
-          console.log("[Auth] Login failed with stored username:", loginError.name, loginError.message)
-
-          // Clear invalid username from localStorage
-          if (typeof window !== "undefined") {
-            localStorage.removeItem("sozu_username")
-          }
-
-          // Fall through to registration flow
-          setIsAuthenticating(false)
-          setShowTagModal(true)
-          return
-        }
-      } catch (error) {
-        console.error("[Auth] Error during login attempt:", error)
-        setIsAuthenticating(false)
-        setShowTagModal(true)
+      const result = await attemptLoginWithTag(usernameToUse)
+      if (result.ok) {
         return
       }
+      console.log("[Auth] Login with stored tag failed:", result.error, result.cancelled)
+      setIsAuthenticating(false)
+      if (result.cancelled) {
+        setResumeLoginTag(usernameToUse)
+      } else if (typeof window !== "undefined") {
+        localStorage.removeItem("sozu_username")
+        setTagModalPrefill(usernameToUse)
+      }
+      setShowTagModal(true)
+      return
     }
 
     // Step 3: No stored username - try passkey discovery mode (for incognito/private browsing)
@@ -204,55 +220,12 @@ function AuthPageContent() {
 
       // Login successful via discovery mode
       console.log("[Auth] ✅ Login successful via passkey discovery")
-      setIsAuthenticated(true)
-      setIsAuthenticating(false)
-
-      // Set up session
-      if (typeof window !== "undefined") {
-        const finalUserId = authResult.userId
-        if (!finalUserId) {
-          throw new Error("No userId returned")
-        }
-
-        // Store username in localStorage for future logins (if available from auth result)
-        // The API returns username in the response
-        const username = authResult.username
-        if (username && username !== "user" && username !== "") {
-          localStorage.setItem("sozu_username", username)
-          console.log("[Auth] Stored username from discovery login:", username)
-        } else {
-          console.log("[Auth] No username returned from discovery login, will need to enter tag next time")
-        }
-
-        sessionStorage.setItem("dev_username", finalUserId)
-        sessionStorage.setItem("dev_authenticated", "true")
-
-        // Derive keys if credential available
-        if (credential?.id) {
-          try {
-            const { deriveAndStoreKey } = await import("@/lib/storage/browser-keys")
-            const { storeCredentialIdInSession } = await import("@/lib/storage/key-utils")
-
-            const { publicKey } = await deriveAndStoreKey(credential.id, finalUserId)
-            sessionStorage.setItem("stellar_public_key", publicKey)
-            storeCredentialIdInSession(credential.id)
-            console.log("[Auth] ✅ Keys derived and stored for discovery passkey")
-          } catch (keyError) {
-            console.error("[Auth] Failed to derive keys:", keyError)
-          }
-        }
-
-        // Redirect
-        redirectingRef.current = true
-        setIsExiting(true)
-
-        // Use router.push directly - the fade-out animation will continue during navigation
-        setTimeout(() => {
-          console.log("[Auth] Redirecting to /wallet after discovery login...")
-          router.push("/wallet")
-        }, 300)
+      const finalUserId = authResult.userId
+      if (!finalUserId || !credential?.id) {
+        throw new Error("No userId or credential from discovery login")
       }
-      return // Success - exit early
+      await finalizePasskeyLoginSuccess(finalUserId, authResult.username, credential)
+      return
     } catch (discoveryError: any) {
       // Discovery mode failed - could mean:
       // 1. No passkeys exist on device
@@ -267,12 +240,45 @@ function AuthPageContent() {
     }
   }
 
-  const handleTagConfirm = async (tag: string) => {
-    setPendingTag(tag)
+  const handleRegisterFromModal = (tag: string) => {
     setShowTagModal(false)
+    setResumeLoginTag(null)
+    setTagModalPrefill(null)
     setIsAuthenticating(true)
-    // Continue with registration using the tag
-    await proceedWithRegistration(tag)
+    void proceedWithRegistration(tag)
+  }
+
+  const handleLoginPasskeyFromModal = async (tag: string) => {
+    const result = await attemptLoginWithTag(tag)
+    if (result.cancelled) {
+      setResumeLoginTag(tag)
+      setShowTagModal(true)
+    }
+    return result
+  }
+
+  const handlePinLoginFromModal = async (tag: string, pin: string) => {
+    try {
+      const res = await fetch("/api/auth/pin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: tag, pin }),
+      })
+      const data = (await res.json()) as { error?: string; message?: string; userId?: string; username?: string }
+      if (!res.ok) {
+        if (data.error === "pin_not_configured" && typeof data.message === "string") {
+          return { ok: false as const, error: data.message }
+        }
+        return { ok: false as const, error: typeof data.message === "string" ? data.message : "Could not sign in" }
+      }
+      if (!data.userId || !data.username) {
+        return { ok: false as const, error: "Could not sign in" }
+      }
+      await finalizePinLoginSuccess(data.userId, data.username)
+      return { ok: true as const }
+    } catch {
+      return { ok: false as const, error: "Network error" }
+    }
   }
 
   const proceedWithRegistration = async (tag: string) => {
@@ -281,7 +287,6 @@ function AuthPageContent() {
     try {
       let credential = null
       const usernameToRegister = tag
-      setRegistrationUsername(tag)
 
       // Store tag in localStorage for future logins
       if (typeof window !== "undefined") {
@@ -297,19 +302,13 @@ function AuthPageContent() {
         if (challengeError.status === 409 || challengeError.usernameExists ||
           challengeError.message?.includes("already taken") ||
           challengeError.message?.includes("Username already exists")) {
-          console.log("[Auth] Tag already exists, user should log in instead")
-          alert("This Sozu tag is already taken. Please log in with your existing passkey instead of creating a new account.")
+          console.log("[Auth] Tag already exists — open sign-in in modal")
           setIsAuthenticating(false)
-          // Store the tag in localStorage so user can log in
           if (typeof window !== "undefined") {
             localStorage.setItem("sozu_username", usernameToRegister)
           }
-          // Close tag modal and try login
-          setShowTagModal(false)
-          // Re-trigger auth flow which will now try login with the stored username
-          setTimeout(() => {
-            handleAuth()
-          }, 100)
+          setShowTagModal(true)
+          setResumeLoginTag(usernameToRegister)
           return
         }
         throw challengeError
@@ -342,6 +341,8 @@ function AuthPageContent() {
         )) {
           console.log("[Auth] User cancelled passkey registration")
           setIsAuthenticating(false)
+          setTagModalPrefill(usernameToRegister)
+          setShowTagModal(true)
           return
         }
         throw passkeyError // Re-throw other errors
@@ -540,7 +541,10 @@ function AuthPageContent() {
       )) {
         console.log("[Auth] User cancelled passkey authentication/registration")
         setIsAuthenticating(false)
-        return // User can try again
+        const t = typeof window !== "undefined" ? localStorage.getItem("sozu_username") : null
+        if (t) setTagModalPrefill(t)
+        setShowTagModal(true)
+        return
       }
 
       // Check if error is a passkey cancellation in the error chain
@@ -548,7 +552,10 @@ function AuthPageContent() {
       if (errorMessage.includes("NotAllowedError") || errorMessage.includes("AbortError")) {
         console.log("[Auth] User cancelled passkey (detected in error message)")
         setIsAuthenticating(false)
-        return // User can try again
+        const t = typeof window !== "undefined" ? localStorage.getItem("sozu_username") : null
+        if (t) setTagModalPrefill(t)
+        setShowTagModal(true)
+        return
       }
 
       console.error("[Auth] ====== Authentication error ======")
@@ -641,8 +648,8 @@ function AuthPageContent() {
             )}
           </AnimatePresence>
         </Button>
-        <p className="max-w-sm px-2 text-center text-[11px] leading-snug text-white/40">
-          Sign in with Face ID / biometrics
+        <p className="max-w-sm px-2 text-center text-[10px] font-extralight tracking-[0.12em] text-white/35">
+          Passkey on this device
         </p>
       </div>
 
@@ -652,11 +659,17 @@ function AuthPageContent() {
       {/* Tag Input Modal - Shows when user needs to choose a tag */}
       <TagInputModal
         isOpen={showTagModal}
+        resumeWithTag={resumeLoginTag}
+        prefillTag={tagModalPrefill}
         onClose={() => {
           setShowTagModal(false)
           setIsAuthenticating(false)
+          setResumeLoginTag(null)
+          setTagModalPrefill(null)
         }}
-        onConfirm={handleTagConfirm}
+        onRegister={handleRegisterFromModal}
+        onLoginPasskey={handleLoginPasskeyFromModal}
+        onLoginPin={handlePinLoginFromModal}
       />
     </div>
   )

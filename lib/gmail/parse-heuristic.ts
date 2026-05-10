@@ -9,6 +9,7 @@ export function chileFinancialEmailContext(combinedText: string): boolean {
   const t = combinedText.replace(/\s+/g, " ")
   return (
     /\bclp\b/i.test(t) ||
+    /\brecib(?:iste|imos)\b/i.test(t) ||
     /\b(?:mach|banco\s*(?:de\s*)?chile|bancochile|bci\b|banco\s+bci|santander|banco\s+santander|mercado\s*pago|mercadopago|banco\s*estado|bancoestado|scotiabank|tenpo|cmr\b|ripley|falabella|consorcio|it[\u00fa]u\s*chile|global\s*66|banco\s*security|los\s+h[eé]roes|prepago|cuenta\s+rut|notificaci[oó]n\s+bancaria|comprobante\s+de\s+pago|detalle\s+comercio|tarjeta\s+de\s+cr[eé]dito|tarjeta\s+de\s+d[eé]bito|webpay|transbank|khipu|servipag|redcompra|multicaja|\.cl\b)\b/i.test(
       t
     )

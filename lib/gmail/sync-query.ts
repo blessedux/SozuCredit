@@ -4,7 +4,7 @@ export const GMAIL_SYNC_LIST_QUERY =
   "(" +
   "(" +
   "boleta OR factura OR recibo OR comprobante OR pago OR transferencia OR compra " +
-  "OR depósito OR deposito OR ingreso OR acreditación OR acreditado OR abono " +
+  "OR recibiste OR recibimos OR depósito OR deposito OR ingreso OR acreditación OR acreditado OR abono " +
   "OR remuneración OR remuneraciones OR nómina OR nomina OR haberes OR liquidación OR liquidacion " +
   "OR \"transferencia recibida\" OR \"transferencia entrante\"" +
   ") " +

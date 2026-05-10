@@ -278,6 +278,13 @@ USDC_ISSUER=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
 # Vault / strategy integration (see docs)
 VAULT_PROTOCOL=blend
 VAULT_MIN_DEPOSIT=10
+
+# Gmail linking (Settings). See docs/email-ledger-and-gmail.md
+GOOGLE_OAUTH_CLIENT_ID=
+GOOGLE_OAUTH_CLIENT_SECRET=
+# GOOGLE_CLIENT_ID=          # alternative to GOOGLE_OAUTH_CLIENT_ID
+# GOOGLE_CLIENT_SECRET=       # alternative to GOOGLE_OAUTH_CLIENT_SECRET
+# GOOGLE_REDIRECT_URI=        # optional; must match Google Cloud OAuth client if set
 ```
 
 Soroban / DeFindex variables are documented in **[Wallet, Stellar, and DeFindex](./docs/wallet-stellar-defindex.md)**.

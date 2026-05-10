@@ -67,11 +67,17 @@ export async function POST(request: NextRequest) {
     const { createClient: createServiceClient } = await import("@supabase/supabase-js")
     const serviceClient = createServiceClient(supabaseUrl, supabaseServiceKey)
     
-    const { data: existingProfile, error: checkError } = await serviceClient
+    let { data: existingProfile, error: checkError } = await serviceClient
       .from("profiles")
-      .select("id, username")
+      .select("id, username, recovery_pin_hash")
       .eq("username", username)
       .maybeSingle()
+
+    if (checkError && (checkError.message?.includes("recovery_pin_hash") || checkError.code === "42703")) {
+      const retry = await serviceClient.from("profiles").select("id, username").eq("username", username).maybeSingle()
+      existingProfile = retry.data as typeof existingProfile
+      checkError = retry.error
+    }
     
     if (checkError && checkError.code !== "PGRST116") {
       // PGRST116 = no rows returned (expected when username is available)
@@ -87,10 +93,15 @@ export async function POST(request: NextRequest) {
     }
     
     if (existingProfile) {
+      const pinEnabled = Boolean((existingProfile as { recovery_pin_hash?: string | null }).recovery_pin_hash)
       return NextResponse.json(
-        { 
+        {
           available: false,
-          message: "This Sozu tag is already taken. Please choose a different tag or log in with your existing account."
+          exists: true,
+          pinEnabled,
+          message: pinEnabled
+            ? "This name is taken. Sign in with your passkey or PIN."
+            : "This name is taken. Sign in with your passkey.",
         },
         { status: 200, headers: corsHeaders(request) }
       )
@@ -98,9 +109,11 @@ export async function POST(request: NextRequest) {
 
     // Username is available
     return NextResponse.json(
-      { 
+      {
         available: true,
-        message: "This tag is available"
+        exists: false,
+        pinEnabled: false,
+        message: "This name is free.",
       },
       { status: 200, headers: corsHeaders(request) }
     )

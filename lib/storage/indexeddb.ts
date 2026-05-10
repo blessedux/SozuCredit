@@ -6,7 +6,8 @@
  */
 
 const DB_NAME = "sozu-wallet-db"
-const DB_VERSION = 1
+/** v2: `publicKey` index is non-unique so two passkeys can share one Stellar address. */
+const DB_VERSION = 2
 
 // Store names
 export const STORES = {
@@ -32,27 +33,39 @@ export async function initDB(): Promise<IDBDatabase> {
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result
+      const oldVersion = event.oldVersion
 
-      // Create object stores if they don't exist
-      if (!db.objectStoreNames.contains(STORES.KEYS)) {
-        const keysStore = db.createObjectStore(STORES.KEYS, {
-          keyPath: "credentialId",
-        })
-        keysStore.createIndex("userId", "userId", { unique: false })
-        keysStore.createIndex("publicKey", "publicKey", { unique: true })
+      if (oldVersion < 1) {
+        if (!db.objectStoreNames.contains(STORES.KEYS)) {
+          const keysStore = db.createObjectStore(STORES.KEYS, {
+            keyPath: "credentialId",
+          })
+          keysStore.createIndex("userId", "userId", { unique: false })
+          keysStore.createIndex("publicKey", "publicKey", { unique: false })
+        }
+
+        if (!db.objectStoreNames.contains(STORES.WALLETS)) {
+          const walletsStore = db.createObjectStore(STORES.WALLETS, {
+            keyPath: "publicKey",
+          })
+          walletsStore.createIndex("userId", "userId", { unique: false })
+        }
+
+        if (!db.objectStoreNames.contains(STORES.METADATA)) {
+          db.createObjectStore(STORES.METADATA, {
+            keyPath: "key",
+          })
+        }
       }
 
-      if (!db.objectStoreNames.contains(STORES.WALLETS)) {
-        const walletsStore = db.createObjectStore(STORES.WALLETS, {
-          keyPath: "publicKey",
-        })
-        walletsStore.createIndex("userId", "userId", { unique: false })
-      }
-
-      if (!db.objectStoreNames.contains(STORES.METADATA)) {
-        db.createObjectStore(STORES.METADATA, {
-          keyPath: "key",
-        })
+      if (oldVersion === 1) {
+        const tx = (event.target as IDBOpenDBRequest).transaction
+        if (!tx || !db.objectStoreNames.contains(STORES.KEYS)) return
+        const store = tx.objectStore(STORES.KEYS)
+        if (store.indexNames.contains("publicKey")) {
+          store.deleteIndex("publicKey")
+        }
+        store.createIndex("publicKey", "publicKey", { unique: false })
       }
     }
   })
@@ -177,6 +190,32 @@ export async function getByIndex<T>(
 
     request.onerror = () => {
       reject(new Error(`Failed to query index: ${request.error}`))
+    }
+  })
+}
+
+/**
+ * All records matching an index value (non-unique indexes).
+ */
+export async function getAllByIndex<T>(
+  storeName: string,
+  indexName: string,
+  value: string
+): Promise<T[]> {
+  const db = await initDB()
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([storeName], "readonly")
+    const store = transaction.objectStore(storeName)
+    const index = store.index(indexName)
+    const request = index.getAll(value)
+
+    request.onsuccess = () => {
+      resolve((request.result as T[]) || [])
+    }
+
+    request.onerror = () => {
+      reject(new Error(`Failed to query index (getAll): ${request.error}`))
     }
   })
 }
