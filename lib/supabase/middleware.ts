@@ -5,6 +5,8 @@ export async function updateSession(request: NextRequest) {
   // CRITICAL: Check for allowed routes at the VERY START - before creating NextResponse
   // This ensures these routes are allowed before any other processing
   const pathname = request.nextUrl.pathname
+  /** Ledger (cashflow) uses sessionStorage + x-user-id like /wallet; never require Supabase cookie. */
+  const isLedgerRoute = pathname === "/ledger" || pathname.startsWith("/ledger/")
 
   // Allow test-keys route (for Phase 1 & 2 testing)
   if (pathname === "/test-keys") {
@@ -22,6 +24,10 @@ export async function updateSession(request: NextRequest) {
   if (pathname === "/settings") {
     // Allow settings route - it handles its own auth via sessionStorage
     console.log("[Middleware] ✅ /settings route detected - ALLOWING immediately")
+    return NextResponse.next()
+  }
+
+  if (isLedgerRoute) {
     return NextResponse.next()
   }
 
@@ -68,6 +74,10 @@ export async function updateSession(request: NextRequest) {
   // Always allow settings route - it handles its own auth via sessionStorage
   if (isSettingsRoute) {
     console.log("[Middleware] ✅ ALLOWING /settings route immediately (handles own auth via sessionStorage)")
+    return supabaseResponse
+  }
+
+  if (isLedgerRoute) {
     return supabaseResponse
   }
 
@@ -126,8 +136,18 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Redirect to login if not authenticated and not on auth pages, wallet, settings, test-keys, city, or tracker
-  if (!user && !isAuthRoute && request.nextUrl.pathname !== "/" && !isWalletRoute && !isSettingsRoute && !isTestKeysRoute && !isCityRoute && !isTrackerRoute) {
+  // Redirect to login if not authenticated and not on auth pages, wallet, settings, ledger, test-keys, city, or tracker
+  if (
+    !user &&
+    !isAuthRoute &&
+    request.nextUrl.pathname !== "/" &&
+    !isWalletRoute &&
+    !isSettingsRoute &&
+    !isLedgerRoute &&
+    !isTestKeysRoute &&
+    !isCityRoute &&
+    !isTrackerRoute
+  ) {
     const url = request.nextUrl.clone()
     url.pathname = "/auth"
     return NextResponse.redirect(url)
