@@ -238,7 +238,10 @@ export async function POST(request: NextRequest) {
     // Always use service client for profile mutations — the anon client is subject
     // to RLS which may deny writes when there is no active Supabase session
     // (passkey-only auth never establishes a cookie session at this point).
-    const profileServiceClient = serviceClient // already declared above
+    // supabaseUrl / supabaseServiceKey are declared earlier in this function scope.
+    const profileServiceClient = (supabaseUrl && supabaseServiceKey)
+      ? createServiceClient(supabaseUrl, supabaseServiceKey)
+      : supabase
 
     if (existingProfile) {
       console.log("[Register] Profile exists (created by trigger), username:", existingProfile.username ?? "NULL")
