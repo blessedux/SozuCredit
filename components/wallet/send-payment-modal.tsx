@@ -5,14 +5,15 @@
 
 "use client"
 
-import { memo } from "react"
+import { memo, useState } from "react"
 import { motion } from "framer-motion"
-import { Send } from "lucide-react"
+import { Send, ScanQrCode } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useSendPayment } from "@/hooks/use-send-payment"
 import { getWalletTexts } from "@/lib/wallet-texts"
+import { QrScannerModal } from "@/components/wallet/qr-scanner-modal"
 
 interface SendPaymentModalProps {
   isOpen: boolean
@@ -55,6 +56,18 @@ export const SendPaymentModal = memo(function SendPaymentModal({
   } = useSendPayment(walletAddress, walletNetwork, defindexBalance, onSuccess, onRefresh)
 
   const t = getWalletTexts("es")
+  const [isScannerOpen, setIsScannerOpen] = useState(false)
+
+  const handleQrScan = (value: string) => {
+    // Strip leading $ if present (common in Sozu tags on QR codes)
+    const cleaned = value.trim()
+    setSendRecipient(cleaned)
+    setRecipientError(null)
+    // Auto-resolve if it looks like a Stellar address
+    if (/^G[A-Z0-9]{55}$/.test(cleaned)) {
+      setIsManualMode(true)
+    }
+  }
 
   const handleClose = (open: boolean) => {
     if (!open) {
@@ -64,6 +77,7 @@ export const SendPaymentModal = memo(function SendPaymentModal({
   }
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="bg-black/80 backdrop-blur-md border-white/20 text-white max-w-md">
         <DialogHeader className="sr-only">
@@ -81,22 +95,32 @@ export const SendPaymentModal = memo(function SendPaymentModal({
                   transition={{ duration: 0.5 }}
                   className="space-y-2"
                 >
-                  <Input
-                    type="text"
-                    value={sendRecipient}
-                    onChange={(e) => {
-                      setSendRecipient(e.target.value)
-                      setRecipientError(null)
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && sendRecipient.trim()) {
-                        handleResolveRecipient()
-                      }
-                    }}
-                    placeholder="$Sozutag"
-                    className={`bg-white/5 border-white/20 text-white placeholder:text-white/40 text-lg h-14 ${recipientError ? 'border-red-500/50' : ''}`}
-                    autoFocus
-                  />
+                  <div className="relative flex items-center">
+                    <Input
+                      type="text"
+                      value={sendRecipient}
+                      onChange={(e) => {
+                        setSendRecipient(e.target.value)
+                        setRecipientError(null)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && sendRecipient.trim()) {
+                          handleResolveRecipient()
+                        }
+                      }}
+                      placeholder="$Sozutag"
+                      className={`bg-white/5 border-white/20 text-white placeholder:text-white/40 text-lg h-14 pr-14 ${recipientError ? 'border-red-500/50' : ''}`}
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setIsScannerOpen(true)}
+                      className="absolute right-3 w-8 h-8 flex items-center justify-center rounded-md text-white/50 hover:text-white hover:bg-white/10 transition-colors"
+                      aria-label="Scan QR code"
+                    >
+                      <ScanQrCode className="w-5 h-5" />
+                    </button>
+                  </div>
                   {recipientError && (
                     <motion.div
                       initial={{ opacity: 0, y: -10 }}
@@ -235,5 +259,12 @@ export const SendPaymentModal = memo(function SendPaymentModal({
         )}
       </DialogContent>
     </Dialog>
+
+    <QrScannerModal
+      isOpen={isScannerOpen}
+      onClose={() => setIsScannerOpen(false)}
+      onScan={handleQrScan}
+    />
+  </>
   )
 })

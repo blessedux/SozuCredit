@@ -36,7 +36,7 @@ export async function GET(request: Request) {
         
         const { data: profile, error: profileError } = await serviceClient
           .from("profiles")
-          .select("username, display_name, profile_picture")
+          .select("username, display_name")
           .eq("id", userId)
           .maybeSingle()
         
@@ -77,7 +77,7 @@ export async function GET(request: Request) {
     // Normal Supabase auth flow
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("username, display_name, profile_picture")
+      .select("username, display_name")
       .eq("id", userId)
       .maybeSingle()
     
@@ -111,9 +111,8 @@ export async function GET(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const { username, display_name, profile_picture } = await request.json()
+    const { username, display_name } = await request.json()
 
-    // Validate tag format if provided
     if (username !== undefined && username !== null) {
       if (typeof username !== "string" || username.length < 3 || username.length > 30) {
         return NextResponse.json({ error: "Tag must be between 3 and 30 characters" }, { status: 400 })
@@ -122,171 +121,83 @@ export async function PUT(request: Request) {
         return NextResponse.json({ error: "Tag can only contain letters, numbers, and underscores" }, { status: 400 })
       }
     }
-    
+
     const supabase = await createClient()
-    
-    // Get the authenticated user
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    
-    let userId: string | null = null
-    
-    if (user) {
-      userId = user.id
-      console.log("[Profile API] Using Supabase auth, userId:", userId)
-    } else {
-      // In dev mode, check for userId in headers
-      userId = request.headers.get("x-user-id")
-      console.log("[Profile API] Dev mode, userId from header:", userId)
-      
-      if (!userId) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-      }
+    const { data: { user } } = await supabase.auth.getUser()
+
+    let userId: string | null = user?.id ?? request.headers.get("x-user-id")
+    console.log("[Profile API] PUT userId:", userId)
+    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    const updateData: Record<string, string> = {}
+    if (username && typeof username === "string") updateData.username = username.trim()
+    if (display_name && typeof display_name === "string") updateData.display_name = display_name.trim()
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: "No valid fields to update." }, { status: 400 })
     }
-    
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    
-    // Use service client to update profile (works in both dev and prod mode)
+
     if (supabaseServiceKey && supabaseUrl) {
       const serviceClient = createServiceClient(supabaseUrl, supabaseServiceKey)
 
-      // Check username availability (excluding current user's own row)
       if (username && typeof username === "string") {
-        const { data: existingProfile } = await serviceClient
+        const { data: existing } = await serviceClient
           .from("profiles")
           .select("id")
           .eq("username", username)
           .neq("id", userId)
           .maybeSingle()
-        if (existingProfile) {
+        if (existing) {
           return NextResponse.json({ error: "This Sozu tag is already taken." }, { status: 409 })
         }
       }
 
-      const updateData: { display_name?: string; profile_picture?: string; username?: string } = {}
-      
-      if (username && typeof username === "string") {
-        updateData.username = username.trim()
-      }
-
-      if (display_name && typeof display_name === "string") {
-        updateData.display_name = display_name.trim()
-      }
-      
-      if (profile_picture && typeof profile_picture === "string") {
-        updateData.profile_picture = profile_picture
-      }
-      
-      // If no fields to update, return error
-      if (Object.keys(updateData).length === 0) {
-        return NextResponse.json({ 
-          error: "No valid fields to update." 
-        }, { status: 400 })
-      }
-      
       const { data: updatedProfile, error: updateError } = await serviceClient
         .from("profiles")
         .update(updateData)
         .eq("id", userId)
-        .select("username, display_name, profile_picture")
+        .select("username, display_name")
         .maybeSingle()
-      
+
       if (updateError) {
         console.error("[Profile API] Error updating profile:", updateError)
-        
-        // Check if it's a unique constraint violation
         if (updateError.code === "23505") {
           return NextResponse.json({ error: "Username is already taken" }, { status: 409 })
         }
-        
-        // Check if it's the "Cannot coerce to single JSON object" error
-        if (updateError.message && updateError.message.includes("coerce")) {
-          console.error("[Profile API] Query returned multiple rows or unexpected result")
-          // Try to get the profile after update
-          const { data: profileAfterUpdate, error: fetchError } = await serviceClient
-            .from("profiles")
-            .select("username, display_name")
-            .eq("id", userId)
-            .maybeSingle()
-          
-          if (fetchError || !profileAfterUpdate) {
-            return NextResponse.json({ 
-              error: "Failed to update profile",
-              details: updateError.message 
-            }, { status: 500 })
-          }
-          
-          return NextResponse.json({ profile: profileAfterUpdate })
-        }
-        
-        return NextResponse.json({ 
-          error: "Failed to update profile",
-          details: updateError.message 
-        }, { status: 500 })
+        return NextResponse.json({ error: "Failed to update profile", details: updateError.message }, { status: 500 })
       }
-      
+
       if (!updatedProfile) {
-        // Profile doesn't exist - this shouldn't happen, but return error
-        return NextResponse.json({ 
-          error: "Profile not found. Please contact support.",
-          details: "Profile should exist but was not found"
-        }, { status: 404 })
+        return NextResponse.json({ error: "Profile not found." }, { status: 404 })
       }
-      
+
       return NextResponse.json({ profile: updatedProfile })
     }
-    
-    // Fallback: try with regular client
-    const updateData: { display_name?: string; profile_picture?: string; username?: string } = {}
-    
-    if (username && typeof username === "string") {
-      updateData.username = username.trim()
-    }
 
-    if (display_name && typeof display_name === "string") {
-      updateData.display_name = display_name.trim()
-    }
-    
-    if (profile_picture && typeof profile_picture === "string") {
-      updateData.profile_picture = profile_picture
-    }
-    
-    if (Object.keys(updateData).length === 0) {
-      return NextResponse.json({ 
-        error: "No valid fields to update." 
-      }, { status: 400 })
-    }
-    
-    if (profile_picture && typeof profile_picture === "string") {
-      updateData.profile_picture = profile_picture
-    }
-    
+    // Fallback: regular client (Supabase-authenticated session only)
     const { data: updatedProfile, error: updateError } = await supabase
       .from("profiles")
       .update(updateData)
       .eq("id", userId)
-      .select("username, display_name, profile_picture")
+      .select("username, display_name")
       .single()
-    
+
     if (updateError) {
-      console.error("[Profile API] Error updating profile:", updateError)
-      
+      console.error("[Profile API] Fallback error:", updateError)
       if (updateError.code === "23505") {
         return NextResponse.json({ error: "Username is already taken" }, { status: 409 })
       }
-      
-      return NextResponse.json({ 
-        error: "Failed to update profile",
-        details: updateError.message 
-      }, { status: 500 })
+      return NextResponse.json({ error: "Failed to update profile", details: updateError.message }, { status: 500 })
     }
-    
+
     return NextResponse.json({ profile: updatedProfile })
   } catch (error) {
     console.error("[Profile API] Unexpected error:", error)
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: "Internal server error",
-      details: error instanceof Error ? error.message : String(error)
+      details: error instanceof Error ? error.message : String(error),
     }, { status: 500 })
   }
 }

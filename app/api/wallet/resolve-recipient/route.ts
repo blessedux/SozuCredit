@@ -284,51 +284,22 @@ export async function POST(request: NextRequest) {
         console.log("[Resolve Recipient] ⚠️ No wallets with USDC found, using first wallet that exists on network")
       }
       
-      // If no wallet exists on network, return an error instead of returning a non-existent wallet
+      // If no wallet verified on network, fall back to the most recent DB wallet.
+      // The actual Stellar payment will surface a clear error if the address is unfunded.
       if (!wallet && allWallets.length > 0) {
         const mostRecent = allWallets[0]
-        // Get stellar config for logging
-        const { getStellarConfig } = await import("@/lib/turnkey/config")
-        const stellarConfigForLog = getStellarConfig()
-        
-        console.error("[Resolve Recipient] ❌ No wallets exist on network for this user:", {
+        console.warn("[Resolve Recipient] ⚠️ No wallets verified on network — falling back to most recent DB wallet:", {
           username: recipient,
-          profileId: profile.id,
-          totalWallets: allWallets.length,
-          mostRecentWallet: {
-            publicKey: mostRecent.public_key.substring(0, 10) + "..." + mostRecent.public_key.substring(mostRecent.public_key.length - 10),
-            fullPublicKey: mostRecent.public_key, // Log full key for debugging
-            updatedAt: mostRecent.updated_at,
-            createdAt: mostRecent.created_at,
-            network: mostRecent.network
-          },
-          network: stellarConfigForLog.network,
-          horizonUrl: stellarConfigForLog.horizonUrl
+          publicKey: mostRecent.public_key.substring(0, 10) + "..." + mostRecent.public_key.substring(mostRecent.public_key.length - 10),
+          updatedAt: mostRecent.updated_at,
         })
-        console.error("[Resolve Recipient] All wallets checked:")
-        allWallets.forEach((w, i) => {
-          console.error(`[Resolve Recipient]   Wallet ${i + 1}: ${w.public_key} (updated: ${w.updated_at})`)
-        })
-        
-        // Return an error with details about which wallets were checked
-        return NextResponse.json(
-          { 
-            error: "The recipient's wallet doesn't exist on the Stellar network. They need to create and fund their wallet first.",
-            details: {
-              username: recipient,
-              totalWalletsInDatabase: allWallets.length,
-              walletsChecked: allWallets.map(w => ({
-                publicKey: w.public_key,
-                network: w.network,
-                updatedAt: w.updated_at,
-                createdAt: w.created_at
-              })),
-              network: stellarConfigForLog.network,
-              suggestion: "Please ask the recipient to create and fund their wallet with at least 1 XLM before sending payments."
-            }
-          },
-          { status: 404, headers: corsHeaders(request) }
-        )
+        wallet = {
+          public_key: mostRecent.public_key,
+          user_id: mostRecent.user_id,
+          created_at: mostRecent.created_at,
+          updated_at: mostRecent.updated_at,
+          network: mostRecent.network,
+        }
       }
     } else {
       // Fallback: query directly if allWallets wasn't populated
@@ -398,45 +369,6 @@ export async function POST(request: NextRequest) {
         { error: "Wallet lookup error. Please try again." },
         { status: 500, headers: corsHeaders(request) }
       )
-    }
-
-    // Final verification: confirm the selected wallet exists on the network
-    // (We already checked during selection, but verify one more time for logging)
-    try {
-      const { Horizon } = await import("@stellar/stellar-sdk")
-      const { getStellarConfig } = await import("@/lib/turnkey/config")
-      const stellarConfig = getStellarConfig()
-      const server = new Horizon.Server(
-        stellarConfig.horizonUrl,
-        { allowHttp: stellarConfig.network === "testnet" }
-      )
-
-      console.log("[Resolve Recipient] Final verification - wallet exists on Stellar network:", wallet.public_key.substring(0, 10) + "...")
-      const account = await server.loadAccount(wallet.public_key)
-      console.log("[Resolve Recipient] ✅ Wallet verified on network - account exists:", {
-        sequence: account.sequenceNumber(),
-        balances: account.balances.length,
-        hasXLM: account.balances.some((b: any) => b.asset_type === "native"),
-        hasUSDC: account.balances.some((b: any) => b.asset_code === "USDC")
-      })
-    } catch (networkError: any) {
-      const isNotFound = networkError?.response?.status === 404 || 
-                        networkError?.message?.includes("404") || 
-                        networkError?.message?.includes("Not Found") ||
-                        networkError?.constructor?.name === "NotFoundError"
-      
-      if (isNotFound) {
-        console.error("[Resolve Recipient] ❌ Selected wallet doesn't exist on network!", {
-          publicKey: wallet.public_key,
-          username: recipient,
-          profileId: profile.id
-        })
-        // This shouldn't happen since we checked during selection, but log it
-        console.error("[Resolve Recipient] This means all wallets for this user don't exist on the network")
-      } else {
-        // Other error (network issue, etc.) - log but don't fail
-        console.warn("[Resolve Recipient] ⚠️ Could not verify wallet on network (non-fatal):", networkError.message)
-      }
     }
 
     // Return the full public key (this is the actual wallet address)

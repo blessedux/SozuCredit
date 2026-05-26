@@ -15,9 +15,9 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.next()
   }
 
-  if (pathname === "/wallet") {
+  if (pathname === "/wallet" || pathname === "/home") {
     // Log immediately to verify this code path is being hit
-    console.log("[Middleware] ✅ /wallet route detected - ALLOWING immediately")
+    console.log(`[Middleware] ✅ ${pathname} route detected - ALLOWING immediately`)
     // Return immediately with a fresh NextResponse
     return NextResponse.next()
   }
@@ -54,6 +54,7 @@ export async function updateSession(request: NextRequest) {
   // CRITICAL: Check routes FIRST before any Supabase calls
   // This prevents unnecessary Supabase client creation for routes that don't need it
   const isWalletRoute = pathname === "/wallet"
+  const isHomeRoute = pathname === "/home"
   const isSdpRegisterRoute = pathname.startsWith("/sdp/register")
   const isSettingsRoute = pathname === "/settings"
   const isTestKeysRoute = pathname === "/test-keys"
@@ -71,9 +72,9 @@ export async function updateSession(request: NextRequest) {
 
   // Always allow wallet route FIRST - it handles its own auth via sessionStorage
   // Skip all Supabase checks for wallet route (this is a backup check)
-  if (isWalletRoute) {
+  if (isWalletRoute || isHomeRoute) {
     // Log in both dev and prod to verify it's being called
-    console.log("[Middleware] ✅ ALLOWING /wallet route immediately (handles own auth via sessionStorage)")
+    console.log(`[Middleware] ✅ ALLOWING ${pathname} route immediately (handles own auth via sessionStorage)`)
     // Return immediately - no Supabase client creation needed
     return supabaseResponse
   }
@@ -153,6 +154,7 @@ export async function updateSession(request: NextRequest) {
     !isAuthRoute &&
     request.nextUrl.pathname !== "/" &&
     !isWalletRoute &&
+    !isHomeRoute &&
     !isSdpRegisterRoute &&
     !isSettingsRoute &&
     !isLedgerRoute &&

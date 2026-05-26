@@ -235,69 +235,56 @@ export async function POST(request: NextRequest) {
       .eq("id", authData.user.id)
       .single()
 
+    // Always use service client for profile mutations — the anon client is subject
+    // to RLS which may deny writes when there is no active Supabase session
+    // (passkey-only auth never establishes a cookie session at this point).
+    const profileServiceClient = serviceClient // already declared above
+
     if (existingProfile) {
-      console.log("[Register] Profile exists (created by trigger)")
-      
-      // Check if the profile has the correct username
-      if (existingProfile.username !== username) {
-        console.warn("[Register] Profile username mismatch:", {
-          expected: username,
-          actual: existingProfile.username,
-          userId: authData.user.id
-        })
-        
-        // Username is immutable - if it doesn't match, this is a serious error
-        // The trigger should have set it correctly. If not, we can't change it
-        // because it might conflict with another user's username.
-        // Only update display_name if needed
-        if (existingProfile.username) {
-          console.log("[Register] Profile already has username, only updating display_name")
-          const { error: profileUpdateError } = await supabase
-            .from("profiles")
-            .update({ display_name: username })
-            .eq("id", authData.user.id)
-          
-          if (profileUpdateError) {
-            console.error("[Register] Error updating display_name:", profileUpdateError)
+      console.log("[Register] Profile exists (created by trigger), username:", existingProfile.username ?? "NULL")
+
+      if (!existingProfile.username) {
+        // Trigger ran but left username NULL — repair it now with service client
+        console.log("[Register] Profile has NULL username, repairing with service client")
+        const { error: repairErr } = await profileServiceClient
+          .from("profiles")
+          .update({ username, display_name: username })
+          .eq("id", authData.user.id)
+
+        if (repairErr) {
+          console.error("[Register] Error repairing username:", repairErr)
+          if (repairErr.code === "23505") {
+            return NextResponse.json(
+              {
+                error: "This Sozu tag is already taken. Please choose a different tag or log in with your existing account.",
+                usernameExists: true,
+              },
+              { status: 409, headers: corsHeaders(request) }
+            )
           }
+          // Non-fatal: log but continue — wallet creation proceeds; wallet-create route will re-attempt repair
         } else {
-          // Profile exists but has no username - this shouldn't happen, but try to set it
-          // Only if it doesn't conflict
-          console.log("[Register] Profile has no username, attempting to set it")
-          const { error: profileUpdateError } = await supabase
-            .from("profiles")
-            .update({ username, display_name: username })
-            .eq("id", authData.user.id)
-          
-          if (profileUpdateError) {
-            console.error("[Register] Error setting username:", profileUpdateError)
-            if (profileUpdateError.code === "23505") {
-              // Username is already taken - this is a critical error
-              return NextResponse.json(
-                { 
-                  error: "This Sozu tag is already taken. Please choose a different tag or log in with your existing account.",
-                  usernameExists: true
-                },
-                { status: 409, headers: corsHeaders(request) }
-              )
-            }
-          }
+          console.log("[Register] ✅ Username repaired:", username)
         }
-      } else {
-        // Username matches - just update display_name if needed
-        const { error: profileUpdateError } = await supabase
+      } else if (existingProfile.username !== username) {
+        // Trigger set a different username — only safe to update display_name
+        console.warn("[Register] Trigger set different username:", existingProfile.username, "expected:", username)
+        await profileServiceClient
           .from("profiles")
           .update({ display_name: username })
           .eq("id", authData.user.id)
-        
-        if (profileUpdateError) {
-          console.error("[Register] Error updating display_name:", profileUpdateError)
-        }
+      } else {
+        // Username matches — ensure display_name is in sync
+        await profileServiceClient
+          .from("profiles")
+          .update({ display_name: username })
+          .eq("id", authData.user.id)
+        console.log("[Register] ✅ Profile username already correct:", username)
       }
     } else {
-      // Profile doesn't exist - create it manually (trigger failed or didn't run)
-      console.log("[Register] Profile doesn't exist, creating manually")
-      const { error: profileError } = await supabase.from("profiles").insert({
+      // Profile doesn't exist — create it with service client (trigger failed or didn't run)
+      console.log("[Register] Profile doesn't exist, creating manually with service client")
+      const { error: profileError } = await profileServiceClient.from("profiles").insert({
         id: authData.user.id,
         username,
         display_name: username,
@@ -305,13 +292,12 @@ export async function POST(request: NextRequest) {
 
       if (profileError) {
         console.error("[Register] Error creating profile:", profileError)
-        // Check if it's a duplicate key error (trigger might have created it during insert)
         if (!profileError.code?.includes("23505") && !profileError.message?.includes("duplicate")) {
           return NextResponse.json(
-            { 
-              error: "Failed to create profile", 
+            {
+              error: "Failed to create profile",
               details: profileError.message,
-              code: profileError.code
+              code: profileError.code,
             },
             { status: 500, headers: corsHeaders(request) }
           )

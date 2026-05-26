@@ -148,7 +148,8 @@ const ProfileTab = memo(function ProfileTab({
       if (!res.ok) {
         setTagSaveError(data.error || "Failed to update tag")
       } else {
-        sessionStorage.setItem("dev_username", tag)
+        sessionStorage.setItem("dev_username_display", tag)
+        localStorage.setItem("sozu_username", tag)
         onTagUpdated(tag)
         setTagStatus("own")
         setTagMessage("This is your current tag")

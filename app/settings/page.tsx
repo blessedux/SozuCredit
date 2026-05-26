@@ -1,10 +1,9 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
+import { SozuTagCard } from "@/components/settings/sozu-tag-card"
 import {
-  ArrowLeft,
-  Settings,
   Trash2,
   AlertTriangle,
   Loader2,
@@ -34,6 +33,13 @@ import { Label } from "@/components/ui/label"
 
 export default function SettingsPage() {
   const router = useRouter()
+  const pathname = usePathname()
+  useEffect(() => {
+    if (pathname === "/settings") {
+      router.replace("/home?panel=settings")
+    }
+  }, [pathname, router])
+
   const [username, setUsername] = useState<string>("")
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState("")
@@ -439,26 +445,11 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-black/80 backdrop-blur-md border-b border-white/20 px-4 py-4">
-        <div className="max-w-2xl mx-auto flex items-center gap-4">
-          <button
-            onClick={() => router.back()}
-            className="p-2 rounded-full bg-white/10 border border-white/20 hover:bg-white/20 transition-colors"
-            aria-label="Go back"
-          >
-            <ArrowLeft className="w-5 h-5 text-white" />
-          </button>
-          <div className="flex items-center gap-2">
-            <Settings className="w-5 h-5 text-white" />
-            <h1 className="text-xl font-bold text-white">Settings</h1>
-          </div>
-        </div>
-      </div>
-
+    <div className="min-h-screen bg-transparent text-white">
       {/* Content */}
       <div className="max-w-2xl mx-auto px-4 py-8 space-y-8">
+        <SozuTagCard />
+
         {gmailFlash && (
           <Alert
             className={
@@ -485,7 +476,7 @@ export default function SettingsPage() {
           </Alert>
         )}
 
-        <Card className="border-white/20 bg-white/[0.03]">
+        <Card className="border-white/15 bg-black/55 backdrop-blur-xl">
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
               <Mail className="w-5 h-5" />
@@ -586,7 +577,7 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-white/20 bg-white/[0.03]">
+        <Card className="border-white/15 bg-black/55 backdrop-blur-xl">
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
               <Fingerprint className="w-5 h-5" />
@@ -775,7 +766,7 @@ export default function SettingsPage() {
         </Card>
 
         {/* Danger Zone */}
-        <Card className="border-red-500/50 bg-red-950/10">
+        <Card className="border-red-500/40 bg-red-950/40 backdrop-blur-xl">
           <CardHeader>
             <CardTitle className="text-red-400 flex items-center gap-2">
               <AlertTriangle className="w-5 h-5" />

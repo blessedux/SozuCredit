@@ -755,7 +755,7 @@ function LedgerTransactionsContent() {
 
           <div className="flex flex-col gap-6 lg:flex-row lg:items-stretch lg:gap-6">
             <div className="min-w-0 flex-1 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-lg border border-white/10 bg-black/20 p-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-lg border border-white/10 bg-black/60 p-3">
                 <div className="space-y-0.5">
                   <p className="text-[10px] uppercase tracking-wide text-emerald-300/80">Ingresos + reembolsos</p>
                   <p className="text-lg font-semibold tabular-nums text-emerald-100/95">
@@ -781,7 +781,7 @@ function LedgerTransactionsContent() {
               </div>
 
               {expenseSlicesForMonth.length === 0 ? (
-                <p className="text-sm text-white/45 py-4 text-center rounded-lg border border-white/10 bg-black/15">
+                <p className="text-sm text-white/45 py-4 text-center rounded-lg border border-white/10 bg-black/55">
                   Sin gastos clasificados en {vizPrimaryCurrency} este mes.
                 </p>
               ) : (

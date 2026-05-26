@@ -331,15 +331,73 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get user's wallet
+    // Get user's wallet — primary lookup by userId, fallback to sender public key
     console.log("[Payment API] Getting sender wallet for userId:", userId)
-    const wallet = await getStellarWallet(userId, true)
+    let wallet = await getStellarWallet(userId, true)
+
     if (!wallet) {
-      console.error("[Payment API] ❌ Wallet not found for userId:", userId)
-      return NextResponse.json(
-        { error: "Wallet not found" },
-        { status: 404, headers: corsHeaders(request) }
-      )
+      console.warn("[Payment API] ⚠️ Wallet not found by userId — trying fallback by sender public key")
+
+      // Fallback: if the client sent a valid sender public key, look it up directly
+      const senderFromBody = typeof body?.sender === "string" ? body.sender.trim() : null
+      const isValidSender = senderFromBody && /^G[A-Z0-9]{55}$/.test(senderFromBody)
+
+      if (isValidSender) {
+        // Try to find any wallet with this public key in the DB
+        const { createClient: createSvcClient } = await import("@supabase/supabase-js")
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+        if (supabaseUrl && supabaseServiceKey) {
+          const svc = createSvcClient(supabaseUrl, supabaseServiceKey)
+          const { data: walletByKey } = await svc
+            .from("stellar_wallets")
+            .select("*")
+            .eq("public_key", senderFromBody)
+            .maybeSingle()
+
+          if (walletByKey) {
+            console.log("[Payment API] ✅ Found wallet by public key fallback:", senderFromBody.substring(0, 10) + "...")
+            wallet = {
+              id: walletByKey.id,
+              userId: walletByKey.user_id,
+              turnkeyWalletId: walletByKey.turnkey_wallet_id ?? null,
+              publicKey: walletByKey.public_key,
+              network: walletByKey.network,
+              createdAt: walletByKey.created_at,
+              updatedAt: walletByKey.updated_at,
+              previousUsdcBalance: walletByKey.previous_usdc_balance ?? null,
+            }
+          } else {
+            // Key not in DB — construct a synthetic wallet object from the sender address
+            // The Stellar account load will validate it actually exists on-chain
+            console.warn("[Payment API] ⚠️ Public key not in DB, using sender address directly (will validate on-chain)")
+            const { getStellarConfig: getConfig } = await import("@/lib/turnkey/config")
+            const cfg = getConfig()
+            wallet = {
+              id: "synthetic",
+              userId,
+              turnkeyWalletId: null,
+              publicKey: senderFromBody,
+              network: cfg.network,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              previousUsdcBalance: null,
+            }
+          }
+        }
+      }
+
+      if (!wallet) {
+        console.error("[Payment API] ❌ Cannot identify sender wallet for userId:", userId, "sender:", senderFromBody)
+        return NextResponse.json(
+          {
+            error: "Wallet not found. Your session may be stale — please log out and log back in.",
+            code: "WALLET_NOT_FOUND",
+          },
+          { status: 404, headers: corsHeaders(request) }
+        )
+      }
     }
 
     console.log("[Payment API] ✅ Sender wallet retrieved from database:", {

@@ -62,6 +62,63 @@ export async function POST(request: Request) {
       }
       const { createClient: createServiceClient } = await import("@supabase/supabase-js")
       const serviceClient = createServiceClient(supabaseUrl, supabaseServiceKey) as any
+
+      // ── Profile username guard ─────────────────────────────────────────────
+      // If the DB trigger handle_new_user() failed to set profiles.username,
+      // the user won't be resolvable by tag. Fix it here before the wallet is
+      // usable so every activated wallet is immediately payable.
+      try {
+        const { data: profile } = await serviceClient
+          .from("profiles")
+          .select("username")
+          .eq("id", userId)
+          .maybeSingle()
+
+        if (!profile?.username) {
+          console.warn("[Stellar Wallet API] Profile has no username — attempting repair from auth metadata")
+          // Fetch user metadata from Supabase Auth
+          const { data: authUser } = await serviceClient.auth.admin.getUserById(userId)
+          const metaUsername: string | undefined =
+            authUser?.user?.user_metadata?.username ||
+            authUser?.user?.user_metadata?.name
+
+          if (metaUsername && typeof metaUsername === "string" && metaUsername.trim().length >= 3) {
+            const cleanTag = metaUsername.trim()
+            // Only set if not already taken by someone else
+            const { data: conflict } = await serviceClient
+              .from("profiles")
+              .select("id")
+              .eq("username", cleanTag)
+              .neq("id", userId)
+              .maybeSingle()
+
+            if (!conflict) {
+              const { error: repairErr } = await serviceClient
+                .from("profiles")
+                .upsert(
+                  { id: userId, username: cleanTag, display_name: cleanTag },
+                  { onConflict: "id" }
+                )
+              if (repairErr) {
+                console.error("[Stellar Wallet API] Profile repair failed:", repairErr.message)
+              } else {
+                console.log("[Stellar Wallet API] ✅ Profile username repaired to:", cleanTag)
+              }
+            } else {
+              console.warn("[Stellar Wallet API] Cannot repair — username already taken by another user:", cleanTag)
+            }
+          } else {
+            console.warn("[Stellar Wallet API] No usable username in auth metadata for userId:", userId)
+          }
+        } else {
+          console.log("[Stellar Wallet API] Profile username OK:", profile.username)
+        }
+      } catch (profileCheckErr: any) {
+        // Non-fatal — wallet registration still proceeds
+        console.error("[Stellar Wallet API] Profile username check error (non-fatal):", profileCheckErr?.message)
+      }
+      // ──────────────────────────────────────────────────────────────────────
+
       const { data: updated, error } = await serviceClient
         .from("stellar_wallets")
         .upsert(

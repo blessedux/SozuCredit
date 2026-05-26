@@ -21,7 +21,7 @@ export default function LedgerLayout({ children }: { children: React.ReactNode }
   const { play: hapticNav } = useAppHaptics()
 
   return (
-    <div className="relative z-10 min-h-screen bg-black text-white pb-28">
+    <div className="relative z-10 min-h-screen bg-transparent text-white pb-28">
       <header className="sticky top-0 z-20 border-b border-white/10 bg-black/40 backdrop-blur-md">
         <div className={`${ledgerMainWidth} flex items-center gap-3 pb-3 pt-4`}>
           <Link
@@ -47,7 +47,7 @@ export default function LedgerLayout({ children }: { children: React.ReactNode }
                 prefetch
                 onClick={() => hapticNav()}
                 className={`flex-1 flex flex-col items-center gap-0.5 py-2 rounded-lg text-xs font-medium transition-colors ${
-                  active ? "bg-white/15 text-white border border-white/20" : "text-white/50 hover:text-white/80"
+                  active ? "bg-white/15 text-white border border-white/20" : "text-white/80 hover:text-white"
                 }`}
               >
                 <Icon className="w-4 h-4" />

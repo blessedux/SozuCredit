@@ -31,7 +31,7 @@ function AuthPageContent() {
   const redirectingRef = useRef(false)
 
   /** SDP onboarding: middleware sends unauthenticated users to /auth?sdpInvite=1 */
-  const postAuthPath = searchParams.get("sdpInvite") === "1" ? "/sdp/register" : "/wallet"
+  const postAuthPath = searchParams.get("sdpInvite") === "1" ? "/sdp/register" : "/home"
 
   const finalizePasskeyLoginSuccess = useCallback(
     async (userId: string, username: string | undefined, credential: { id: string }) => {
@@ -590,6 +590,11 @@ function AuthPageContent() {
 
   return (
     <div className="relative flex h-screen w-full flex-col overflow-hidden">
+      {/* SOZU wordmark — top of screen, matches Passkey caption style */}
+      <p className="pointer-events-none absolute top-[max(1.1rem,env(safe-area-inset-top))] left-0 right-0 z-[3] text-center text-[10px] font-extralight tracking-[0.12em] text-white">
+        SOZU
+      </p>
+
       {/* Logo and Version - Always centered, above everything (only visible when locked) */}
       <div className={`absolute inset-0 z-[2] flex flex-col items-center justify-center pointer-events-none transition-opacity duration-700 ${isAuthenticated
         ? "opacity-0"

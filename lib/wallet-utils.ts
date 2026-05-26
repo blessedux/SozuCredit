@@ -74,10 +74,27 @@ export async function copyToClipboard(text: string): Promise<boolean> {
   }
 }
 
+/** UUID v4 pattern — 8-4-4-4-12 hex groups */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 /**
- * Get user ID from session storage
+ * Get user ID from session storage.
+ *
+ * Guards against a known bug where the tag string (e.g. "alice3") was
+ * accidentally stored in dev_username instead of the UUID. If the stored
+ * value is not a UUID, returns null so callers surface an auth error
+ * instead of silently sending the wrong id to API routes.
  */
 export function getUserId(): string | null {
   if (typeof window === "undefined") return null
-  return sessionStorage.getItem("dev_username")
+  const raw = sessionStorage.getItem("dev_username")
+  if (!raw) return null
+  if (!UUID_RE.test(raw)) {
+    console.warn(
+      "[getUserId] dev_username is not a UUID — session may be stale. Value:",
+      raw.substring(0, 20)
+    )
+    return null // Caller will treat this as unauthenticated
+  }
+  return raw
 }

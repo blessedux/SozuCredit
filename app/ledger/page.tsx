@@ -576,7 +576,7 @@ export default function LedgerHomePage() {
                       <p className="text-[11px] text-white/45 leading-relaxed">
                         {grossExpenseBasisCaption(data.burnRunway)}
                       </p>
-                      <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 space-y-1">
+                      <div className="rounded-lg border border-white/10 bg-black/60 px-3 py-2 space-y-1">
                         <p className="text-[10px] uppercase tracking-wider text-white/38">Este mes (proyección)</p>
                         <p
                           className={`text-base font-semibold tabular-nums ${
@@ -1188,7 +1188,7 @@ export default function LedgerHomePage() {
                   El valor principal de la tarjeta de Burn Rate es <strong className="text-white">gasto bruto mensual promedio</strong>. La quema neta se calcula aparte como{" "}
                   <strong className="text-white">gasto - ingreso</strong> (minimo 0).
                 </p>
-                <div className="rounded-lg border border-white/10 bg-black/30 p-3 space-y-1.5 text-[13px]">
+                <div className="rounded-lg border border-white/10 bg-black/65 p-3 space-y-1.5 text-[13px]">
                   <p className="text-white/45">Ventana de calculo</p>
                   <p className="text-white/90">{grossExpenseBasisCaption(burnRunway)}</p>
                   <p className="text-white/45">{burnRunwayBasisCaption(burnRunway)}</p>
@@ -1239,7 +1239,7 @@ export default function LedgerHomePage() {
                 <p className="text-white/75 leading-relaxed">
                   El runway usa <strong className="text-white">recursos disponibles</strong> divididos por tu <strong className="text-white">gasto bruto mensual promedio</strong>.
                 </p>
-                <div className="rounded-lg border border-white/10 bg-black/30 p-3 space-y-1.5 text-[13px]">
+                <div className="rounded-lg border border-white/10 bg-black/65 p-3 space-y-1.5 text-[13px]">
                   <p className="text-white/45">Formula base</p>
                   <p className="text-white/90">
                     Runway = (liquidez + ingreso bruto mensual promedio) / gasto bruto mensual promedio
@@ -1267,7 +1267,7 @@ export default function LedgerHomePage() {
                     value={burnRunway.runwayMonths == null ? "—" : runwayMonthsHuman(burnRunway.runwayMonths)}
                   />
                 </div>
-                <div className="rounded-lg border border-white/10 bg-black/30 p-3 space-y-2">
+                <div className="rounded-lg border border-white/10 bg-black/65 p-3 space-y-2">
                   <CalcLine
                     label="Wallet USDC (original)"
                     value={burnRunway.walletUsdc == null ? "—" : `${burnRunway.walletUsdc.toFixed(2)} USDC`}
