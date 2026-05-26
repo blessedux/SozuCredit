@@ -11,7 +11,16 @@ import {
   isWithinInterval,
 } from "date-fns"
 import { es } from "date-fns/locale"
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Plus, RefreshCw, Search } from "lucide-react"
+import {
+  ArchiveRestore,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  RefreshCw,
+  Search,
+} from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -46,6 +55,13 @@ import { LedgerCategoryCombobox } from "@/components/ledger/ledger-category-comb
 import { LedgerTransactionsTableSkeleton } from "@/components/ledger/ledger-transactions-table-skeleton"
 import { ExpenseBreakdownDonut, type DonutDatum } from "@/components/ledger/expense-breakdown-donut"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   buildExpenseCategoryBreakdown,
   buildIncomeCategoryBreakdown,
@@ -142,6 +158,14 @@ function LedgerTransactionsContent() {
   const [tableCurrencyFilter, setTableCurrencyFilter] = useState("all")
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([])
   const [bulkDismissing, setBulkDismissing] = useState(false)
+  const [bulkCategoryPopoverOpen, setBulkCategoryPopoverOpen] = useState(false)
+  const [bulkCategoryValue, setBulkCategoryValue] = useState("unknown")
+  const [bulkCategoryApplying, setBulkCategoryApplying] = useState(false)
+  const [dismissedDialogOpen, setDismissedDialogOpen] = useState(false)
+  const [dismissedRows, setDismissedRows] = useState<Row[]>([])
+  const [dismissedLoading, setDismissedLoading] = useState(false)
+  const [dismissedDialogError, setDismissedDialogError] = useState<string | null>(null)
+  const [restoringDismissedId, setRestoringDismissedId] = useState<string | null>(null)
   const [inlineEditCategoryRowId, setInlineEditCategoryRowId] = useState<string | null>(null)
   const [inlineEditCategoryValue, setInlineEditCategoryValue] = useState<string>("unknown")
   const [inlineEditCategorySavingId, setInlineEditCategorySavingId] = useState<string | null>(null)
@@ -340,6 +364,30 @@ function LedgerTransactionsContent() {
   const allVisibleSelected = filteredRows.length > 0 && selectedVisibleCount === filteredRows.length
   const someVisibleSelected = selectedVisibleCount > 0 && selectedVisibleCount < filteredRows.length
 
+  const selectedRows = useMemo(
+    () => selectedRowIds.map((id) => rows.find((r) => r.id === id)).filter((r): r is Row => Boolean(r)),
+    [rows, selectedRowIds]
+  )
+
+  const bulkCategoryChoices = useMemo(() => {
+    if (selectedRows.length === 0) return categories
+    const anyIncome = selectedRows.some((r) => r.type === "income" || r.type === "refund")
+    const anyOther = selectedRows.some((r) => r.type !== "income" && r.type !== "refund")
+    if (anyIncome && !anyOther) return incomeCategories
+    if (!anyIncome && anyOther) return categories
+    return [...new Set([...categories, ...incomeCategories])]
+  }, [selectedRows, categories, incomeCategories])
+
+  useEffect(() => {
+    if (!bulkCategoryPopoverOpen || selectedRows.length === 0) return
+    const first = selectedRows[0]
+    setBulkCategoryValue(bulkCategoryChoices.includes(first.category) ? first.category : "unknown")
+  }, [bulkCategoryPopoverOpen, selectedRows, bulkCategoryChoices])
+
+  useEffect(() => {
+    if (selectedRowIds.length === 0) setBulkCategoryPopoverOpen(false)
+  }, [selectedRowIds.length])
+
   const monthRowsForViz = useMemo(() => {
     const start = viewMonth
     const end = endOfMonth(viewMonth)
@@ -502,6 +550,99 @@ function LedgerTransactionsContent() {
       }
     } finally {
       setBulkDismissing(false)
+    }
+  }
+
+  async function applyBulkCategory() {
+    const nextCategory = bulkCategoryValue.trim().toLowerCase()
+    if (selectedRowIds.length === 0 || bulkCategoryApplying || !nextCategory) return
+    setBulkCategoryApplying(true)
+    setError(null)
+    const targetIds = [...selectedRowIds]
+    const prevById = new Map(selectedRows.map((r) => [r.id, r.category]))
+    for (const id of targetIds) mergeRowPatch(id, { category: nextCategory })
+    try {
+      const outcomes = await Promise.all(
+        targetIds.map(async (id) => {
+          try {
+            const res = await fetch(`/api/ledger/transactions/${id}/update`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", ...ledgerUserHeaders() },
+              body: JSON.stringify({ category: nextCategory }),
+            })
+            const j = (await res.json().catch(() => ({}))) as { error?: string; category?: string }
+            if (res.ok) return { id, ok: true as const, category: String(j.category ?? nextCategory) }
+            return { id, ok: false as const, error: typeof j.error === "string" ? j.error : "No se pudo guardar" }
+          } catch {
+            return { id, ok: false as const, error: "Red no disponible" }
+          }
+        })
+      )
+      for (const o of outcomes) {
+        if (o.ok) mergeRowPatch(o.id, { category: o.category })
+        else mergeRowPatch(o.id, { category: prevById.get(o.id) ?? "unknown" })
+      }
+      const failed = outcomes.filter((o) => !o.ok)
+      const succeededIds = outcomes.filter((o) => o.ok).map((o) => o.id)
+      if (succeededIds.length > 0) {
+        const succ = new Set(succeededIds)
+        setSelectedRowIds((prev) => prev.filter((id) => !succ.has(id)))
+      }
+      if (failed.length > 0) {
+        setError(
+          `Categoría aplicada a ${outcomes.length - failed.length} movimiento${outcomes.length - failed.length === 1 ? "" : "s"}; ${failed.length} fallaron.`
+        )
+      }
+      if (failed.length === 0) setBulkCategoryPopoverOpen(false)
+    } finally {
+      setBulkCategoryApplying(false)
+    }
+  }
+
+  async function loadDismissedForDialog() {
+    setDismissedLoading(true)
+    setDismissedDialogError(null)
+    try {
+      const res = await fetch("/api/ledger/transactions?limit=500&dismissedOnly=1", {
+        headers: ledgerUserHeaders(),
+        cache: "no-store",
+      })
+      const json = (await res.json().catch(() => ({}))) as { error?: string; transactions?: Row[] }
+      if (!res.ok) {
+        setDismissedDialogError(typeof json.error === "string" ? json.error : "No se pudo cargar")
+        setDismissedRows([])
+        return
+      }
+      setDismissedRows(Array.isArray(json.transactions) ? json.transactions : [])
+    } catch {
+      setDismissedDialogError("Red no disponible")
+      setDismissedRows([])
+    } finally {
+      setDismissedLoading(false)
+    }
+  }
+
+  async function restoreDismissedTransaction(id: string) {
+    if (restoringDismissedId) return
+    setRestoringDismissedId(id)
+    setDismissedDialogError(null)
+    try {
+      const res = await fetch(`/api/ledger/transactions/${id}/update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...ledgerUserHeaders() },
+        body: JSON.stringify({ dismissed: false }),
+      })
+      const j = (await res.json().catch(() => ({}))) as { error?: string }
+      if (!res.ok) {
+        setDismissedDialogError(typeof j.error === "string" ? j.error : "No se pudo restaurar")
+        return
+      }
+      setDismissedRows((prev) => prev.filter((r) => r.id !== id))
+      await load()
+    } catch {
+      setDismissedDialogError("Red no disponible")
+    } finally {
+      setRestoringDismissedId(null)
     }
   }
 
@@ -946,6 +1087,22 @@ function LedgerTransactionsContent() {
                 ))}
               </SelectContent>
             </Select>
+            {!loading && rows.length > 0 ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0 text-white/38 hover:bg-white/10 hover:text-white/75"
+                title="Movimientos ocultos («no es gasto»)"
+                aria-label="Ver movimientos ocultos como no gasto"
+                onClick={() => {
+                  setDismissedDialogOpen(true)
+                  void loadDismissedForDialog()
+                }}
+              >
+                <ArchiveRestore className="size-3.5" aria-hidden />
+              </Button>
+            ) : null}
           </div>
         </div>
 
@@ -1036,32 +1193,72 @@ function LedgerTransactionsContent() {
         ) : null}
 
         {selectedRowIds.length > 0 ? (
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-            <p className="text-xs text-amber-100/90">
+          <div className="mb-3 flex flex-col gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3">
+            <p className="text-xs text-white/65 sm:shrink-0">
               {selectedRowIds.length} seleccionado{selectedRowIds.length === 1 ? "" : "s"}
             </p>
-            <div className="flex items-center gap-2">
+            <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex-1 sm:max-w-md">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                className="border-amber-400/40 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25"
-                disabled={bulkDismissing}
+                className="h-8 min-w-0 border-white/12 bg-transparent px-2 text-[11px] font-normal text-white/60 hover:bg-white/[0.06] hover:text-white/85"
+                disabled={bulkDismissing || bulkCategoryApplying}
                 onClick={() => void dismissSelectedAsNonExpense()}
               >
-                {bulkDismissing ? "Ocultando…" : "No es gasto (ocultar seleccionados)"}
+                {bulkDismissing ? "Ocultando…" : "No es gasto"}
               </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-white/60 hover:text-white hover:bg-white/10"
-                disabled={bulkDismissing}
-                onClick={() => setSelectedRowIds([])}
-              >
-                Limpiar selección
-              </Button>
+              <Popover open={bulkCategoryPopoverOpen} onOpenChange={setBulkCategoryPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 min-w-0 border-white/22 bg-white/[0.06] px-2 text-[11px] font-medium text-white/90 hover:bg-white/12"
+                    disabled={bulkDismissing || bulkCategoryApplying}
+                  >
+                    {bulkCategoryApplying ? "Guardando…" : "Categoría"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="end"
+                  className="z-[240] w-[min(calc(100vw-1.5rem),18rem)] border-white/15 bg-neutral-950 p-3 text-white shadow-xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <p className="mb-2 text-[11px] text-white/50">
+                    Aplicar a {selectedRowIds.length} movimiento{selectedRowIds.length === 1 ? "" : "s"}
+                  </p>
+                  <LedgerCategoryCombobox
+                    value={bulkCategoryValue}
+                    onValueChange={setBulkCategoryValue}
+                    categories={bulkCategoryChoices}
+                    disabled={bulkCategoryApplying}
+                    triggerClassName="h-9 w-full border-white/20"
+                    contentClassName="z-[250]"
+                    placeholder="Elegí categoría…"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="mt-2 w-full bg-white text-black hover:bg-white/90"
+                    disabled={bulkCategoryApplying}
+                    onClick={() => void applyBulkCategory()}
+                  >
+                    {bulkCategoryApplying ? "Aplicando…" : "Aplicar"}
+                  </Button>
+                </PopoverContent>
+              </Popover>
             </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 shrink-0 self-start text-[11px] text-white/45 hover:bg-white/10 hover:text-white/80 sm:self-auto sm:ml-auto"
+              disabled={bulkDismissing || bulkCategoryApplying}
+              onClick={() => setSelectedRowIds([])}
+            >
+              Limpiar selección
+            </Button>
           </div>
         ) : null}
 
@@ -1284,6 +1481,63 @@ function LedgerTransactionsContent() {
           )}
         </div>
       </div>
+
+      <Dialog
+        open={dismissedDialogOpen}
+        onOpenChange={(open) => {
+          setDismissedDialogOpen(open)
+          if (!open) {
+            setDismissedDialogError(null)
+            setDismissedRows([])
+          }
+        }}
+      >
+        <DialogContent
+          className="max-h-[min(85vh,560px)] overflow-hidden border-white/15 bg-neutral-950 text-white sm:max-w-lg"
+          showCloseButton
+        >
+          <DialogHeader>
+            <DialogTitle className="text-white">Ocultos como «no es gasto»</DialogTitle>
+            <DialogDescription className="text-white/50">
+              Movimientos que sacaste del listado. Podés restaurarlos si fue un error.
+            </DialogDescription>
+          </DialogHeader>
+          {dismissedLoading ? (
+            <p className="py-6 text-center text-sm text-white/50">Cargando…</p>
+          ) : dismissedDialogError ? (
+            <p className="text-sm text-red-300/90">{dismissedDialogError}</p>
+          ) : dismissedRows.length === 0 ? (
+            <p className="py-6 text-center text-sm text-white/45">No hay movimientos ocultos.</p>
+          ) : (
+            <ul className="max-h-[min(55vh,360px)] space-y-2 overflow-y-auto pr-1">
+              {dismissedRows.map((r) => (
+                <li
+                  key={r.id}
+                  className="flex items-start justify-between gap-3 rounded-md border border-white/10 bg-white/[0.03] px-2.5 py-2 text-xs"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium text-white/90">{r.merchant ?? "—"}</p>
+                    <p className="text-white/45">
+                      {formatLedgerTxTableMoment(r.date, r.source)} · {Number(r.amount).toLocaleString("es-CL")}{" "}
+                      {r.currency}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 shrink-0 border-white/20 px-2 text-[11px] text-white/80 hover:bg-white/10"
+                    disabled={restoringDismissedId === r.id}
+                    onClick={() => void restoreDismissedTransaction(r.id)}
+                  >
+                    {restoringDismissedId === r.id ? "…" : "Restaurar"}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <LedgerTransactionEditDialog
         open={detailRow !== null}

@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
+import { hasSupabaseAuthCookies } from "@/lib/supabase/authCookies"
 
 export async function updateSession(request: NextRequest) {
   // CRITICAL: Check for allowed routes at the VERY START - before creating NextResponse
@@ -18,6 +19,11 @@ export async function updateSession(request: NextRequest) {
     // Log immediately to verify this code path is being hit
     console.log("[Middleware] ✅ /wallet route detected - ALLOWING immediately")
     // Return immediately with a fresh NextResponse
+    return NextResponse.next()
+  }
+
+  /** SDP disbursement UI uses sessionStorage + passkeys like /wallet; APIs enforce auth. */
+  if (pathname.startsWith("/sdp/register")) {
     return NextResponse.next()
   }
 
@@ -48,6 +54,7 @@ export async function updateSession(request: NextRequest) {
   // CRITICAL: Check routes FIRST before any Supabase calls
   // This prevents unnecessary Supabase client creation for routes that don't need it
   const isWalletRoute = pathname === "/wallet"
+  const isSdpRegisterRoute = pathname.startsWith("/sdp/register")
   const isSettingsRoute = pathname === "/settings"
   const isTestKeysRoute = pathname === "/test-keys"
   const isCityRoute = pathname.startsWith("/city")
@@ -68,6 +75,10 @@ export async function updateSession(request: NextRequest) {
     // Log in both dev and prod to verify it's being called
     console.log("[Middleware] ✅ ALLOWING /wallet route immediately (handles own auth via sessionStorage)")
     // Return immediately - no Supabase client creation needed
+    return supabaseResponse
+  }
+
+  if (isSdpRegisterRoute) {
     return supabaseResponse
   }
 
@@ -136,12 +147,13 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Redirect to login if not authenticated and not on auth pages, wallet, settings, ledger, test-keys, city, or tracker
+  // Redirect to login if not authenticated and not on auth pages, wallet, settings, ledger, test-keys, city, tracker, or sdp/register
   if (
     !user &&
     !isAuthRoute &&
     request.nextUrl.pathname !== "/" &&
     !isWalletRoute &&
+    !isSdpRegisterRoute &&
     !isSettingsRoute &&
     !isLedgerRoute &&
     !isTestKeysRoute &&
@@ -159,12 +171,17 @@ export async function updateSession(request: NextRequest) {
   if (user && isAuthRoute) {
     // Check if this is likely a sessionStorage-only auth (no Supabase session cookie)
     // If so, let the client handle the redirect to avoid refresh
-    const hasSessionCookie = request.cookies.has("sb-access-token") || request.cookies.has("sb-refresh-token")
+    const hasSessionCookie = hasSupabaseAuthCookies(request)
 
     if (hasSessionCookie) {
       // We have a Supabase session cookie, safe to redirect server-side
       const url = request.nextUrl.clone()
-      url.pathname = "/wallet"
+      if (request.nextUrl.searchParams.get("sdpInvite") === "1") {
+        url.pathname = "/sdp/register"
+        url.searchParams.delete("sdpInvite")
+      } else {
+        url.pathname = "/wallet"
+      }
       return NextResponse.redirect(url)
     } else {
       // No Supabase session cookie - likely using sessionStorage auth

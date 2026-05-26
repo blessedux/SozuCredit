@@ -47,6 +47,8 @@ export async function GET(request: Request) {
   const chartWindow: LedgerChartWindow | undefined =
     rawWin === "month" || rawWin === "week" || rawWin === "day" ? rawWin : undefined
 
+  const dismissedOnly = searchParams.get("dismissedOnly") === "1"
+
   let q = ctx.db
     .from("ledger_transactions")
     .select(
@@ -56,7 +58,12 @@ export async function GET(request: Request) {
        ledger_vaults ( id, name )`
     )
     .eq("user_id", ctx.userId)
-    .is("dismissed_at", null)
+
+  if (dismissedOnly) {
+    q = q.not("dismissed_at", "is", null)
+  } else {
+    q = q.is("dismissed_at", null)
+  }
 
   if (category) q = q.eq("category", category)
 

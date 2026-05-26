@@ -30,6 +30,9 @@ function AuthPageContent() {
   const searchParams = useSearchParams()
   const redirectingRef = useRef(false)
 
+  /** SDP onboarding: middleware sends unauthenticated users to /auth?sdpInvite=1 */
+  const postAuthPath = searchParams.get("sdpInvite") === "1" ? "/sdp/register" : "/wallet"
+
   const finalizePasskeyLoginSuccess = useCallback(
     async (userId: string, username: string | undefined, credential: { id: string }) => {
       if (username && username !== "" && username !== "user") {
@@ -54,9 +57,9 @@ function AuthPageContent() {
       setIsAuthenticating(false)
       redirectingRef.current = true
       setIsExiting(true)
-      setTimeout(() => router.push("/wallet"), 300)
+      setTimeout(() => router.push(postAuthPath), 300)
     },
-    [router]
+    [router, postAuthPath]
   )
 
   const finalizePinLoginSuccess = useCallback(
@@ -85,9 +88,9 @@ function AuthPageContent() {
       setIsAuthenticating(false)
       redirectingRef.current = true
       setIsExiting(true)
-      setTimeout(() => router.push("/wallet"), 300)
+      setTimeout(() => router.push(postAuthPath), 300)
     },
-    [router]
+    [router, postAuthPath]
   )
 
   const attemptLoginWithTag = useCallback(
@@ -506,14 +509,14 @@ function AuthPageContent() {
             return // Don't redirect if we don't have a userId
           }
 
-          console.log("[Auth] Executing redirect to /wallet after registration")
+          console.log("[Auth] Executing redirect after registration:", postAuthPath)
 
           // Use router.push with replace to prevent back button issues
           // Don't use window.location.href as it causes hard refresh
-          console.log("[Auth] Attempting router.push('/wallet')...")
+          console.log("[Auth] Attempting router.push after registration...")
           try {
             // Use replace: true to prevent adding to history and ensure clean navigation
-            router.push("/wallet")
+            router.push(postAuthPath)
             // Give router time to navigate - Next.js router.push is async
             // Don't check pathname immediately as it may not have updated yet
             console.log("[Auth] Router.push called, navigation in progress...")
@@ -521,7 +524,7 @@ function AuthPageContent() {
             console.error("[Auth] Router.push error:", routerError)
             // Only use window.location as absolute last resort, and log it
             console.warn("[Auth] Router.push failed, using window.location as fallback (this will cause refresh)")
-            window.location.href = "/wallet"
+            window.location.href = postAuthPath
           }
         }, 300) // Wait 300ms for fade-out animation
 
@@ -572,8 +575,8 @@ function AuthPageContent() {
         if (isAuth) {
           console.log("[Auth] Found auth state after error, redirecting anyway...")
           redirectingRef.current = true
-          console.log("[Auth] Executing error recovery redirect to /wallet via router")
-          router.push("/wallet")
+          console.log("[Auth] Executing error recovery redirect via router:", postAuthPath)
+          router.push(postAuthPath)
           return
         }
       }
@@ -586,7 +589,7 @@ function AuthPageContent() {
   }
 
   return (
-    <div className="relative flex h-screen w-full flex-col overflow-hidden bg-black">
+    <div className="relative flex h-screen w-full flex-col overflow-hidden">
       {/* Logo and Version - Always centered, above everything (only visible when locked) */}
       <div className={`absolute inset-0 z-[2] flex flex-col items-center justify-center pointer-events-none transition-opacity duration-700 ${isAuthenticated
         ? "opacity-0"
@@ -605,7 +608,7 @@ function AuthPageContent() {
       </div>
 
       {/* Main Content Area - Shows skeleton UI after authentication */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="relative z-[1] flex-1 overflow-y-auto">
         {isAuthenticated && (
           <div className="z-10">
             <WalletSkeleton isExiting={isExiting} />
@@ -648,7 +651,7 @@ function AuthPageContent() {
             )}
           </AnimatePresence>
         </Button>
-        <p className="max-w-sm px-2 text-center text-[10px] font-extralight tracking-[0.12em] text-white/35">
+        <p className="max-w-sm px-2 text-center text-[10px] font-extralight tracking-[0.12em] text-white">
           Passkey on this device
         </p>
       </div>

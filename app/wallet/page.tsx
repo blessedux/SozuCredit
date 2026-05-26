@@ -293,7 +293,7 @@ export default function WalletPage() {
     const t = getWalletTexts("es")
     return (
       <WalletErrorBoundary>
-        <div className="relative h-screen w-full overflow-hidden bg-black">
+        <div className="relative h-screen w-full overflow-hidden">
           <div className="relative z-10 min-h-screen flex items-center justify-center">
             <div className="text-center">
               <p className="text-red-400">{t.somethingWentWrong}: {error}</p>
@@ -306,7 +306,7 @@ export default function WalletPage() {
 
   return (
     <WalletErrorBoundary>
-      <div className="relative h-screen w-full overflow-hidden bg-black">
+      <div className="relative h-screen w-full overflow-hidden">
         {(isLoading || isBalanceLoading) ? (
           <div className="relative z-10 h-full">
             <WalletSkeleton />

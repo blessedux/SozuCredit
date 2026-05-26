@@ -70,6 +70,8 @@ export function useWalletData() {
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(false)
   const [addressToTagMap, setAddressToTagMap] = useState<Record<string, string>>({})
   const hasAttemptedWalletRegisterRef = useRef(false)
+  /** One-shot client bootstrap: avoids Strict Mode double-fetch and dependency churn loops. */
+  const walletBootstrapDoneRef = useRef(false)
 
   // LRU cache for address-to-tag mapping (limit to 100 entries)
   const updateAddressToTagMap = useCallback((address: string, tag: string) => {
@@ -400,6 +402,8 @@ export function useWalletData() {
               if (!clientPublicKey) {
                 console.warn("[Wallet] No client-derived public key available; skipping server registration.")
                 setWalletAddress("")
+                setIsBalanceLoading(false)
+                void fetchDefindexBalance(userId)
                 return
               }
               const createResponse = await fetch("/api/wallet/stellar/create", {
@@ -429,6 +433,8 @@ export function useWalletData() {
               if (createResponse.status === 400) {
                 console.log("[Wallet] Wallet must be created client-side (sign in with passkey or use Create wallet)")
                 setWalletAddress("")
+                setIsBalanceLoading(false)
+                void fetchDefindexBalance(userId)
                 return
               }
             } catch (createError) {
@@ -442,11 +448,17 @@ export function useWalletData() {
             if (sessionPublicKey) {
               console.log("[Wallet] Falling back to session public key (DB not yet synced).")
               setWalletAddress(sessionPublicKey)
+              fetchXLMBalance(sessionPublicKey, userId)
               fetchWalletUSDCBalance(sessionPublicKey)
               fetchTransactionHistory(sessionPublicKey)
+              void fetchDefindexBalance(userId)
+              fetchAutoDepositStatus(userId)
+              void fetchAPY(userId)
               return
             }
             setWalletAddress("")
+            setIsBalanceLoading(false)
+            void fetchDefindexBalance(userId)
           }
         }
       } else if (walletAddressResponse.status === 404) {
@@ -456,6 +468,8 @@ export function useWalletData() {
             hasAttemptedWalletRegisterRef.current = true
             if (!clientPublicKey) {
               setWalletAddress("")
+              setIsBalanceLoading(false)
+              void fetchDefindexBalance(userId)
               return
             }
             const createResponse = await fetch("/api/wallet/stellar/create", {
@@ -477,11 +491,14 @@ export function useWalletData() {
                 }
                 fetchXLMBalance(createData.publicKey, userId)
                 fetchWalletUSDCBalance(createData.publicKey)
+                void fetchDefindexBalance(userId)
                 return
               }
             }
             if (createResponse.status === 400) {
               setWalletAddress("")
+              setIsBalanceLoading(false)
+              void fetchDefindexBalance(userId)
               return
             }
           } catch (createError) {
@@ -516,6 +533,8 @@ export function useWalletData() {
           setTimeout(() => fetchWalletAddress(userId, retryCount + 1), 2000)
         } else {
           setWalletAddress("")
+          setIsBalanceLoading(false)
+          void fetchDefindexBalance(userId)
         }
       }
     } catch (walletError) {
@@ -524,15 +543,17 @@ export function useWalletData() {
         setTimeout(() => fetchWalletAddress(userId, retryCount + 1), 2000)
       } else {
         setWalletAddress("")
+        setIsBalanceLoading(false)
+        void fetchDefindexBalance(userId)
       }
     }
   }, [fetchXLMBalance, fetchWalletUSDCBalance, fetchTransactionHistory, fetchDefindexBalance, fetchAutoDepositStatus, fetchAPY])
 
-  // Initialize wallet data
+  // Initialize wallet data (mount only: dev and prod both require a real /auth session)
   useEffect(() => {
     if (typeof window === "undefined") return
-
-    const isDevMode = process.env.NODE_ENV === "development"
+    if (walletBootstrapDoneRef.current) return
+    walletBootstrapDoneRef.current = true
 
     // Prefer client-derived public key (passkey-derived) to avoid showing
     // wallet-creation CTAs while we sync with the server/DB.
@@ -542,23 +563,24 @@ export function useWalletData() {
       fetchWalletUSDCBalance(sessionPublicKey)
       fetchTransactionHistory(sessionPublicKey)
     }
-    
+
     const checkAuth = () => {
       const isAuthenticated = sessionStorage.getItem("dev_authenticated") === "true"
-      
-      if (isDevMode) {
-        console.log("[Wallet] 🚧 DEV MODE: Bypassing authentication")
-        const existingUserId = sessionStorage.getItem("dev_username")
-        if (!existingUserId) {
-          const mockUserId = "dev-user-" + Date.now()
-          sessionStorage.setItem("dev_username", mockUserId)
-          sessionStorage.setItem("dev_authenticated", "true")
-          console.log("[Wallet] 🚧 DEV MODE: Set mock userId:", mockUserId)
-        }
-        fetchVaultData()
+      const rawUserId = sessionStorage.getItem("dev_username")
+      const hasStellar = !!sessionStorage.getItem("stellar_public_key")
+
+      // Legacy dev shortcut created dev-user-* IDs with no passkey / no Stellar key — clear and send to auth.
+      if (
+        typeof rawUserId === "string" &&
+        rawUserId.startsWith("dev-user-") &&
+        !hasStellar
+      ) {
+        sessionStorage.removeItem("dev_username")
+        sessionStorage.removeItem("dev_authenticated")
+        window.location.replace("/auth")
         return
       }
-      
+
       if (!isAuthenticated) {
         setTimeout(() => {
           const retryCheck = sessionStorage.getItem("dev_authenticated") === "true"
@@ -572,31 +594,21 @@ export function useWalletData() {
         fetchVaultData()
       }
     }
-    
+
     const fetchVaultData = async () => {
       try {
-        let userId = getUserId()
-        
+        const userId = getUserId()
+
         if (!userId) {
-          if (isDevMode) {
-            const mockUserId = "dev-user-" + Date.now()
-            sessionStorage.setItem("dev_username", mockUserId)
-            sessionStorage.setItem("dev_authenticated", "true")
-            console.log("[Wallet] 🚧 DEV MODE: Created mock userId:", mockUserId)
-            userId = mockUserId
-          } else {
-            setError("User ID not found")
-            setIsLoading(false)
-            return
-          }
+          setError("User ID not found")
+          setIsLoading(false)
+          return
         }
-        
-        const finalUserId = userId
         
         // Fetch vault data
         const vaultResponse = await fetch("/api/wallet/vault", {
           headers: {
-            "x-user-id": finalUserId,
+            "x-user-id": userId,
           },
         })
         
@@ -610,7 +622,7 @@ export function useWalletData() {
         // Fetch trust points
         const trustResponse = await fetch("/api/wallet/trust-points", {
           headers: {
-            "x-user-id": finalUserId,
+            "x-user-id": userId,
           },
         })
         
@@ -626,11 +638,11 @@ export function useWalletData() {
         if (storedUsername) {
           setUsername(storedUsername)
         } else {
-          setUsername(finalUserId.substring(0, 8))
+          setUsername(userId.substring(0, 8))
         }
-        
+
         // Fetch wallet address
-        fetchWalletAddress(finalUserId)
+        fetchWalletAddress(userId)
       } catch (err) {
         console.error("[Wallet] Error fetching data:", err)
         setError(err instanceof Error ? err.message : "Failed to load data")
@@ -640,7 +652,9 @@ export function useWalletData() {
     }
     
     checkAuth()
-  }, [fetchWalletAddress, fetchTransactionHistory, fetchWalletUSDCBalance, walletAddress])
+    // Intentionally mount-only: including walletAddress / fetch* caused repeat vault+address loads (felt like an infinite loop).
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- bootstrap once; refresh flows use explicit handlers
+  }, [])
 
   // Fetch XLM price
   useEffect(() => {

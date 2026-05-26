@@ -1,12 +1,10 @@
 import type React from "react"
 import type { Metadata, Viewport } from "next"
-import { Inter } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
 import { PWARegister } from "@/components/pwa-register"
+import { PaperShaderBackgroundShell } from "@/components/paper-shader-background-shell"
 import { Toaster } from "@/components/ui/sonner"
-
-const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
   title: "Sozu Wallet",
@@ -52,8 +50,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="bg-black" style={{ backgroundColor: '#000000' }}>
-      <body className={`${inter.className} antialiased bg-black`} style={{ backgroundColor: '#000000' }}>
-        {children}
+      <body className="font-sans antialiased bg-black" style={{ backgroundColor: '#000000' }}>
+        <PaperShaderBackgroundShell>{children}</PaperShaderBackgroundShell>
         <Analytics />
         <PWARegister />
         <Toaster />
