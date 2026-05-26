@@ -5,7 +5,7 @@
 
 "use client"
 
-import { memo, useState } from "react"
+import { memo, useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { Send, ScanQrCode } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
@@ -57,16 +57,47 @@ export const SendPaymentModal = memo(function SendPaymentModal({
 
   const t = getWalletTexts("es")
   const [isScannerOpen, setIsScannerOpen] = useState(false)
+  const [pendingAutoResolve, setPendingAutoResolve] = useState(false)
+
+  // Auto-resolve after a QR scan — fires once sendRecipient state has settled
+  useEffect(() => {
+    if (pendingAutoResolve && sendRecipient) {
+      setPendingAutoResolve(false)
+      handleResolveRecipient()
+    }
+  }, [pendingAutoResolve, sendRecipient, handleResolveRecipient])
 
   const handleQrScan = (value: string) => {
-    // Strip leading $ if present (common in Sozu tags on QR codes)
-    const cleaned = value.trim()
-    setSendRecipient(cleaned)
-    setRecipientError(null)
-    // Auto-resolve if it looks like a Stellar address
-    if (/^G[A-Z0-9]{55}$/.test(cleaned)) {
-      setIsManualMode(true)
+    const raw = value.trim()
+    let recipient = raw
+    let isStellar = false
+
+    // Parse sozu:pay?tag=alice3&addr=GBPRNU... deep-link (emitted by our deposit QR)
+    if (raw.startsWith("sozu:pay?")) {
+      try {
+        const params = new URLSearchParams(raw.slice("sozu:pay?".length))
+        const tag = params.get("tag")
+        const addr = params.get("addr")
+        if (tag) {
+          recipient = `$${tag}`
+        } else if (addr) {
+          recipient = addr
+          isStellar = /^G[A-Z0-9]{55}$/.test(addr)
+        }
+      } catch {
+        // Fall through to raw value
+      }
+    } else if (/^G[A-Z0-9]{55}$/.test(raw)) {
+      // Raw Stellar address
+      isStellar = true
     }
+    // $tag or plain tag — strip leading $ for display (input will show it)
+    // leave as-is; resolve-recipient strips $ itself
+
+    setSendRecipient(recipient)
+    setRecipientError(null)
+    if (isStellar) setIsManualMode(true)
+    setPendingAutoResolve(true) // useEffect will call handleResolveRecipient after state settles
   }
 
   const handleClose = (open: boolean) => {

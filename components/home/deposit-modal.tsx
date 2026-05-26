@@ -9,6 +9,22 @@ type DepositModalProps = {
   onClose: () => void
 }
 
+/**
+ * Build the QR payload.
+ *
+ * Priority:
+ *  1. Sozu deep-link  sozu:pay?tag=alice3&addr=GBPRNU...  (tag + address, parseable by scanner)
+ *  2. Tag only        $alice3                               (scanner resolves via API)
+ *  3. Address only    GBPRNU...                             (raw Stellar address, scanner manual mode)
+ */
+function buildQrPayload(sozuTag: string, address: string): string {
+  if (sozuTag && address) {
+    return `sozu:pay?tag=${encodeURIComponent(sozuTag)}&addr=${encodeURIComponent(address)}`
+  }
+  if (sozuTag) return `$${sozuTag}`
+  return address
+}
+
 export function DepositModal({ isOpen, onClose }: DepositModalProps) {
   const [address, setAddress] = useState<string>("")
   const [sozuTag, setSozuTag] = useState<string>("")
@@ -31,9 +47,13 @@ export function DepositModal({ isOpen, onClose }: DepositModalProps) {
     }
   }, [isOpen])
 
+  const qrPayload = buildQrPayload(sozuTag, address)
+
   const handleCopy = async () => {
-    if (!address) return
-    await navigator.clipboard.writeText(address)
+    // Copy the tag URL or raw address — whichever is most useful
+    const toCopy = sozuTag ? `$${sozuTag}` : address
+    if (!toCopy) return
+    await navigator.clipboard.writeText(toCopy)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -86,9 +106,9 @@ export function DepositModal({ isOpen, onClose }: DepositModalProps) {
           transition: "transform 0.4s cubic-bezier(0.4,0,0.2,1)",
         }}
       >
-        {address ? (
+        {qrPayload ? (
           <QRCodeSVG
-            value={address}
+            value={qrPayload}
             size={220}
             bgColor="transparent"
             fgColor="rgba(255,255,255,0.92)"
@@ -109,7 +129,7 @@ export function DepositModal({ isOpen, onClose }: DepositModalProps) {
         }}
       >
         <span className="max-w-[220px] truncate font-mono text-[10px] text-white/50">
-          {address || "No wallet connected"}
+          {sozuTag ? `$${sozuTag}` : address || "No wallet connected"}
         </span>
         {copied ? (
           <Check className="h-3.5 w-3.5 shrink-0 text-green-400" />
