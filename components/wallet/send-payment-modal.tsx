@@ -244,6 +244,13 @@ export const SendPaymentModal = memo(function SendPaymentModal({
           </div>
         ) : (
           <div className="space-y-4 py-4">
+              {/* Recipient confirmation row */}
+              <div className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2">
+                <span className="text-white/40 text-xs uppercase tracking-widest">To</span>
+                <span className="text-white/90 text-sm font-mono truncate max-w-[220px]">
+                  {sendRecipient.startsWith("$") ? sendRecipient : sendRecipient.startsWith("G") ? `${sendRecipient.slice(0,6)}…${sendRecipient.slice(-4)}` : sendRecipient}
+                </span>
+              </div>
               <div className="text-center py-2">
                 <div className="text-4xl font-bold text-white">
                   {sendAmount || "0.00"}

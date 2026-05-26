@@ -4,6 +4,7 @@ import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
 import { PWARegister } from "@/components/pwa-register"
 import { PaperShaderBackgroundShell } from "@/components/paper-shader-background-shell"
+import { PreloaderRemover } from "@/components/preloader-remover"
 import { Toaster } from "@/components/ui/sonner"
 
 export const metadata: Metadata = {
@@ -56,9 +57,10 @@ export default function RootLayout({
   return (
     <html lang="en" className="bg-black" style={{ backgroundColor: '#000000' }}>
       <body className="font-sans antialiased bg-black" style={{ backgroundColor: '#000000' }}>
-        {/* Instant preloader — shown before JS hydrates, hidden once app mounts */}
+        {/* Instant preloader — stays in DOM until React hydrates, then fades out via PreloaderRemover */}
         <div
           id="sozu-preloader"
+          suppressHydrationWarning
           style={{
             position: "fixed",
             inset: 0,
@@ -67,7 +69,6 @@ export default function RootLayout({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            transition: "opacity 0.4s ease",
           }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -79,23 +80,8 @@ export default function RootLayout({
             style={{ borderRadius: "22%", opacity: 0.92 }}
           />
         </div>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function(){
-                function hide(){
-                  var el=document.getElementById('sozu-preloader');
-                  if(!el)return;
-                  el.style.opacity='0';
-                  setTimeout(function(){if(el.parentNode)el.parentNode.removeChild(el);},420);
-                }
-                if(document.readyState==='complete'){hide();}
-                else{window.addEventListener('load',function(){setTimeout(hide,120);});}
-              })();
-            `,
-          }}
-        />
         <PaperShaderBackgroundShell>{children}</PaperShaderBackgroundShell>
+        <PreloaderRemover />
         <Analytics />
         <PWARegister />
         <Toaster />

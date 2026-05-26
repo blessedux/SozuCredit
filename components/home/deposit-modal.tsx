@@ -98,7 +98,7 @@ export function DepositModal({ isOpen, onClose }: DepositModalProps) {
         </p>
       )}
 
-      {/* QR code — no card, no background */}
+      {/* QR code — dark on white for reliable camera scanning */}
       <div
         onClick={e => e.stopPropagation()}
         style={{
@@ -107,13 +107,15 @@ export function DepositModal({ isOpen, onClose }: DepositModalProps) {
         }}
       >
         {qrPayload ? (
-          <QRCodeSVG
-            value={qrPayload}
-            size={220}
-            bgColor="transparent"
-            fgColor="rgba(255,255,255,0.92)"
-            level="M"
-          />
+          <div style={{ background: "#fff", borderRadius: 16, padding: 14, display: "inline-block" }}>
+            <QRCodeSVG
+              value={qrPayload}
+              size={200}
+              bgColor="#ffffff"
+              fgColor="#111111"
+              level="H"
+            />
+          </div>
         ) : (
           <div className="h-56 w-56 animate-pulse rounded-2xl bg-white/10" />
         )}
