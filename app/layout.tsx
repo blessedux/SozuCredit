@@ -4,7 +4,7 @@ import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
 import { PWARegister } from "@/components/pwa-register"
 import { PaperShaderBackgroundShell } from "@/components/paper-shader-background-shell"
-import { PreloaderRemover } from "@/components/preloader-remover"
+import { Preloader } from "@/components/preloader-remover"
 import { Toaster } from "@/components/ui/sonner"
 
 export const metadata: Metadata = {
@@ -57,31 +57,8 @@ export default function RootLayout({
   return (
     <html lang="en" className="bg-black" style={{ backgroundColor: '#000000' }}>
       <body className="font-sans antialiased bg-black" style={{ backgroundColor: '#000000' }}>
-        {/* Instant preloader — stays in DOM until React hydrates, then fades out via PreloaderRemover */}
-        <div
-          id="sozu-preloader"
-          suppressHydrationWarning
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 9999,
-            background: "#000",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/icons/sozu_icon_192.png"
-            alt="Sozu"
-            width={64}
-            height={64}
-            style={{ borderRadius: "22%", opacity: 0.92 }}
-          />
-        </div>
+        <Preloader />
         <PaperShaderBackgroundShell>{children}</PaperShaderBackgroundShell>
-        <PreloaderRemover />
         <Analytics />
         <PWARegister />
         <Toaster />
