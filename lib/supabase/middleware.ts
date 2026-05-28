@@ -176,14 +176,12 @@ export async function updateSession(request: NextRequest) {
     const hasSessionCookie = hasSupabaseAuthCookies(request)
 
     if (hasSessionCookie) {
-      // We have a Supabase session cookie, safe to redirect server-side
-      const url = request.nextUrl.clone()
+      // SDP invite: Supabase cookie does not mean passkey wallet is in sessionStorage yet.
       if (request.nextUrl.searchParams.get("sdpInvite") === "1") {
-        url.pathname = "/sdp/register"
-        url.searchParams.delete("sdpInvite")
-      } else {
-        url.pathname = "/wallet"
+        return supabaseResponse
       }
+      const url = request.nextUrl.clone()
+      url.pathname = "/wallet"
       return NextResponse.redirect(url)
     } else {
       // No Supabase session cookie - likely using sessionStorage auth
