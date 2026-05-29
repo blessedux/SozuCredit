@@ -163,7 +163,6 @@ export const BalanceDisplay = memo(function BalanceDisplay({
     measureCollapsedHeight()
   }, [
     inlineAudit,
-    auditExpanded,
     animatedBalance,
     isBalanceVisible,
     referenceFiat,
@@ -217,12 +216,14 @@ export const BalanceDisplay = memo(function BalanceDisplay({
   const inlineCardMaxHeight = auditExpanded
     ? expandedHeight || collapsedHeightRef.current
     : collapsedHeightRef.current
-  const inlineExpandedSizing =
-    inlineAudit && auditExpanded && expandedHeight > 0
-      ? { height: inlineCardMaxHeight, maxHeight: inlineCardMaxHeight }
-      : inlineAudit
-        ? { maxHeight: inlineCardMaxHeight }
-        : undefined
+
+  const handleCardTransitionEnd = useCallback(
+    (event: React.TransitionEvent<HTMLDivElement>) => {
+      if (event.propertyName !== "max-height" || auditExpanded) return
+      measureCollapsedHeight()
+    },
+    [auditExpanded, measureCollapsedHeight],
+  )
 
   const stopPullPropagation = useCallback((event: { stopPropagation: () => void }) => {
     event.stopPropagation()
@@ -239,12 +240,13 @@ export const BalanceDisplay = memo(function BalanceDisplay({
     >
       <div
         ref={cardRef}
-        style={inlineExpandedSizing}
+        style={inlineAudit ? { maxHeight: inlineCardMaxHeight } : undefined}
+        onTransitionEnd={inlineAudit ? handleCardTransitionEnd : undefined}
         className={cn(
           "flex w-full flex-col rounded-[1.25rem] border border-white/10 bg-black/20 text-center shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur-md",
           inlineAudit &&
-            "min-h-0 overflow-hidden transition-[max-height,height] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
-          inlineAudit && auditExpanded ? "flex-1 self-stretch" : "self-start",
+            "min-h-0 self-start overflow-hidden transition-[max-height] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] will-change-[max-height]",
+          inlineAudit && auditExpanded && "flex-1 self-stretch",
           inlineAudit ? "p-5 sm:p-6" : "min-h-[11rem] p-6 sm:min-h-[12rem] sm:p-8 lg:min-h-[13.5rem] lg:p-7 lg:text-left xl:min-h-[14rem] xl:p-8",
         )}
       >
@@ -302,12 +304,14 @@ export const BalanceDisplay = memo(function BalanceDisplay({
           </div>
 
           {!auditExpanded && hasTreasury ? (
-            <PurchasingPowerPnlChart
-              projection={treasuryProjection}
-              loading={treasuryLoading}
-              variant="mini"
-              className="self-center"
-            />
+            <div className="shrink-0 transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]">
+              <PurchasingPowerPnlChart
+                projection={treasuryProjection}
+                loading={treasuryLoading}
+                variant="mini"
+                className="self-center"
+              />
+            </div>
           ) : null}
         </div>
 
@@ -353,33 +357,46 @@ export const BalanceDisplay = memo(function BalanceDisplay({
           </button>
         </div>
 
-        {canInlineExpand && auditExpanded ? (
+        {canInlineExpand ? (
           <div
-            className="mt-3 min-h-0 flex-1 overflow-y-auto overscroll-y-contain touch-pan-y border-t border-white/10 pt-3 text-left no-scrollbar [-webkit-overflow-scrolling:touch]"
-            onTouchStart={stopPullPropagation}
-            onTouchMove={stopPullPropagation}
-            onMouseDown={stopPullPropagation}
+            className={cn(
+              "grid min-h-0 transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
+              auditExpanded ? "grid-rows-[1fr] flex-1" : "grid-rows-[0fr]",
+            )}
           >
-            <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.02] p-3">
-              <PurchasingPowerPnlChart
-                projection={treasuryProjection}
-                loading={treasuryLoading}
-                variant="full"
-              />
+            <div className="min-h-0 overflow-hidden">
+              <div
+                className={cn(
+                  "mt-3 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y border-t border-white/10 pt-3 text-left no-scrollbar transition-opacity duration-300 [-webkit-overflow-scrolling:touch]",
+                  auditExpanded ? "flex-1 opacity-100" : "pointer-events-none opacity-0",
+                )}
+                onTouchStart={stopPullPropagation}
+                onTouchMove={stopPullPropagation}
+                onMouseDown={stopPullPropagation}
+                aria-hidden={!auditExpanded}
+              >
+                <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.02] p-3">
+                  <PurchasingPowerPnlChart
+                    projection={treasuryProjection}
+                    loading={treasuryLoading}
+                    variant="full"
+                  />
+                </div>
+                <BalanceAuditPanel
+                  defindexBalance={defindexBalance}
+                  apyValue={apyValue}
+                  apyLoading={apyLoading}
+                  treasuryProjection={treasuryProjection}
+                  treasuryLoading={treasuryLoading}
+                  treasuryPrefs={treasuryPrefs}
+                  onUpdateTreasuryPrefs={onUpdateTreasuryPrefs}
+                  onClose={() => setExpanded(false)}
+                  showHeader
+                  hideChart
+                  walletNetwork={walletNetwork}
+                />
+              </div>
             </div>
-            <BalanceAuditPanel
-              defindexBalance={defindexBalance}
-              apyValue={apyValue}
-              apyLoading={apyLoading}
-              treasuryProjection={treasuryProjection}
-              treasuryLoading={treasuryLoading}
-              treasuryPrefs={treasuryPrefs}
-              onUpdateTreasuryPrefs={onUpdateTreasuryPrefs}
-              onClose={() => setExpanded(false)}
-              showHeader
-              hideChart
-              walletNetwork={walletNetwork}
-            />
           </div>
         ) : null}
       </div>
