@@ -156,22 +156,9 @@ export async function submitSep10SignedTransaction(params: {
     tenantName,
   } = params;
 
-  try {
-    WebAuth.verifyChallengeTxSigners(
-      userSignedTransactionXdr,
-      serverAccountId,
-      networkPassphrase,
-      [userAccountId.trim()],
-      homeDomains,
-      webAuthDomain
-    );
-  } catch (e) {
-    return {
-      ok: false,
-      error: e instanceof Error ? e.message : "Challenge signer verification failed",
-    };
-  }
-
+  // Parse the user-signed transaction and add the client-domain signature
+  // BEFORE verifyChallengeTxSigners — the SDK requires the client_domain
+  // ManageData operation's source account to have already signed.
   let tx: Transaction;
   try {
     tx = new Transaction(userSignedTransactionXdr, networkPassphrase);
@@ -182,8 +169,9 @@ export async function submitSep10SignedTransaction(params: {
     };
   }
 
+  let clientKp: Keypair;
   try {
-    const clientKp = Keypair.fromSecret(clientSigningSecret.trim());
+    clientKp = Keypair.fromSecret(clientSigningSecret.trim());
     tx.sign(clientKp);
   } catch (e) {
     return {
@@ -193,6 +181,23 @@ export async function submitSep10SignedTransaction(params: {
   }
 
   const signedXdr = tx.toEnvelope().toXDR("base64");
+
+  // Verify both the user account and the client-domain key have signed
+  try {
+    WebAuth.verifyChallengeTxSigners(
+      signedXdr,
+      serverAccountId,
+      networkPassphrase,
+      [userAccountId.trim(), clientKp.publicKey()],
+      homeDomains,
+      webAuthDomain
+    );
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Challenge signer verification failed",
+    };
+  }
 
   const attempts: Array<{ body: string; contentType: string }> = [
     {
