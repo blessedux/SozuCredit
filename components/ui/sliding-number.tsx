@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId } from 'react';
+import { useEffect } from 'react';
 
 import {
   MotionValue,
@@ -49,7 +49,6 @@ function Digit({ value, place, isDecimal = false }: { value: number; place: numb
 }
 
 function Number({ mv, number, isDecimal = false }: { mv: MotionValue<number>; number: number; isDecimal?: boolean }) {
-  const uniqueId = useId();
   const [ref, bounds] = useMeasure();
 
   const y = useTransform(mv, (latest) => {
@@ -87,7 +86,6 @@ function Number({ mv, number, isDecimal = false }: { mv: MotionValue<number>; nu
   return (
     <motion.span
       style={{ y }}
-      layoutId={`${uniqueId}-${number}`}
       className={`absolute inset-0 flex ${isDecimal ? 'items-end justify-center' : 'items-center justify-center'}`}
       transition={transition}
       ref={ref}
@@ -101,12 +99,17 @@ type SlidingNumberProps = {
   value: number;
   padStart?: boolean;
   decimalSeparator?: string;
+  /** Insert locale-style thousands separators between digit columns (e.g. 12.345.678). */
+  groupThousands?: boolean;
+  thousandsSeparator?: string;
 };
 
 export function SlidingNumber({
   value,
   padStart = false,
   decimalSeparator = '.',
+  groupThousands = false,
+  thousandsSeparator = '.',
 }: SlidingNumberProps) {
   const absValue = Math.abs(value);
   
@@ -143,15 +146,25 @@ export function SlidingNumber({
   );
 
   return (
-    <div className='flex items-end'>
+    <div className='inline-flex items-end leading-none'>
       {value < 0 && '-'}
-      {integerDigits.map((_, index) => (
-        <Digit
-          key={`pos-${integerPlaces[index]}`}
-          value={integerValue}
-          place={integerPlaces[index]}
-        />
-      ))}
+      {integerDigits.map((_, index) => {
+        const digitsFromRight = integerDigits.length - index
+        const showSeparator =
+          groupThousands && index > 0 && digitsFromRight % 3 === 0
+
+        return (
+          <span key={`pos-${integerPlaces[index]}`} className="inline-flex items-end">
+            {showSeparator && (
+              <span className="px-[0.05em] align-bottom leading-none">{thousandsSeparator}</span>
+            )}
+            <Digit
+              value={integerValue}
+              place={integerPlaces[index]}
+            />
+          </span>
+        )
+      })}
       {finalDecimal && finalDecimal.length > 0 && (
         <>
           <span className='align-bottom leading-none' style={{ lineHeight: '1' }}>{decimalSeparator}</span>

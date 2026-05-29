@@ -5,7 +5,8 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Flame, Hourglass, Target, Waves } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
+import { LedgerHomeSkeleton } from "@/components/ledger/ledger-home-skeleton"
+import { LedgerTransactionsTableSkeleton } from "@/components/ledger/ledger-transactions-table-skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
@@ -492,12 +493,7 @@ export default function LedgerHomePage() {
   }, [categoryFilter, chartWindow])
 
   if (loading || !data) {
-    return (
-      <div className="space-y-4 animate-pulse">
-        <div className="h-24 bg-white/5 rounded-xl border border-white/10" />
-        <div className="h-32 bg-white/5 rounded-xl border border-white/10" />
-      </div>
-    )
+    return <LedgerHomeSkeleton />
   }
 
   if (data.error) {
@@ -1031,42 +1027,7 @@ export default function LedgerHomePage() {
         </div>
         {previewLoading ? (
           <div className="max-h-[280px] overflow-hidden lg:max-h-[min(52vh,560px)] px-3 py-4 sm:px-5 lg:px-6">
-            <Table className="min-w-[640px] lg:min-w-0">
-              <TableHeader>
-                <TableRow className="border-white/10 hover:bg-transparent">
-                  <TableHead className="bg-neutral-950/95 px-3 text-white/55 lg:px-4">Fecha</TableHead>
-                  <TableHead className="bg-neutral-950/95 px-3 text-white/55 lg:px-4">Comercio</TableHead>
-                  <TableHead className="bg-neutral-950/95 px-3 text-right text-white/55 lg:px-4">Monto</TableHead>
-                  <TableHead className="bg-neutral-950/95 px-3 text-white/55 lg:px-4">Tipo</TableHead>
-                  <TableHead className="bg-neutral-950/95 px-3 text-white/55 lg:px-4">Origen</TableHead>
-                  <TableHead className="bg-neutral-950/95 px-3 text-white/55 lg:px-4">Cat.</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <TableRow key={i} className="border-white/10 hover:bg-transparent">
-                    <TableCell className="px-3 py-3 lg:px-4">
-                      <Skeleton className="h-3.5 w-14 rounded bg-white/10" />
-                    </TableCell>
-                    <TableCell className="px-3 py-3 lg:px-4">
-                      <Skeleton className="h-3.5 w-44 max-w-[12rem] rounded bg-white/10" />
-                    </TableCell>
-                    <TableCell className="px-3 py-3 text-right lg:px-4">
-                      <Skeleton className="ml-auto h-3.5 w-20 rounded bg-white/10" />
-                    </TableCell>
-                    <TableCell className="px-3 py-3 lg:px-4">
-                      <Skeleton className="h-3.5 w-16 rounded bg-white/10" />
-                    </TableCell>
-                    <TableCell className="px-3 py-3 lg:px-4">
-                      <Skeleton className="h-3.5 w-20 rounded bg-white/10" />
-                    </TableCell>
-                    <TableCell className="px-3 py-3 lg:px-4">
-                      <Skeleton className="h-3.5 w-14 rounded bg-white/10" />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <LedgerTransactionsTableSkeleton rows={8} />
           </div>
         ) : previewTx.length === 0 ? (
           <p className="px-4 py-6 text-sm text-white/45 sm:px-5 lg:px-6">

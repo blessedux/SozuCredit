@@ -616,7 +616,7 @@ function AuthPageContent() {
       <div className="relative z-[1] flex-1 overflow-y-auto">
         {isAuthenticated && (
           <div className="z-10">
-            <WalletSkeleton isExiting={isExiting} />
+            <WalletSkeleton isExiting={isExiting} layout="landing" />
           </div>
         )}
       </div>

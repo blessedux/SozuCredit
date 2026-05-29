@@ -4,8 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
 import { getRealTimeAPY, formatAPY, getAPYWithPrecision } from "@/lib/defindex/apy-calculator"
+import { resolveWalletUserId } from "@/lib/wallet/resolve-wallet-user-id"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
 
 export async function OPTIONS(request: NextRequest) {
@@ -14,18 +14,17 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    // Get user ID from session
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
+    const auth = await resolveWalletUserId(request)
+    if (!auth) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401, headers: corsHeaders(request) }
       )
     }
 
-    console.log("[DeFindex APY API] Fetching comprehensive APY data for user:", user.id)
+    console.log(
+      `[DeFindex APY API] Fetching APY for user ${auth.userId} (${auth.via})`,
+    )
 
     // Get URL parameters for customization
     const url = new URL(request.url)

@@ -1,26 +1,53 @@
 /**
  * Language context for wallet components
- * Provides language state and translations throughout the app
+ * Persists preference to localStorage and syncs document lang.
  */
 
 "use client"
 
-import { createContext, useContext, useState, useCallback, ReactNode } from "react"
-import { getWalletTexts, type WalletTexts } from "@/lib/wallet-texts"
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react"
+import { getWalletTexts, type WalletTexts, type WalletLanguage } from "@/lib/wallet-texts"
 
-type Language = "en" | "es"
+const STORAGE_KEY = "sozu_app_language:v1"
 
 interface LanguageContextType {
-  language: Language
-  setLanguage: (lang: Language) => void
+  language: WalletLanguage
+  setLanguage: (lang: WalletLanguage) => void
   t: WalletTexts
 }
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined)
 
+function readStoredLanguage(): WalletLanguage {
+  if (typeof window === "undefined") return "es"
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    return stored === "en" || stored === "es" ? stored : "es"
+  } catch {
+    return "es"
+  }
+}
+
 export function WalletLanguageProvider({ children }: { children: ReactNode }) {
-  // Default to Spanish
-  const [language, setLanguage] = useState<Language>("es")
+  const [language, setLanguageState] = useState<WalletLanguage>("es")
+
+  useEffect(() => {
+    setLanguageState(readStoredLanguage())
+  }, [])
+
+  useEffect(() => {
+    document.documentElement.lang = language
+  }, [language])
+
+  const setLanguage = useCallback((lang: WalletLanguage) => {
+    setLanguageState(lang)
+    try {
+      localStorage.setItem(STORAGE_KEY, lang)
+    } catch {
+      // private browsing / quota
+    }
+  }, [])
+
   const t = getWalletTexts(language)
 
   return (
@@ -33,12 +60,13 @@ export function WalletLanguageProvider({ children }: { children: ReactNode }) {
 export function useWalletLanguage() {
   const context = useContext(LanguageContext)
   if (!context) {
-    // Fallback to Spanish if context not available
     return {
-      language: "es" as Language,
+      language: "es" as WalletLanguage,
       setLanguage: () => {},
       t: getWalletTexts("es"),
     }
   }
   return context
 }
+
+export type { WalletLanguage }

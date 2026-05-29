@@ -1,6 +1,6 @@
-import { LedgerStackedRouteSkeleton } from "@/components/ledger/ledger-stacked-route-skeleton"
+import { LedgerHomeSkeleton } from "@/components/ledger/ledger-home-skeleton"
 
-/** Instant fallback while a /ledger/* client page hydrates and fetches. */
-export default function LedgerSegmentLoading() {
-  return <LedgerStackedRouteSkeleton />
+/** Instant fallback while /ledger home hydrates and fetches. */
+export default function LedgerHomeLoading() {
+  return <LedgerHomeSkeleton />
 }

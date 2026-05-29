@@ -5,7 +5,7 @@ import { BarChart, Bar, XAxis, YAxis } from "recharts"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
+import { TrackerReportsSkeleton } from "@/components/tracker/tracker-reports-skeleton"
 import { Download } from "lucide-react"
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, subWeeks, subMonths, format } from "date-fns"
 
@@ -97,12 +97,7 @@ export default function TrackerReportsPage() {
   }
 
   if (loading) {
-    return (
-      <div className="space-y-6">
-        <Skeleton className="h-10 w-48" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    )
+    return <TrackerReportsSkeleton />
   }
 
   return (

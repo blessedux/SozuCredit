@@ -63,7 +63,7 @@ export async function getRealTimeAPY(strategyAddress?: string): Promise<APYCalcu
   for (const source of sources) {
     try {
       const result = await source()
-      if (result.success && result.data) {
+      if (result.success && result.data && result.data.yearly > 0) {
         console.log(`[APY Calculator] ✅ APY found via ${result.data.source}:`, result.data.yearly.toFixed(2) + "%")
         return result
       }
@@ -116,6 +116,11 @@ async function getContractAPY(strategyAddress: string): Promise<APYCalculationRe
             baseAPY = rawApy // Already percentage
           } else if (rawApy > 0 && rawApy < 1) {
             baseAPY = rawApy * 100 // Convert decimal to percentage
+          }
+
+          // Wrong contract method often simulates as 0 — try next source
+          if (!Number.isFinite(baseAPY) || baseAPY <= 0) {
+            continue
           }
 
           const periods = calculateAPYPeriods(baseAPY)

@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
+import { openBlendStrategyAsset } from '@/lib/defindex/blend-strategy-link'
 
 interface APYData {
   primary: string
@@ -119,9 +120,8 @@ export const APYDisplay = React.memo(function APYDisplay({
   }
 
   const handleSourceClick = (source: string) => {
-    if (source === 'calculated') {
-      // Open Blend protocol USDC vault
-      window.open('https://mainnet.blend.capital/asset/?poolId=CAJJZSGMMM3PD7N33TAPHGBUGTB43OC73HVIK2L2G6BNGGGYOSSYBXBD&assetId=CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75', '_blank')
+    if (source === 'calculated' || source === 'external' || source === 'fallback') {
+      openBlendStrategyAsset()
     }
   }
 
@@ -317,9 +317,8 @@ export const APYBadge = React.memo(function APYBadge({ strategyAddress, classNam
   }
 
   const handleBadgeClick = (source: string) => {
-    if (source === 'calculated') {
-      // Open Blend protocol USDC vault
-      window.open('https://mainnet.blend.capital/asset/?poolId=CAJJZSGMMM3PD7N33TAPHGBUGTB43OC73HVIK2L2G6BNGGGYOSSYBXBD&assetId=CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75', '_blank')
+    if (source === 'calculated' || source === 'external' || source === 'fallback') {
+      openBlendStrategyAsset()
     }
   }
 

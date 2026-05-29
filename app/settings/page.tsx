@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { SozuTagCard } from "@/components/settings/sozu-tag-card"
 import {
@@ -14,7 +14,12 @@ import {
   Copy,
   Check,
   Lock,
+  BarChart3,
+  Languages,
 } from "lucide-react"
+import { loadTreasuryPrefs, saveTreasuryPrefs } from "@/lib/treasury/prefs-storage"
+import type { TreasuryPrefs, ReferenceFiat, TreasuryMode } from "@/lib/treasury/types"
+import { TREASURY_MODE_CONFIG } from "@/lib/treasury/treasury-modes"
 import { ledgerUserHeaders } from "@/lib/ledger/client-headers"
 import { getUserId } from "@/lib/wallet-utils"
 import {
@@ -30,14 +35,19 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { AppLanguageSelector } from "@/components/app-language-selector"
+import { useWalletLanguage } from "@/lib/wallet-language"
 
 export default function SettingsPage() {
   const router = useRouter()
   const pathname = usePathname()
+  const redirectedRef = useRef(false)
+  const { t } = useWalletLanguage()
+
   useEffect(() => {
-    if (pathname === "/settings") {
-      router.replace("/home?panel=settings")
-    }
+    if (redirectedRef.current || pathname !== "/settings") return
+    redirectedRef.current = true
+    router.replace("/home?panel=settings")
   }, [pathname, router])
 
   const [username, setUsername] = useState<string>("")
@@ -77,6 +87,9 @@ export default function SettingsPage() {
   const [syncPaste, setSyncPaste] = useState("")
   const [syncBusy, setSyncBusy] = useState(false)
   const [walletSyncPending, setWalletSyncPending] = useState(false)
+
+  // Treasury preferences
+  const [treasuryPrefs, setTreasuryPrefs] = useState<TreasuryPrefs>(() => loadTreasuryPrefs())
   const [pairingCopied, setPairingCopied] = useState(false)
 
   useEffect(() => {
@@ -449,6 +462,122 @@ export default function SettingsPage() {
       {/* Content */}
       <div className="max-w-2xl mx-auto px-4 py-8 space-y-8">
         <SozuTagCard />
+
+        <Card className="border-white/15 bg-black/55 backdrop-blur-xl">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center gap-2">
+              <Languages className="w-5 h-5" />
+              {t.language}
+            </CardTitle>
+            <CardDescription className="text-white/60">{t.settingsLanguageDesc}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AppLanguageSelector variant="settings" className="w-full max-w-sm" />
+          </CardContent>
+        </Card>
+
+        {/* Treasury preferences */}
+        <Card className="border-white/15 bg-black/55 backdrop-blur-xl">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center gap-2">
+              <BarChart3 className="w-5 h-5" />
+              Tesorería y moneda de referencia
+            </CardTitle>
+            <CardDescription className="text-white/60">
+              La billetera muestra tu saldo en la moneda elegida. USDC es el saldo real en cadena — aparece en gris debajo del monto principal.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {/* Reference fiat */}
+            <div className="space-y-2">
+              <Label className="text-white/80 text-sm">Moneda de referencia</Label>
+              <p className="text-xs text-white/45">
+                Este es el monto grande en la tarjeta de saldo. El USDC real queda en la línea pequeña.
+              </p>
+              <div className="grid grid-cols-4 gap-2">
+                {(["CLP", "ARS", "BRL", "COP"] as ReferenceFiat[]).map((fiat) => (
+                  <button
+                    key={fiat}
+                    type="button"
+                    onClick={() => {
+                      const next = { ...treasuryPrefs, referenceFiat: fiat }
+                      setTreasuryPrefs(next)
+                      saveTreasuryPrefs(next)
+                    }}
+                    className={`rounded-lg border py-2 text-sm font-medium transition-colors ${
+                      treasuryPrefs.referenceFiat === fiat
+                        ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-300"
+                        : "border-white/15 bg-white/[0.03] text-white/70 hover:border-white/30 hover:text-white"
+                    }`}
+                  >
+                    {fiat}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Treasury mode */}
+            <div className="space-y-2">
+              <Label className="text-white/80 text-sm">Modo de tesorería</Label>
+              <div className="space-y-2">
+                {(["efficient", "balanced", "fast"] as TreasuryMode[]).map((m) => {
+                  const cfg = TREASURY_MODE_CONFIG[m]
+                  const active = treasuryPrefs.mode === m
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => {
+                        const next = { ...treasuryPrefs, mode: m }
+                        setTreasuryPrefs(next)
+                        saveTreasuryPrefs(next)
+                      }}
+                      className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
+                        active
+                          ? "border-emerald-500/60 bg-emerald-500/10"
+                          : "border-white/10 bg-white/[0.02] hover:border-white/25"
+                      }`}
+                    >
+                      <div className={`text-sm font-medium ${active ? "text-emerald-300" : "text-white/80"}`}>
+                        {cfg.label}
+                      </div>
+                      <div className="text-xs text-white/45 mt-0.5">{cfg.description}</div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Holding period */}
+            <div className="space-y-2">
+              <Label className="text-white/80 text-sm">Período de proyección</Label>
+              <div className="grid grid-cols-4 gap-2">
+                {([7, 14, 30, 90] as Array<7 | 14 | 30 | 90>).map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => {
+                      const next = { ...treasuryPrefs, holdingDays: d }
+                      setTreasuryPrefs(next)
+                      saveTreasuryPrefs(next)
+                    }}
+                    className={`rounded-lg border py-2 text-sm font-medium transition-colors ${
+                      treasuryPrefs.holdingDays === d
+                        ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-300"
+                        : "border-white/15 bg-white/[0.03] text-white/70 hover:border-white/30 hover:text-white"
+                    }`}
+                  >
+                    {d}d
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <p className="text-[11px] text-white/30 leading-relaxed">
+              Estimaciones basadas en tasas históricas. No garantizado. No constituye asesoramiento financiero.
+            </p>
+          </CardContent>
+        </Card>
 
         {gmailFlash && (
           <Alert

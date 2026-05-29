@@ -139,7 +139,182 @@ export type WalletTexts = {
   loadingScore: string;
   errorLoadingScore: string;
   evmAddressCopied: string;
+  // Treasury purchasing power
+  treasuryPerformance: string;
+  purchasingPowerImpact: string;
+  inflationAvoided: string;
+  fxProtection: string;
+  projectedEarnings: string;
+  treasuryModeEfficient: string;
+  treasuryModeBalanced: string;
+  treasuryModeFast: string;
+  holdingPeriod: string;
+  estimatedDisclaimer: string;
+  referenceFiatNote: string;
+  vsLocalFiatComparison: string;
+  // App shell & commands
+  commandTitle: string;
+  cmdPay: string;
+  cmdBatch: string;
+  cmdOfframp: string;
+  cmdDeposit: string;
+  cmdPlan: string;
+  cmdCredit: string;
+  // Credit page
+  creditPageTitle: string;
+  creditPageSubtitle: string;
+  creditYourCredits: string;
+  creditNoCredits: string;
+  creditApplyTitle: string;
+  creditApplyDesc: string;
+  creditProgramSoon: string;
+  creditApplyButton: string;
+  creditApplySuccess: string;
+  creditAlreadyApplied: string;
+  creditStatusPending: string;
+  creditStatusApproved: string;
+  creditStatusActive: string;
+  creditStatusRepaid: string;
+  creditStatusRejected: string;
+  creditEligibilityTitle: string;
+  creditEligibilityEligible: string;
+  creditEligibilityProgress: string;
+  creditBackHome: string;
+  creditLegacyProgramName: string;
+  creditProgramMujeres2000Name: string;
+  creditProgramMujeres2000Desc: string;
+  creditProgramEmprende500Name: string;
+  creditProgramEmprende500Desc: string;
+  creditProgramComunidad1kName: string;
+  creditProgramComunidad1kDesc: string;
+  creditProgramRapido250Name: string;
+  creditProgramRapido250Desc: string;
+  creditTermDays: string;
+  comingSoon: string;
+  comingSoonDesc: string;
+  testnetBadge: string;
+  activateWallet: string;
+  activating: string;
+  openCashflow: string;
+  // Deposit modal
+  depositTitle: string;
+  depositClose: string;
+  depositQrTypeLabel: string;
+  depositQrTag: string;
+  depositQrStellar: string;
+  depositSozuTag: string;
+  depositStellarAddress: string;
+  depositCopied: string;
+  depositNoWallet: string;
+  depositUsdcOnly: string;
+  depositTagCaption: string;
+  depositAddressCaption: string;
+  depositConnectWallet: string;
+  // Balance card
+  hideBalance: string;
+  showBalance: string;
+  purchasingPowerSubline: string;
+  apyBlendLabel: string;
+  auditBreakdown: string;
+  closeTreasury: string;
+  backToBalance: string;
+  // Treasury audit panel
+  treasuryPanelTitle: string;
+  treasuryPanelSubtitle: string;
+  close: string;
+  usdcBalanceSection: string;
+  walletBalanceLabel: string;
+  defiStrategyLabel: string;
+  totalLabel: string;
+  defindexSharesLabel: string;
+  projectionParams: string;
+  treasuryModeLabel: string;
+  periodDaysLabel: string;
+  activePlan: string;
+  suggestedWithdrawals: string;
+  strategyAllocation: string;
+  projectionHeading: string;
+  blendYield: string;
+  totalPurchasingPowerTitle: string;
+  howCalculated: string;
+  noProjection: string;
+  viewBlendPool: string;
+  poolApyLabel: string;
+  effectiveApyCompare: string;
+  verifyBlendPool: string;
+  treasuryModeEfficientDesc: string;
+  treasuryModeBalancedDesc: string;
+  treasuryModeFastDesc: string;
+  notBlendApyNote: string;
+  localFiatLossNote: string;
+  periodTotalLine: string;
+  periodLayerBreakdown: string;
+  // Chart
+  chartPurchasingPower: string;
+  chartToday: string;
+  chartDayLabel: string;
+  chartDailyDelta: string;
+  chartNoProjection: string;
+  chartPnlTitle: string;
+  chartVsInitialBalance: string;
+  chartFootnote: string;
+  cashflowLink: string;
+  settingsLanguageDesc: string;
+  // Math breakdown
+  mathBaseBalance: string;
+  mathBaseBalanceDetail: string;
+  mathAnnualCpi: string;
+  mathAnnualCpiDetail: string;
+  mathFxPeriod: string;
+  mathFxPeriodDetail: string;
+  mathProtocolApy: string;
+  mathProtocolApyDetail: string;
+  mathEffectiveApy: string;
+  mathEffectiveApyDetail: string;
+  mathDefiYield: string;
+  mathDefiYieldDetail: string;
+  mathInflationAvoidedDetail: string;
+  mathFxProtectionDetail: string;
+  mathPeriodTotal: string;
+  mathPeriodTotalDetail: string;
+  mathAnnualized: string;
+  mathAnnualizedDetail: string;
+  mathVsLocalFiat: string;
+  mathVsLocalFiatDetail: string;
+  mathPerYear: string;
 };
+
+export type WalletLanguage = "en" | "es";
+
+export type TreasuryModeKey = "efficient" | "balanced" | "fast";
+
+export function formatWalletText(
+  template: string,
+  vars: Record<string, string | number>,
+): string {
+  return Object.entries(vars).reduce(
+    (text, [key, value]) => text.replace(new RegExp(`\\{${key}\\}`, "g"), String(value)),
+    template,
+  );
+}
+
+export function getTreasuryModeLabel(mode: TreasuryModeKey, t: WalletTexts): string {
+  const labels: Record<TreasuryModeKey, string> = {
+    efficient: t.treasuryModeEfficient,
+    balanced: t.treasuryModeBalanced,
+    fast: t.treasuryModeFast,
+  };
+  return labels[mode];
+}
+
+export function getTreasuryModeDescription(mode: TreasuryModeKey, t: WalletTexts): string {
+  const descriptions: Record<TreasuryModeKey, string> = {
+    efficient: t.treasuryModeEfficientDesc,
+    balanced: t.treasuryModeBalancedDesc,
+    fast: t.treasuryModeFastDesc,
+  };
+  return descriptions[mode];
+}
 
 export const walletTexts = {
   es: {
@@ -286,6 +461,147 @@ export const walletTexts = {
     loadingScore: "Cargando puntuación...",
     errorLoadingScore: "Error al cargar puntuación",
     evmAddressCopied: "Dirección copiada",
+    // Treasury purchasing power
+    treasuryPerformance: "Rendimiento de Tesorería",
+    purchasingPowerImpact: "Impacto en poder adquisitivo",
+    inflationAvoided: "Inflación evitada",
+    fxProtection: "Protección cambiaria",
+    projectedEarnings: "Ganancias proyectadas",
+    treasuryModeEfficient: "Eficiente",
+    treasuryModeBalanced: "Balanceado",
+    treasuryModeFast: "Rápido",
+    holdingPeriod: "Período",
+    estimatedDisclaimer: "Estimado · no garantizado · basado en tasas históricas",
+    referenceFiatNote: "Referencia · no es saldo en",
+    vsLocalFiatComparison: "Mantener en moneda local probablemente habría reducido tu poder adquisitivo",
+    commandTitle: "Comandos",
+    cmdPay: "Pagar",
+    cmdBatch: "Lote",
+    cmdOfframp: "Retiro",
+    cmdDeposit: "Depositar",
+    cmdPlan: "Plan",
+    cmdCredit: "Crédito",
+    creditPageTitle: "Microcréditos",
+    creditPageSubtitle: "Créditos comunitarios respaldados por confianza en Sozu.",
+    creditYourCredits: "Tus créditos",
+    creditNoCredits: "Aún no tienes créditos activos ni solicitudes previas.",
+    creditApplyTitle: "Solicitar microcrédito",
+    creditApplyDesc: "Elige un programa. Por ahora solo Mujeres $2.000 está disponible para postular.",
+    creditProgramSoon: "Próximamente",
+    creditApplyButton: "Solicitar",
+    creditApplySuccess: "Solicitud enviada. Te avisaremos cuando haya novedades.",
+    creditAlreadyApplied: "Ya tienes una solicitud activa para este programa.",
+    creditStatusPending: "En revisión",
+    creditStatusApproved: "Aprobado",
+    creditStatusActive: "Activo",
+    creditStatusRepaid: "Pagado",
+    creditStatusRejected: "Rechazado",
+    creditEligibilityTitle: "Elegibilidad",
+    creditEligibilityEligible: "Puedes solicitar crédito comunitario.",
+    creditEligibilityProgress: "{count}/5 vouch confiables · {points} pts",
+    creditBackHome: "Volver al inicio",
+    creditLegacyProgramName: "Microcrédito comunitario",
+    creditProgramMujeres2000Name: "Mujeres $2.000",
+    creditProgramMujeres2000Desc: "Microcrédito para emprendedoras. Hasta $2.000.000 CLP · 180 días.",
+    creditProgramEmprende500Name: "Emprende $500",
+    creditProgramEmprende500Desc: "Capital semilla para ideas en etapa temprana.",
+    creditProgramComunidad1kName: "Comunidad $1.000",
+    creditProgramComunidad1kDesc: "Crédito respaldado por tu red de confianza.",
+    creditProgramRapido250Name: "Rápido $250",
+    creditProgramRapido250Desc: "Liquidez corta para gastos operacionales.",
+    creditTermDays: "{days} días",
+    comingSoon: "Próximamente",
+    comingSoonDesc: "{label} aún no está disponible.",
+    testnetBadge: "Testnet",
+    activateWallet: "Activar billetera",
+    activating: "Activando…",
+    openCashflow: "Abrir cashflow",
+    depositTitle: "Depositar",
+    depositClose: "Cerrar depósito",
+    depositQrTypeLabel: "Tipo de código QR",
+    depositQrTag: "Tag Sozu",
+    depositQrStellar: "Stellar",
+    depositSozuTag: "Tag Sozu",
+    depositStellarAddress: "Dirección Stellar",
+    depositCopied: "Copiado",
+    depositNoWallet: "Sin billetera conectada",
+    depositUsdcOnly: "Envía solo USDC en la red Stellar",
+    depositTagCaption: "@{tag} · escanea para pagar con tag Sozu",
+    depositAddressCaption: "{addr} · dirección Stellar",
+    depositConnectWallet: "Conecta tu billetera",
+    hideBalance: "Ocultar saldo",
+    showBalance: "Mostrar saldo",
+    purchasingPowerSubline: "+{pct}% poder adquisitivo · {days}d",
+    apyBlendLabel: "APY Blend",
+    auditBreakdown: "Desglose y proyección",
+    closeTreasury: "Cerrar rendimiento de tesorería",
+    backToBalance: "Volver al saldo",
+    treasuryPanelTitle: "Rendimiento y Tesorería",
+    treasuryPanelSubtitle: "Desglose USDC y proyección de poder adquisitivo.",
+    close: "Cerrar",
+    usdcBalanceSection: "Saldo USDC",
+    walletBalanceLabel: "Billetera",
+    defiStrategyLabel: "Estrategia DeFi",
+    totalLabel: "Total",
+    defindexSharesLabel: "Shares DeFindex",
+    projectionParams: "Parámetros de proyección",
+    treasuryModeLabel: "Modo de tesorería",
+    periodDaysLabel: "Período (días)",
+    activePlan: "Plan activo",
+    suggestedWithdrawals: "Retiros sugeridos: cada {days}d",
+    strategyAllocation: "En estrategia: {pct}%",
+    projectionHeading: "Proyección {days} días · {fiat}",
+    blendYield: "Rendimiento Blend",
+    totalPurchasingPowerTitle: "Poder adquisitivo total (no es APY Blend)",
+    howCalculated: "Cómo se calcula",
+    noProjection: "Sin proyección disponible",
+    viewBlendPool: "Ver pool Blend (supply APY)",
+    poolApyLabel: "APY pool",
+    effectiveApyCompare:
+      "APY efectivo en app (modo tesorería): {apy}% — comparar supply APY arriba con Blend",
+    verifyBlendPool:
+      "Abre el mismo pool {network} que respalda la estrategia DeFindex para verificar el supply APY.",
+    treasuryModeEfficientDesc: "Maximiza el rendimiento. Retiros espaciados.",
+    treasuryModeBalancedDesc: "Buen balance entre rendimiento y liquidez mensual.",
+    treasuryModeFastDesc: "Liquidez semanal. Menor optimización de tesorería.",
+    notBlendApyNote:
+      "Extrapolación anual del total: {annualized}% — suma inflación y tipo de cambio, no rendimiento DeFi ({apy}% APY).",
+    localFiatLossNote:
+      "Mantener este saldo en {fiat} probablemente habría reducido tu poder adquisitivo ~{loss}% en {days} días (inflación ~{inflation}% + FX ~{fx}%, estimado).",
+    periodTotalLine: "{sign}{pct}% en {days}d",
+    periodLayerBreakdown: "(DeFi {defi}% + inflación {inflation}% + FX {fx}%)",
+    chartPurchasingPower: "Poder adquisitivo",
+    chartToday: "Hoy",
+    chartDayLabel: "Día +{day}",
+    chartDailyDelta: "Δ día:",
+    chartNoProjection: "Sin proyección de poder adquisitivo",
+    chartPnlTitle: "PNL poder adquisitivo",
+    chartVsInitialBalance: "{sign}{pct}% vs saldo inicial",
+    chartFootnote:
+      "Curva diaria acumulada · toca un punto para ver el Δ del día y el desglose por capa.",
+    cashflowLink: "Cashflow",
+    settingsLanguageDesc: "Elige el idioma de la aplicación.",
+    mathBaseBalance: "Saldo base",
+    mathBaseBalanceDetail: "{balance} USDC · 1 USD = {rate} {fiat}",
+    mathAnnualCpi: "CPI anual (mock)",
+    mathAnnualCpiDetail: "Referencia {fiat} · prorrateado {days}d",
+    mathFxPeriod: "FX período (mock)",
+    mathFxPeriodDetail: "USD/{fiat} en {days}d · positivo = {fiat} se depreció",
+    mathProtocolApy: "APY Blend (protocolo)",
+    mathProtocolApyDetail: "Tasa anual del pool DeFi",
+    mathEffectiveApy: "APY efectivo (modo)",
+    mathEffectiveApyDetail: "Después del plan de tesorería activo",
+    mathDefiYield: "Rendimiento DeFi",
+    mathDefiYieldDetail: "USDC × {apy}% × ({days}/365)",
+    mathInflationAvoidedDetail: "vs mantener {fiat} · prorrateado {days}d",
+    mathFxProtectionDetail: "USD/{fiat} en {days}d",
+    mathPeriodTotal: "Total período",
+    mathPeriodTotalDetail: "Suma de capas en {days}d (no es APY)",
+    mathAnnualized: "Extrapolación anual",
+    mathAnnualizedDetail: "Total {days}d × (365/{days}) — no es APY Blend ({apy}%)",
+    mathVsLocalFiat: "vs mantener {fiat}",
+    mathVsLocalFiatDetail: "Pérdida estimada en moneda local (inflación + FX)",
+    mathPerYear: "/ yr",
   },
   en: {
     // Profile
@@ -427,6 +743,147 @@ export const walletTexts = {
     loadingScore: "Loading score...",
     errorLoadingScore: "Error loading score",
     evmAddressCopied: "Address copied",
+    // Treasury purchasing power
+    treasuryPerformance: "Treasury Performance",
+    purchasingPowerImpact: "Purchasing power impact",
+    inflationAvoided: "Inflation avoided",
+    fxProtection: "FX protection",
+    projectedEarnings: "Projected earnings",
+    treasuryModeEfficient: "Efficient",
+    treasuryModeBalanced: "Balanced",
+    treasuryModeFast: "Fast",
+    holdingPeriod: "Period",
+    estimatedDisclaimer: "Estimated · not guaranteed · based on historical rates",
+    referenceFiatNote: "Reference · not your balance in",
+    vsLocalFiatComparison: "Keeping funds in local currency likely would have reduced your purchasing power",
+    commandTitle: "Command",
+    cmdPay: "Pay",
+    cmdBatch: "Batch",
+    cmdOfframp: "Offramp",
+    cmdDeposit: "Deposit",
+    cmdPlan: "Plan",
+    cmdCredit: "Credit",
+    creditPageTitle: "Microcredit",
+    creditPageSubtitle: "Community credit backed by trust on Sozu.",
+    creditYourCredits: "Your credits",
+    creditNoCredits: "No active credits or previous applications yet.",
+    creditApplyTitle: "Apply for microcredit",
+    creditApplyDesc: "Choose a program. Only Mujeres $2.000 is open for applications right now.",
+    creditProgramSoon: "Coming soon",
+    creditApplyButton: "Apply",
+    creditApplySuccess: "Application submitted. We will notify you with updates.",
+    creditAlreadyApplied: "You already have an active application for this program.",
+    creditStatusPending: "Under review",
+    creditStatusApproved: "Approved",
+    creditStatusActive: "Active",
+    creditStatusRepaid: "Repaid",
+    creditStatusRejected: "Rejected",
+    creditEligibilityTitle: "Eligibility",
+    creditEligibilityEligible: "You can apply for community credit.",
+    creditEligibilityProgress: "{count}/5 trustworthy vouches · {points} pts",
+    creditBackHome: "Back to home",
+    creditLegacyProgramName: "Community microcredit",
+    creditProgramMujeres2000Name: "Mujeres $2.000",
+    creditProgramMujeres2000Desc: "Microcredit for women entrepreneurs. Up to 2,000,000 CLP · 180 days.",
+    creditProgramEmprende500Name: "Emprende $500",
+    creditProgramEmprende500Desc: "Seed capital for early-stage ideas.",
+    creditProgramComunidad1kName: "Comunidad $1.000",
+    creditProgramComunidad1kDesc: "Credit backed by your trust network.",
+    creditProgramRapido250Name: "Rápido $250",
+    creditProgramRapido250Desc: "Short-term liquidity for operating expenses.",
+    creditTermDays: "{days} days",
+    comingSoon: "Coming soon",
+    comingSoonDesc: "{label} is not available yet.",
+    testnetBadge: "Testnet",
+    activateWallet: "Activate wallet",
+    activating: "Activating…",
+    openCashflow: "Open cashflow",
+    depositTitle: "Deposit",
+    depositClose: "Close deposit",
+    depositQrTypeLabel: "QR code type",
+    depositQrTag: "Sozu tag",
+    depositQrStellar: "Stellar",
+    depositSozuTag: "Sozu tag",
+    depositStellarAddress: "Stellar address",
+    depositCopied: "Copied",
+    depositNoWallet: "No wallet connected",
+    depositUsdcOnly: "Send USDC on Stellar network only",
+    depositTagCaption: "@{tag} · scan to pay with Sozu tag",
+    depositAddressCaption: "{addr} · Stellar address",
+    depositConnectWallet: "Connect your wallet",
+    hideBalance: "Hide balance",
+    showBalance: "Show balance",
+    purchasingPowerSubline: "+{pct}% purchasing power · {days}d",
+    apyBlendLabel: "Blend APY",
+    auditBreakdown: "Breakdown & projection",
+    closeTreasury: "Close treasury performance",
+    backToBalance: "Back to balance",
+    treasuryPanelTitle: "Performance & Treasury",
+    treasuryPanelSubtitle: "USDC breakdown and purchasing power projection.",
+    close: "Close",
+    usdcBalanceSection: "USDC balance",
+    walletBalanceLabel: "Wallet",
+    defiStrategyLabel: "DeFi strategy",
+    totalLabel: "Total",
+    defindexSharesLabel: "DeFindex shares",
+    projectionParams: "Projection settings",
+    treasuryModeLabel: "Treasury mode",
+    periodDaysLabel: "Period (days)",
+    activePlan: "Active plan",
+    suggestedWithdrawals: "Suggested withdrawals: every {days}d",
+    strategyAllocation: "In strategy: {pct}%",
+    projectionHeading: "Projection {days} days · {fiat}",
+    blendYield: "Blend yield",
+    totalPurchasingPowerTitle: "Total purchasing power (not Blend APY)",
+    howCalculated: "How it's calculated",
+    noProjection: "No projection available",
+    viewBlendPool: "View Blend pool (supply APY)",
+    poolApyLabel: "Pool APY",
+    effectiveApyCompare:
+      "Effective in-app APY (treasury mode): {apy}% — compare pool supply APY above with Blend",
+    verifyBlendPool:
+      "Open the same {network} pool backing the DeFindex strategy to verify supply APY.",
+    treasuryModeEfficientDesc: "Maximize yield. Spaced withdrawals.",
+    treasuryModeBalancedDesc: "Good balance between yield and monthly liquidity.",
+    treasuryModeFastDesc: "Weekly liquidity. Lower treasury optimization.",
+    notBlendApyNote:
+      "Annualized total extrapolation: {annualized}% — inflation and FX combined, not DeFi yield ({apy}% APY).",
+    localFiatLossNote:
+      "Keeping this balance in {fiat} likely would have reduced purchasing power ~{loss}% over {days} days (inflation ~{inflation}% + FX ~{fx}%, estimated).",
+    periodTotalLine: "{sign}{pct}% in {days}d",
+    periodLayerBreakdown: "(DeFi {defi}% + inflation {inflation}% + FX {fx}%)",
+    chartPurchasingPower: "Purchasing power",
+    chartToday: "Today",
+    chartDayLabel: "Day +{day}",
+    chartDailyDelta: "Daily Δ:",
+    chartNoProjection: "No purchasing power projection",
+    chartPnlTitle: "Purchasing power PNL",
+    chartVsInitialBalance: "{sign}{pct}% vs initial balance",
+    chartFootnote:
+      "Daily cumulative curve · tap a point to see daily Δ and layer breakdown.",
+    cashflowLink: "Cashflow",
+    settingsLanguageDesc: "Choose the app display language.",
+    mathBaseBalance: "Base balance",
+    mathBaseBalanceDetail: "{balance} USDC · 1 USD = {rate} {fiat}",
+    mathAnnualCpi: "Annual CPI (mock)",
+    mathAnnualCpiDetail: "Reference {fiat} · prorated {days}d",
+    mathFxPeriod: "Period FX (mock)",
+    mathFxPeriodDetail: "USD/{fiat} in {days}d · positive = {fiat} depreciated",
+    mathProtocolApy: "Blend APY (protocol)",
+    mathProtocolApyDetail: "Annual DeFi pool rate",
+    mathEffectiveApy: "Effective APY (mode)",
+    mathEffectiveApyDetail: "After active treasury plan",
+    mathDefiYield: "DeFi yield",
+    mathDefiYieldDetail: "USDC × {apy}% × ({days}/365)",
+    mathInflationAvoidedDetail: "vs holding {fiat} · prorated {days}d",
+    mathFxProtectionDetail: "USD/{fiat} in {days}d",
+    mathPeriodTotal: "Period total",
+    mathPeriodTotalDetail: "Sum of layers in {days}d (not APY)",
+    mathAnnualized: "Annualized extrapolation",
+    mathAnnualizedDetail: "Total {days}d × (365/{days}) — not Blend APY ({apy}%)",
+    mathVsLocalFiat: "vs holding {fiat}",
+    mathVsLocalFiatDetail: "Estimated loss in local currency (inflation + FX)",
+    mathPerYear: "/ yr",
   },
 } as const;
 

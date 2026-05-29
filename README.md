@@ -300,6 +300,7 @@ Soroban / DeFindex variables are documented in **[Wallet, Stellar, and DeFindex]
 | Wallet, Stellar, DeFindex | [docs/wallet-stellar-defindex.md](./docs/wallet-stellar-defindex.md) |
 | Email ledger and Gmail | [docs/email-ledger-and-gmail.md](./docs/email-ledger-and-gmail.md) |
 | Payments and settlement | [docs/payments-and-settlement.md](./docs/payments-and-settlement.md) |
+| Treasury purchasing power engine | [docs/treasury-purchasing-power.md](./docs/treasury-purchasing-power.md) |
 | Trust, vouches, credit | [docs/community-trust-and-credit.md](./docs/community-trust-and-credit.md) |
 | Development (PWA icons, scripts, testing) | [docs/development-guide.md](./docs/development-guide.md) |
 | Consolidated history note | [docs/project-history.md](./docs/project-history.md) |

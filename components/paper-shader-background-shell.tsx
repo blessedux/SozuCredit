@@ -1,9 +1,19 @@
 "use client"
 
+import dynamic from "next/dynamic"
+import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
-import { AuthOrangeOrbShader } from "@/components/ui/paper-design-shader-background"
+import { deferNonCritical } from "@/lib/defer-non-critical"
 
-const SHADER_PATHS = ["/auth", "/wallet", "/home", "/settings", "/ledger"]
+const AuthOrangeOrbShader = dynamic(
+  () =>
+    import("@/components/ui/paper-design-shader-background").then((mod) => ({
+      default: mod.AuthOrangeOrbShader,
+    })),
+  { ssr: false },
+)
+
+const SHADER_PATHS = ["/auth", "/wallet", "/home", "/settings", "/ledger", "/credit"]
 
 function shouldShowPaperShader(pathname: string) {
   return SHADER_PATHS.some(
@@ -18,12 +28,25 @@ export function PaperShaderBackgroundShell({
 }) {
   const pathname = usePathname()
   const showShader = shouldShowPaperShader(pathname)
+  const [shaderReady, setShaderReady] = useState(false)
 
-  const isLedger = pathname === "/ledger" || pathname.startsWith("/ledger/")
+  useEffect(() => {
+    if (!showShader) {
+      setShaderReady(false)
+      return
+    }
+    deferNonCritical(() => setShaderReady(true))
+  }, [showShader])
+
+  const isLedger =
+    pathname === "/ledger" ||
+    pathname.startsWith("/ledger/") ||
+    pathname === "/credit" ||
+    pathname.startsWith("/credit/")
 
   return (
     <>
-      {showShader ? (
+      {showShader && shaderReady ? (
         <AuthOrangeOrbShader
           className="pointer-events-none fixed inset-0 z-0"
           variant={isLedger ? "blobs" : "orb"}

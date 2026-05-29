@@ -5,7 +5,7 @@
 
 import { useState, useCallback, useEffect } from "react"
 import { getUserId } from "@/lib/wallet-utils"
-import { getWalletTexts } from "@/lib/wallet-texts"
+import { useWalletLanguage } from "@/lib/wallet-language"
 
 export interface TrustPoints {
   balance: number
@@ -28,7 +28,7 @@ export function useTrustPoints() {
   const [referralStats, setReferralStats] = useState<ReferralStats | null>(null)
   const [inviteCodeCopied, setInviteCodeCopied] = useState(false)
 
-  const t = getWalletTexts("es")
+  const { t } = useWalletLanguage()
 
   // Fetch trust points
   const fetchTrustPoints = useCallback(async () => {

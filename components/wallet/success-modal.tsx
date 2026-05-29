@@ -9,7 +9,7 @@ import { memo } from "react"
 import { Check } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { getWalletTexts } from "@/lib/wallet-texts"
+import { useWalletLanguage } from "@/lib/wallet-language"
 
 interface SuccessModalProps {
   isOpen: boolean
@@ -22,7 +22,7 @@ export const SuccessModal = memo(function SuccessModal({
   onClose,
   transactionHash,
 }: SuccessModalProps) {
-  const t = getWalletTexts("es")
+  const { t } = useWalletLanguage()
   
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>

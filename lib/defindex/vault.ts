@@ -565,7 +565,7 @@ export async function getStrategyInfo(
       const { getRealTimeAPY } = await import('./apy-calculator')
       const apyResult = await getRealTimeAPY(strategyAddr)
 
-      if (apyResult.success && apyResult.data) {
+      if (apyResult.success && apyResult.data && apyResult.data.yearly > 0) {
         apy = apyResult.data.yearly
         console.log(`[DeFindex] Using calculated APY:`, apy, "% (source:", apyResult.data.source, ")")
       } else {

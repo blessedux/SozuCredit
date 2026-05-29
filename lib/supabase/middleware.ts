@@ -8,8 +8,9 @@ export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   /** Ledger (cashflow) uses sessionStorage + x-user-id like /wallet; never require Supabase cookie. */
   const isLedgerRoute = pathname === "/ledger" || pathname.startsWith("/ledger/")
+  const isCreditRoute = pathname === "/credit" || pathname.startsWith("/credit/")
 
-  // Allow test-keys route (for Phase 1 & 2 testing)
+  // Allow test-keys route
   if (pathname === "/test-keys") {
     console.log("[Middleware] ✅ /test-keys route detected - ALLOWING immediately")
     return NextResponse.next()
@@ -33,7 +34,7 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.next()
   }
 
-  if (isLedgerRoute) {
+  if (isLedgerRoute || isCreditRoute) {
     return NextResponse.next()
   }
 
@@ -89,7 +90,7 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse
   }
 
-  if (isLedgerRoute) {
+  if (isLedgerRoute || isCreditRoute) {
     return supabaseResponse
   }
 
@@ -148,7 +149,7 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Redirect to login if not authenticated and not on auth pages, wallet, settings, ledger, test-keys, city, tracker, or sdp/register
+  // Redirect to login if not authenticated and not on auth pages, wallet, settings, ledger, credit, test-keys, city, tracker, or sdp/register
   if (
     !user &&
     !isAuthRoute &&
@@ -158,6 +159,7 @@ export async function updateSession(request: NextRequest) {
     !isSdpRegisterRoute &&
     !isSettingsRoute &&
     !isLedgerRoute &&
+    !isCreditRoute &&
     !isTestKeysRoute &&
     !isCityRoute &&
     !isTrackerRoute

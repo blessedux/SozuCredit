@@ -1,57 +1,73 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect } from "react"
+import { SOZU_APP_READY_EVENT } from "@/lib/app-ready"
+
+const STATIC_PRELOADER_ID = "sozu-preloader"
+const MIN_VISIBLE_MS = 150
+const MAX_VISIBLE_MS = 12_000
+const FADE_MS = 450
+
+function ensureStaticPreloader(): HTMLElement {
+  const existing = document.getElementById(STATIC_PRELOADER_ID)
+  if (existing) return existing
+
+  const el = document.createElement("div")
+  el.id = STATIC_PRELOADER_ID
+  el.style.cssText =
+    "position:fixed;inset:0;z-index:9999;background:#000;display:flex;align-items:center;justify-content:center;"
+
+  const img = document.createElement("img")
+  img.src = "/icons/sozu_icon_192.png"
+  img.alt = ""
+  img.width = 64
+  img.height = 64
+  img.style.cssText = "border-radius:22%;opacity:0.92"
+  el.appendChild(img)
+
+  document.body.prepend(el)
+  return el
+}
 
 /**
- * Renders the full-screen preloader as a React-managed element.
- *
- * Server:          visible=true  → div is in the HTML (instant black screen with logo)
- * Client hydrate:  visible=true  → React reconciles, matches SSR HTML ✓
- * After useEffect: fades to 0 opacity, then React unmounts (no raw DOM removal)
- *
- * This avoids the hydration mismatch that occurs when the DOM is mutated
- * directly (via removeChild / style changes) outside of React's reconciler.
+ * Manages the static #sozu-preloader injected by layout.tsx (outside React's tree).
+ * Renders nothing — all DOM work happens in effects to avoid hydration mismatches.
  */
 export function Preloader() {
-  const [opacity, setOpacity] = useState(1)
-  const [mounted, setMounted] = useState(true)
-
   useEffect(() => {
-    // Start fade immediately after hydration
-    const fadeTimer = setTimeout(() => setOpacity(0), 80)
-    // Remove from VDOM after the CSS transition completes
-    const unmountTimer = setTimeout(() => setMounted(false), 580)
+    const el = ensureStaticPreloader()
+    const shownAt = performance.now()
+    let faded = false
+    let maxTimer: ReturnType<typeof setTimeout> | undefined
+    let fadeTimer: ReturnType<typeof setTimeout> | undefined
+    let removeTimer: ReturnType<typeof setTimeout> | undefined
+
+    const beginFade = () => {
+      if (faded) return
+      faded = true
+
+      const elapsed = performance.now() - shownAt
+      const delay = Math.max(0, MIN_VISIBLE_MS - elapsed)
+
+      fadeTimer = setTimeout(() => {
+        el.style.transition = `opacity ${FADE_MS}ms ease`
+        el.style.opacity = "0"
+        el.style.pointerEvents = "none"
+        removeTimer = setTimeout(() => el.remove(), FADE_MS)
+      }, delay)
+    }
+
+    const onReady = () => beginFade()
+    window.addEventListener(SOZU_APP_READY_EVENT, onReady, { once: true })
+    maxTimer = setTimeout(beginFade, MAX_VISIBLE_MS)
+
     return () => {
-      clearTimeout(fadeTimer)
-      clearTimeout(unmountTimer)
+      window.removeEventListener(SOZU_APP_READY_EVENT, onReady)
+      if (maxTimer) clearTimeout(maxTimer)
+      if (fadeTimer) clearTimeout(fadeTimer)
+      if (removeTimer) clearTimeout(removeTimer)
     }
   }, [])
 
-  if (!mounted) return null
-
-  return (
-    /* eslint-disable-next-line @next/next/no-img-element */
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 9999,
-        background: "#000",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        opacity,
-        transition: "opacity 0.45s ease",
-        pointerEvents: "none",
-      }}
-    >
-      <img
-        src="/icons/sozu_icon_192.png"
-        alt=""
-        width={64}
-        height={64}
-        style={{ borderRadius: "22%", opacity: 0.92 }}
-      />
-    </div>
-  )
+  return null
 }

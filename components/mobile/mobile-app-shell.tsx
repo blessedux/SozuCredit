@@ -2,46 +2,78 @@
 
 import dynamic from "next/dynamic"
 import { Suspense, useState, useCallback, useEffect, useRef } from "react"
-import { useSearchParams, useRouter } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { useHorizontalPanelSwipe } from "@/hooks/use-horizontal-panel-swipe"
-import { HomePanel } from "@/components/mobile/home-panel"
-import { WalletScreen } from "@/components/wallet/wallet-screen"
+import { WalletDataProvider } from "@/components/wallet/wallet-data-provider"
+import { WalletLanguageProvider } from "@/lib/wallet-language"
+import { signalAppReady } from "@/lib/app-ready"
 
-// Lazy-load the heavy settings page to avoid bundling it until first visit
-const SettingsPanel = dynamic(
-  () => import("@/app/settings/page").then(mod => ({ default: mod.default })),
+const WalletScreen = dynamic(
+  () => import("@/components/wallet/wallet-screen").then((mod) => ({ default: mod.WalletScreen })),
   { ssr: false },
 )
 
-// 0 = Settings  |  1 = Home (default)  |  2 = Wallet
+const SettingsPanel = dynamic(
+  () => import("@/app/settings/page").then(mod => ({ default: mod.default })),
+  { ssr: false, loading: () => null },
+)
+
+// 0 = Settings  |  1 = Landing (balance + commands)  |  2 = History
 const PANEL_COUNT = 3
 
-const PANEL_NAMES = ["settings", "home", "wallet"] as const
+const PANEL_NAMES = ["settings", "home", "history"] as const
 type PanelName = (typeof PANEL_NAMES)[number]
 
 function panelIndex(name: string | null): number {
+  if (!name) return 1
   const idx = PANEL_NAMES.indexOf(name as PanelName)
-  return idx >= 0 ? idx : 1
+  if (idx >= 0) return idx
+  // Legacy ?panel=wallet lands on balance + commands
+  if (name === "wallet") return 1
+  return 1
 }
 
 export function MobileAppShell() {
   const searchParams = useSearchParams()
-  const router = useRouter()
   const [activePanel, setActivePanel] = useState(() => panelIndex(searchParams?.get("panel")))
   const [isSendModalOpen, setIsSendModalOpen] = useState(false)
-  const [isProfileSheetOpen, setIsProfileSheetOpen] = useState(false)
-  // Track whether send modal was opened via Pay (so closing returns to Home)
-  const payReturnRef = useRef(false)
+  const [historyMounted, setHistoryMounted] = useState(false)
+  const panelParamConsumedRef = useRef(false)
 
-  // Sync panel from URL on mount (handles redirects from /wallet and /settings)
   useEffect(() => {
-    const panel = searchParams?.get("panel")
-    if (panel) {
-      setActivePanel(panelIndex(panel))
-      router.replace("/home")
+    if (activePanel === 2) setHistoryMounted(true)
+  }, [activePanel])
+
+  useEffect(() => {
+    document.documentElement.classList.add("app-no-scroll")
+    document.body.classList.add("app-no-scroll")
+    return () => {
+      document.documentElement.classList.remove("app-no-scroll")
+      document.body.classList.remove("app-no-scroll")
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (panelParamConsumedRef.current) return
+    const panel = searchParams?.get("panel")
+    if (!panel) return
+
+    panelParamConsumedRef.current = true
+    setActivePanel(panelIndex(panel))
+
+    const url = new URL(window.location.href)
+    if (!url.searchParams.has("panel")) return
+    url.searchParams.delete("panel")
+    const next = `${url.pathname}${url.search}${url.hash}`
+    window.history.replaceState(window.history.state, "", next)
+  }, [searchParams])
+
+  useEffect(() => {
+    if (activePanel === 0) return
+    // Landing wallet screen signals when balance is ready; fallback for edge cases.
+    const timer = window.setTimeout(signalAppReady, 4000)
+    return () => window.clearTimeout(timer)
+  }, [activePanel])
 
   const goLeft = useCallback(() => {
     setActivePanel(p => Math.max(0, p - 1))
@@ -51,32 +83,22 @@ export function MobileAppShell() {
     setActivePanel(p => Math.min(PANEL_COUNT - 1, p + 1))
   }, [])
 
-  // Disable shell swipe when the profile sheet is open so it doesn't conflict
   const swipeHandlers = useHorizontalPanelSwipe({
     onSwipeLeft: goRight,
     onSwipeRight: goLeft,
-    disabled: isProfileSheetOpen,
   })
 
   const handlePayClick = useCallback(() => {
-    payReturnRef.current = true
-    setActivePanel(2)
     setIsSendModalOpen(true)
-  }, [])
-
-  const handleSendModalChange = useCallback((open: boolean) => {
-    setIsSendModalOpen(open)
-    if (!open && payReturnRef.current) {
-      payReturnRef.current = false
-      setActivePanel(1) // return to Home
-    }
   }, [])
 
   const translateX = -((100 / PANEL_COUNT) * activePanel)
 
   return (
-    <div
-      className="relative h-svh w-full overflow-hidden cursor-grab active:cursor-grabbing select-none"
+    <WalletLanguageProvider>
+      <WalletDataProvider>
+        <div
+          className="relative h-svh w-full overflow-hidden cursor-grab active:cursor-grabbing select-none touch-pan-x"
       onTouchStart={swipeHandlers.onTouchStart}
       onTouchMove={swipeHandlers.onTouchMove}
       onTouchEnd={swipeHandlers.onTouchEnd}
@@ -85,7 +107,6 @@ export function MobileAppShell() {
       onMouseUp={swipeHandlers.onMouseUp}
       onMouseLeave={swipeHandlers.onMouseLeave}
     >
-      {/* 3-panel horizontal track */}
       <div
         className="flex h-full"
         style={{
@@ -95,29 +116,41 @@ export function MobileAppShell() {
           willChange: "transform",
         }}
       >
-        {/* Panel 0 — Settings */}
-        <div className="h-full overflow-y-auto" style={{ width: `${100 / PANEL_COUNT}%` }}>
-          <SettingsPanel />
+        {/* Panel 0 — Settings (lazy: only mount when visited) */}
+        <div
+          className="h-full overflow-y-auto overscroll-none no-scrollbar"
+          style={{ width: `${100 / PANEL_COUNT}%` }}
+        >
+          {activePanel === 0 ? (
+            <Suspense fallback={null}>
+              <SettingsPanel />
+            </Suspense>
+          ) : null}
         </div>
 
-        {/* Panel 1 — Home */}
-        <div className="h-full" style={{ width: `${100 / PANEL_COUNT}%` }}>
-          <HomePanel onPayClick={handlePayClick} />
-        </div>
-
-        {/* Panel 2 — Wallet */}
-        <div className="relative h-full" style={{ width: `${100 / PANEL_COUNT}%` }}>
+        {/* Panel 1 — Landing: balance card + commands */}
+        <div className="h-full overflow-hidden" style={{ width: `${100 / PANEL_COUNT}%` }}>
           <Suspense fallback={null}>
             <WalletScreen
+              shellLayout="landing"
               isSendModalOpen={isSendModalOpen}
-              onSendModalOpenChange={handleSendModalChange}
+              onSendModalOpenChange={setIsSendModalOpen}
+              onPayClick={handlePayClick}
               hideBottomBar
             />
           </Suspense>
         </div>
+
+        {/* Panel 2 — Transaction history (mounted after first visit) */}
+        <div className="relative h-full overflow-hidden" style={{ width: `${100 / PANEL_COUNT}%` }}>
+          {historyMounted ? (
+            <Suspense fallback={null}>
+              <WalletScreen shellLayout="history" hideBottomBar />
+            </Suspense>
+          ) : null}
+        </div>
       </div>
 
-      {/* Swipe indicator dots */}
       <div className="pointer-events-none absolute bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-1/2 z-50 flex -translate-x-1/2 gap-1.5">
         {[0, 1, 2].map(i => (
           <span
@@ -129,5 +162,7 @@ export function MobileAppShell() {
         ))}
       </div>
     </div>
+      </WalletDataProvider>
+    </WalletLanguageProvider>
   )
 }

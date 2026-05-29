@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useSendPayment } from "@/hooks/use-send-payment"
-import { getWalletTexts } from "@/lib/wallet-texts"
+import { useWalletLanguage } from "@/lib/wallet-language"
 import { QrScannerModal } from "@/components/wallet/qr-scanner-modal"
 
 interface SendPaymentModalProps {
@@ -55,7 +55,7 @@ export const SendPaymentModal = memo(function SendPaymentModal({
     resetSendPayment,
   } = useSendPayment(walletAddress, walletNetwork, defindexBalance, onSuccess, onRefresh)
 
-  const t = getWalletTexts("es")
+  const { t } = useWalletLanguage()
   const [isScannerOpen, setIsScannerOpen] = useState(false)
   const [pendingAutoResolve, setPendingAutoResolve] = useState(false)
 

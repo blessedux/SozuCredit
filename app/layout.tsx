@@ -1,7 +1,8 @@
 import type React from "react"
 import type { Metadata, Viewport } from "next"
-import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
+import { AppReadyFallback } from "@/components/app-ready-fallback"
+import { DeferredAnalytics } from "@/components/deferred-analytics"
 import { PWARegister } from "@/components/pwa-register"
 import { PaperShaderBackgroundShell } from "@/components/paper-shader-background-shell"
 import { Preloader } from "@/components/preloader-remover"
@@ -57,9 +58,16 @@ export default function RootLayout({
   return (
     <html lang="en" className="bg-black" style={{ backgroundColor: '#000000' }}>
       <body className="font-sans antialiased bg-black" style={{ backgroundColor: '#000000' }}>
+        {/* Injected outside React's tree so PWA shows logo before JS without hydration conflicts */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{if(document.getElementById("sozu-preloader"))return;var d=document.createElement("div");d.id="sozu-preloader";d.style.cssText="position:fixed;inset:0;z-index:9999;background:#000;display:flex;align-items:center;justify-content:center";var i=document.createElement("img");i.src="/icons/sozu_icon_192.png";i.alt="";i.width=64;i.height=64;i.style.cssText="border-radius:22%;opacity:0.92";d.appendChild(i);document.body.insertBefore(d,document.body.firstChild)}catch(e){}})();`,
+          }}
+        />
         <Preloader />
         <PaperShaderBackgroundShell>{children}</PaperShaderBackgroundShell>
-        <Analytics />
+        <AppReadyFallback />
+        <DeferredAnalytics />
         <PWARegister />
         <Toaster />
       </body>

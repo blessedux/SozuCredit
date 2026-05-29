@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { getWalletTexts } from "@/lib/wallet-texts"
+import { useWalletLanguage } from "@/lib/wallet-language"
 import { useTrustPoints } from "@/hooks/use-trust-points"
 
 interface TrustPointsModalProps {
@@ -23,7 +23,7 @@ export const TrustPointsModal = memo(function TrustPointsModal({
   isOpen,
   onClose,
 }: TrustPointsModalProps) {
-  const t = getWalletTexts("es")
+  const { t } = useWalletLanguage()
   const {
     trustPoints,
     modalView,

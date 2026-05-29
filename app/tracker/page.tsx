@@ -6,7 +6,7 @@ import { PieChart, Pie, Cell } from "recharts"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
+import { TrackerHomeSkeleton } from "@/components/tracker/tracker-home-skeleton"
 import { Plus, Wallet, ChevronRight } from "lucide-react"
 import { format, startOfWeek, startOfMonth, endOfWeek, endOfMonth, subWeeks, subMonths } from "date-fns"
 
@@ -100,13 +100,7 @@ export default function TrackerHomePage() {
   const recentExpenses = expenses.slice(0, 20)
 
   if (loading) {
-    return (
-      <div className="space-y-6">
-        <Skeleton className="h-24 w-full" />
-        <Skeleton className="h-48 w-full" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    )
+    return <TrackerHomeSkeleton />
   }
 
   return (

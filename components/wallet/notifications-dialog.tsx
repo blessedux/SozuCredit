@@ -7,7 +7,7 @@
 
 import { memo } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { getWalletTexts } from "@/lib/wallet-texts"
+import { useWalletLanguage } from "@/lib/wallet-language"
 import type { Notification } from "@/hooks/use-notifications"
 
 interface NotificationsDialogProps {
@@ -25,7 +25,7 @@ export const NotificationsDialog = memo(function NotificationsDialog({
   unreadCount,
   onMarkAsRead,
 }: NotificationsDialogProps) {
-  const t = getWalletTexts("es")
+  const { t } = useWalletLanguage()
   
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>

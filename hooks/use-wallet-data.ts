@@ -5,6 +5,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { getUserId } from "@/lib/wallet-utils"
+import { parseApyFromApiResponse } from "@/lib/defindex/parse-apy-response"
+import { deferNonCritical } from "@/lib/defer-non-critical"
 
 export interface Vault {
   id: string
@@ -126,6 +128,7 @@ export function useWalletData() {
           }
         }
       })
+      setIsBalanceLoading(false)
     } catch (error) {
       console.error("[Wallet] ❌ Error fetching USDC wallet balance:", error)
     }
@@ -272,14 +275,9 @@ export function useWalletData() {
 
       if (apyResponse.ok) {
         const apyData = await apyResponse.json()
-        if (apyData.success && apyData.apy) {
-          const apyNumber = typeof apyData.apy === 'object' 
-            ? (apyData.apy.precise ?? Number(apyData.apy.primary) ?? null)
-            : Number(apyData.apy) || null
-          
-          if (apyNumber !== null && !isNaN(apyNumber)) {
-            setApyValue(apyNumber)
-          }
+        const apyNumber = parseApyFromApiResponse(apyData)
+        if (apyNumber !== null) {
+          setApyValue(apyNumber)
         }
       }
     } catch (error) {
@@ -318,9 +316,13 @@ export function useWalletData() {
   }, [])
 
   // Fetch XLM balance
-  const fetchXLMBalance = useCallback(async (publicKey: string, userId: string) => {
+  const fetchXLMBalance = useCallback(async (
+    publicKey: string,
+    userId: string,
+    options?: { gateBalance?: boolean },
+  ) => {
     try {
-      setIsBalanceLoading(true)
+      if (options?.gateBalance) setIsBalanceLoading(true)
       console.log("[Wallet] Fetching XLM balance for wallet:", publicKey)
       const balanceResponse = await fetch("/api/wallet/stellar/balance", {
         headers: {
@@ -333,17 +335,37 @@ export function useWalletData() {
         console.log("[Wallet] XLM balance received:", balanceData)
         if (balanceData.balance !== undefined) {
           setXlmBalance(balanceData.balance)
-          setIsBalanceLoading(false)
         }
       } else {
         console.warn("[Wallet] Failed to fetch XLM balance:", balanceResponse.status)
-        setIsBalanceLoading(false)
       }
     } catch (error) {
       console.error("[Wallet] Error fetching XLM balance:", error)
-      setIsBalanceLoading(false)
+    } finally {
+      if (options?.gateBalance) setIsBalanceLoading(false)
     }
   }, [])
+
+  const bootstrapWalletFetches = useCallback(
+    (publicKey: string, userId: string) => {
+      void fetchWalletUSDCBalance(publicKey)
+      void fetchDefindexBalance(userId)
+      deferNonCritical(() => {
+        void fetchTransactionHistory(publicKey)
+        void fetchXLMBalance(publicKey, userId)
+        void fetchAutoDepositStatus(userId)
+        void fetchAPY(userId)
+      })
+    },
+    [
+      fetchWalletUSDCBalance,
+      fetchDefindexBalance,
+      fetchTransactionHistory,
+      fetchXLMBalance,
+      fetchAutoDepositStatus,
+      fetchAPY,
+    ],
+  )
 
   // Fetch wallet address with retry logic
   const fetchWalletAddress = useCallback(async (userId: string, retryCount = 0): Promise<void> => {
@@ -383,14 +405,9 @@ export function useWalletData() {
             setWalletNetwork(walletData.network)
           }
           
-          // Fetch balances for this wallet
-          fetchXLMBalance(publicKeyToUse, userId)
-          fetchWalletUSDCBalance(publicKeyToUse)
-          fetchTransactionHistory(publicKeyToUse)
-          fetchDefindexBalance(userId)
-          fetchAutoDepositStatus(userId)
-          fetchAPY(userId)
-          
+          // Critical path: show balance fast
+          bootstrapWalletFetches(publicKeyToUse, userId)
+
           return
         } else {
           console.warn("[Wallet] No public key in wallet response:", walletData)
@@ -423,10 +440,7 @@ export function useWalletData() {
                   if (createData.network) {
                     setWalletNetwork(createData.network)
                   }
-                  fetchXLMBalance(createData.publicKey, userId)
-                  fetchWalletUSDCBalance(createData.publicKey)
-                  fetchDefindexBalance(userId)
-                  fetchAutoDepositStatus(userId)
+                  bootstrapWalletFetches(createData.publicKey, userId)
                   return
                 }
               }
@@ -448,12 +462,7 @@ export function useWalletData() {
             if (sessionPublicKey) {
               console.log("[Wallet] Falling back to session public key (DB not yet synced).")
               setWalletAddress(sessionPublicKey)
-              fetchXLMBalance(sessionPublicKey, userId)
-              fetchWalletUSDCBalance(sessionPublicKey)
-              fetchTransactionHistory(sessionPublicKey)
-              void fetchDefindexBalance(userId)
-              fetchAutoDepositStatus(userId)
-              void fetchAPY(userId)
+              bootstrapWalletFetches(sessionPublicKey, userId)
               return
             }
             setWalletAddress("")
@@ -489,9 +498,7 @@ export function useWalletData() {
                 if (createData.network) {
                   setWalletNetwork(createData.network)
                 }
-                fetchXLMBalance(createData.publicKey, userId)
-                fetchWalletUSDCBalance(createData.publicKey)
-                void fetchDefindexBalance(userId)
+                bootstrapWalletFetches(createData.publicKey, userId)
                 return
               }
             }
@@ -510,9 +517,11 @@ export function useWalletData() {
         const sessionPublicKey = typeof window !== "undefined" ? sessionStorage.getItem("stellar_public_key") : null
         if (sessionPublicKey) {
           setWalletAddress(sessionPublicKey)
-          fetchWalletUSDCBalance(sessionPublicKey)
-          fetchTransactionHistory(sessionPublicKey)
-          setIsBalanceLoading(false)
+          void fetchWalletUSDCBalance(sessionPublicKey)
+          void fetchDefindexBalance(userId)
+          deferNonCritical(() => {
+            void fetchTransactionHistory(sessionPublicKey)
+          })
           return
         }
         setWalletAddress("")
@@ -547,7 +556,7 @@ export function useWalletData() {
         void fetchDefindexBalance(userId)
       }
     }
-  }, [fetchXLMBalance, fetchWalletUSDCBalance, fetchTransactionHistory, fetchDefindexBalance, fetchAutoDepositStatus, fetchAPY])
+  }, [bootstrapWalletFetches, fetchDefindexBalance])
 
   // Initialize wallet data (mount only: dev and prod both require a real /auth session)
   useEffect(() => {
@@ -560,8 +569,10 @@ export function useWalletData() {
     const sessionPublicKey = sessionStorage.getItem("stellar_public_key")
     if (sessionPublicKey && !walletAddress) {
       setWalletAddress(sessionPublicKey)
-      fetchWalletUSDCBalance(sessionPublicKey)
-      fetchTransactionHistory(sessionPublicKey)
+      void fetchWalletUSDCBalance(sessionPublicKey)
+      deferNonCritical(() => {
+        void fetchTransactionHistory(sessionPublicKey)
+      })
     }
 
     const checkAuth = () => {
@@ -605,27 +616,18 @@ export function useWalletData() {
           return
         }
         
-        // Fetch vault data
-        const vaultResponse = await fetch("/api/wallet/vault", {
-          headers: {
-            "x-user-id": userId,
-          },
-        })
-        
+        const [vaultResponse, trustResponse] = await Promise.all([
+          fetch("/api/wallet/vault", { headers: { "x-user-id": userId } }),
+          fetch("/api/wallet/trust-points", { headers: { "x-user-id": userId } }),
+        ])
+
         if (!vaultResponse.ok) {
           throw new Error("Failed to fetch vault data")
         }
-        
+
         const vaultData = await vaultResponse.json()
         setVault(vaultData.vault)
-        
-        // Fetch trust points
-        const trustResponse = await fetch("/api/wallet/trust-points", {
-          headers: {
-            "x-user-id": userId,
-          },
-        })
-        
+
         if (trustResponse.ok) {
           const trustData = await trustResponse.json()
           setTrustPoints(trustData.trustPoints)
@@ -656,7 +658,7 @@ export function useWalletData() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- bootstrap once; refresh flows use explicit handlers
   }, [])
 
-  // Fetch XLM price
+  // Fetch XLM price — deferred; not needed for landing balance card
   useEffect(() => {
     const fetchPrices = async () => {
       try {
@@ -671,9 +673,11 @@ export function useWalletData() {
       }
     }
 
-    fetchPrices()
-    const priceInterval = setInterval(fetchPrices, 5 * 60 * 1000)
-    return () => clearInterval(priceInterval)
+    deferNonCritical(() => {
+      void fetchPrices()
+    })
+    const priceInterval = window.setInterval(fetchPrices, 5 * 60 * 1000)
+    return () => window.clearInterval(priceInterval)
   }, [])
 
   return {

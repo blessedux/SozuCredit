@@ -1,5 +1,6 @@
 "use client"
 
+import { Suspense } from "react"
 import dynamic from "next/dynamic"
 
 // Shell handles both mobile (touch/swipe) and desktop (mouse drag + click nav).
@@ -10,5 +11,9 @@ const AppShell = dynamic(
 )
 
 export default function HomePage() {
-  return <AppShell />
+  return (
+    <Suspense fallback={null}>
+      <AppShell />
+    </Suspense>
+  )
 }

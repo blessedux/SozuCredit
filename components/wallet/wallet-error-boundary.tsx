@@ -8,6 +8,19 @@
 import { Component, ReactNode } from "react"
 import { Button } from "@/components/ui/button"
 import { getWalletTexts } from "@/lib/wallet-texts"
+import type { WalletLanguage } from "@/lib/wallet-texts"
+
+const STORAGE_KEY = "sozu_app_language:v1"
+
+function readStoredLanguage(): WalletLanguage {
+  if (typeof window === "undefined") return "es"
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    return stored === "en" || stored === "es" ? stored : "es"
+  } catch {
+    return "es"
+  }
+}
 
 interface Props {
   children: ReactNode
@@ -39,7 +52,7 @@ export class WalletErrorBoundary extends Component<Props, State> {
         return this.props.fallback
       }
 
-      const t = getWalletTexts("es")
+      const t = getWalletTexts(readStoredLanguage())
 
       return (
         <div className="min-h-screen bg-black text-white flex items-center justify-center p-4">

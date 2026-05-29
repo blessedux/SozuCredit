@@ -8,8 +8,9 @@
 import { memo, useState } from "react"
 import { motion } from "framer-motion"
 import { ArrowUp, ExternalLink, ChevronDown, ChevronUp, Activity } from "lucide-react"
+import { TransactionHistorySkeleton } from "@/components/wallet/wallet-skeleton-parts"
 import { getStellarExpertTxUrl, formatAddress } from "@/lib/wallet-utils"
-import { getWalletTexts } from "@/lib/wallet-texts"
+import { useWalletLanguage } from "@/lib/wallet-language"
 import type { Transaction } from "@/hooks/use-wallet-data"
 
 interface TransactionHistoryProps {
@@ -27,11 +28,19 @@ export const TransactionHistory = memo(function TransactionHistory({
   addressToTagMap,
   isLoading,
 }: TransactionHistoryProps) {
-  const t = getWalletTexts("es")
+  const { t } = useWalletLanguage()
   const [isExpanded, setIsExpanded] = useState(false)
 
   if (!walletAddress) {
     return null
+  }
+
+  if (isLoading) {
+    return (
+      <div className="mb-8 lg:mb-0" aria-busy aria-label={t.loadingTransactions}>
+        <TransactionHistorySkeleton rows={5} />
+      </div>
+    )
   }
 
   return (
@@ -43,11 +52,7 @@ export const TransactionHistory = memo(function TransactionHistory({
     >
       <div className="rounded-lg border border-white/20 bg-white/5 p-4 sm:p-5 lg:p-6">
         <ul className="list-none space-y-2 sm:space-y-3">
-          {isLoading ? (
-            <li className="py-4 text-center text-sm text-white/60" aria-live="polite">
-              {t.loadingTransactions}
-            </li>
-          ) : transactions.length === 0 ? (
+          {transactions.length === 0 ? (
             <li className="py-4 text-center text-sm text-white/60">{t.noTransactions}</li>
           ) : (
             <>

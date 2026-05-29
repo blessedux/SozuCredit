@@ -144,7 +144,7 @@ async function ActionsContent({ userId }: { userId: string }) {
 function ActionsSkeleton() {
   return (
     <div className="grid gap-6 md:grid-cols-2">
-      {[1, 2, 3, 4].map((i) => (
+      {[1, 2, 3, 4, 5, 6].map((i) => (
         <Card key={i}>
           <CardHeader>
             <Skeleton className="h-6 w-48 mb-2" />

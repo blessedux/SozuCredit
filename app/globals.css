@@ -186,9 +186,27 @@
     @apply bg-black;
     background-color: #000000;
   }
+  html.app-no-scroll,
+  html.app-no-scroll body {
+    overflow: hidden;
+    overscroll-behavior: none;
+    height: 100%;
+    width: 100%;
+    position: fixed;
+    touch-action: pan-x pinch-zoom;
+  }
   body {
     @apply bg-black text-foreground;
     background-color: #000000;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
   .maplibregl-popup-content {
     @apply bg-transparent! shadow-none! p-0! rounded-none!;

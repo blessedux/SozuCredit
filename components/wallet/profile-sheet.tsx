@@ -11,7 +11,7 @@ import { X, Copy, Check, Eye, EyeOff, Key, LogOut, TrendingUp, Banknote, User, S
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { getWalletTexts } from "@/lib/wallet-texts"
+import { useWalletLanguage } from "@/lib/wallet-language"
 import { copyToClipboard, getUserId } from "@/lib/wallet-utils"
 import { getPublicKeyFromSession } from "@/lib/storage/key-utils"
 
@@ -57,7 +57,7 @@ const ProfileTab = memo(function ProfileTab({
   onOpenLedger: () => void
   onOpenSettings: () => void
 }) {
-  const t = getWalletTexts("es")
+  const { t } = useWalletLanguage()
 
   // Tag editing
   const [tag, setTag] = useState(username)
@@ -428,7 +428,7 @@ export const ProfileSheet = memo(function ProfileSheet({
   onSwipeHandlers,
 }: ProfileSheetProps) {
   const router = useRouter()
-  const t = getWalletTexts("es")
+  const { t } = useWalletLanguage()
   const effectiveWalletAddress = walletAddress || getPublicKeyFromSession() || ""
   const [activeTab, setActiveTab] = useState<Tab>("profile")
   const [currentUsername, setCurrentUsername] = useState(initialUsername)

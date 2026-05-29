@@ -1,14 +1,24 @@
 "use client"
 
 import { Skeleton } from "@/components/ui/skeleton"
-import { Award, Wallet } from "lucide-react"
 import { motion } from "framer-motion"
+import {
+  BalanceCardSkeleton,
+  CashflowLinkSkeleton,
+  CashflowSummarySkeleton,
+  CommandBarSkeleton,
+  TransactionHistorySkeleton,
+} from "@/components/wallet/wallet-skeleton-parts"
+import { cn } from "@/lib/utils"
+
+export type WalletSkeletonLayout = "landing" | "history" | "desktop"
 
 interface WalletSkeletonProps {
   isExiting?: boolean
+  layout?: WalletSkeletonLayout
 }
 
-export function WalletSkeleton({ isExiting = false }: WalletSkeletonProps) {
+export function WalletSkeleton({ isExiting = false, layout = "desktop" }: WalletSkeletonProps) {
   return (
     <motion.div
       className="relative h-full w-full"
@@ -17,41 +27,72 @@ export function WalletSkeleton({ isExiting = false }: WalletSkeletonProps) {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.3, ease: "easeInOut" }}
     >
-      <div className="container mx-auto px-6 py-8 md:py-12">
-        {/* Balance Display Box Skeleton */}
-        <div className="mb-8 relative">
-          <div className="border border-white/20 rounded-lg p-8 text-center relative">
-            {/* Label skeleton */}
-            <Skeleton className="h-4 w-32 mx-auto mb-4 bg-white/10" />
-            
-            {/* Balance number skeleton */}
-            <div className="flex items-center justify-center min-h-[4rem]">
-              <Skeleton className="h-16 w-48 bg-white/10" />
-            </div>
-            
-            {/* APY badge skeleton */}
-            <div className="mt-2 flex justify-center">
-              <Skeleton className="h-6 w-20 bg-white/10 rounded-full" />
-            </div>
+      {layout === "landing" ? <WalletLandingSkeleton /> : null}
+      {layout === "history" ? <WalletHistorySkeleton /> : null}
+      {layout === "desktop" ? <WalletDesktopSkeleton /> : null}
+    </motion.div>
+  )
+}
+
+function WalletLandingSkeleton() {
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      <header className="flex shrink-0 flex-col items-center gap-1.5 pt-[max(1.25rem,env(safe-area-inset-top))]">
+        <Skeleton className="size-10 rounded-lg bg-white/10" />
+      </header>
+
+      <div className="flex min-h-0 flex-1 flex-col px-4">
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-start pt-2">
+          <div className="flex min-h-0 w-full max-w-md flex-1 flex-col">
+            <BalanceCardSkeleton compact />
+          </div>
+        </div>
+
+        <div className="shrink-0 pb-[max(5rem,env(safe-area-inset-bottom))] pt-2">
+          <CommandBarSkeleton />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function WalletHistorySkeleton() {
+  return (
+    <div className="relative z-10 h-full overflow-hidden px-4 pt-[max(3.5rem,env(safe-area-inset-top))] pb-[max(5rem,env(safe-area-inset-bottom))]">
+      <div className="mx-auto w-full max-w-7xl space-y-5">
+        <CashflowLinkSkeleton />
+        <CashflowSummarySkeleton />
+        <TransactionHistorySkeleton rows={5} />
+      </div>
+    </div>
+  )
+}
+
+function WalletDesktopSkeleton() {
+  return (
+    <div className="relative z-10 h-full overflow-hidden">
+      <div className="relative mx-auto w-full max-w-7xl xl:max-w-[1320px] px-4 pt-16 pb-8 sm:px-6 md:py-12 lg:px-10 xl:px-12">
+        <div className="mb-6 flex flex-col items-center gap-3 sm:mb-8 lg:items-center">
+          <CashflowLinkSkeleton className="w-full lg:ml-auto lg:justify-end" />
+        </div>
+
+        <div className="flex flex-col gap-8 lg:grid lg:grid-cols-12 lg:items-start lg:gap-8 xl:gap-10">
+          <div className="min-w-0 lg:col-span-5 xl:col-span-4">
+            <BalanceCardSkeleton />
+          </div>
+          <div className="min-w-0 lg:col-span-7 xl:col-span-8">
+            <TransactionHistorySkeleton rows={6} />
           </div>
         </div>
       </div>
+    </div>
+  )
+}
 
-      {/* Bottom Elements Skeleton - Fixed position matching wallet page */}
-      {/* Trust Points - Bottom Left */}
-      <div className="fixed bottom-4 left-4 md:bottom-6 md:left-6 z-10">
-        <div className="px-5 py-3 md:px-4 md:py-2 flex items-center gap-2 md:gap-2">
-          <Award className="w-6 h-6 md:w-5 md:h-5 text-white/30" />
-          <Skeleton className="h-5 w-20 bg-white/10" />
-        </div>
-      </div>
-
-      {/* Wallet Icon - Bottom Right */}
-      <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-10">
-        <div className="w-16 h-16 md:w-14 md:h-14 flex items-center justify-center">
-          <Wallet className="w-7 h-7 md:w-6 md:h-6 text-white/30" />
-        </div>
-      </div>
-    </motion.div>
+export function WalletLazySectionSkeleton({ className }: { className?: string }) {
+  return (
+    <div className={cn("rounded-lg border border-white/20 bg-white/5 p-4", className)}>
+      <TransactionHistorySkeleton rows={3} className="border-0 bg-transparent p-0" />
+    </div>
   )
 }

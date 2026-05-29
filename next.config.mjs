@@ -6,6 +6,15 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  experimental: {
+    optimizePackageImports: [
+      "lucide-react",
+      "@fortawesome/free-solid-svg-icons",
+      "@fortawesome/react-fontawesome",
+      "@radix-ui/react-dialog",
+      "@radix-ui/react-dropdown-menu",
+    ],
+  },
   // Fix workspace root warning - set turbopack root to current directory
   turbopack: {
     root: process.cwd(),

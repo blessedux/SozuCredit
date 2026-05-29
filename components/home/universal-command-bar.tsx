@@ -3,6 +3,8 @@
 import Link from "next/link"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { useWalletLanguage } from "@/lib/wallet-language"
+import { formatWalletText } from "@/lib/wallet-texts"
 
 type CommandItem = {
   id: string
@@ -10,15 +12,6 @@ type CommandItem = {
   href?: string
   comingSoon?: boolean
 }
-
-const COMMANDS: CommandItem[] = [
-  { id: "pay", label: "Pay", href: "/wallet?send=1" },
-  { id: "batch", label: "Batch", comingSoon: true },
-  { id: "offramp", label: "Offramp", comingSoon: true },
-  { id: "deposit", label: "Deposit" },
-  { id: "plan", label: "Plan", href: "/ledger/goals" },
-  { id: "credit", label: "Credit", href: "/ledger" },
-]
 
 const commandButtonClass = cn(
   "flex h-12 flex-col items-center justify-center rounded-2xl border border-white/12 bg-white/[0.04]",
@@ -30,17 +23,25 @@ function CommandButton({
   item,
   onPayClick,
   onDepositClick,
+  comingSoonLabel,
+  comingSoonDesc,
 }: {
   item: CommandItem
   onPayClick?: () => void
   onDepositClick?: () => void
+  comingSoonLabel: string
+  comingSoonDesc: string
 }) {
   if (item.comingSoon) {
     return (
       <button
         type="button"
         className={commandButtonClass}
-        onClick={() => toast("Coming soon", { description: `${item.label} is not available yet.` })}
+        onClick={() =>
+          toast(comingSoonLabel, {
+            description: formatWalletText(comingSoonDesc, { label: item.label }),
+          })
+        }
       >
         {item.label}
       </button>
@@ -57,11 +58,7 @@ function CommandButton({
 
   if (item.id === "deposit") {
     return (
-      <button
-        type="button"
-        className={commandButtonClass}
-        onClick={onDepositClick ?? (() => toast("Coming soon", { description: "Deposit is not available yet." }))}
-      >
+      <button type="button" className={commandButtonClass} onClick={onDepositClick}>
         {item.label}
       </button>
     )
@@ -83,13 +80,56 @@ export function UniversalCommandBar({
   className?: string
   onPayClick?: () => void
   onDepositClick?: () => void
-  /** When true, renders just the button grid without the card wrapper */
   bare?: boolean
 }) {
+  const { t } = useWalletLanguage()
+
+  const commands: CommandItem[] = [
+    { id: "pay", label: t.cmdPay, href: "/wallet?send=1" },
+    { id: "offramp", label: t.cmdOfframp, comingSoon: true },
+    { id: "deposit", label: t.cmdDeposit },
+    { id: "plan", label: t.cmdPlan, href: "/ledger/goals" },
+    { id: "credit", label: t.cmdCredit, href: "/credit" },
+  ]
+
   const grid = (
     <div className="grid grid-cols-3 gap-2">
-      {COMMANDS.map((item) => (
-        <CommandButton key={item.id} item={item} onPayClick={onPayClick} onDepositClick={onDepositClick} />
+      <CommandButton
+        item={commands[0]}
+        onPayClick={onPayClick}
+        onDepositClick={
+          onDepositClick ??
+          (() =>
+            toast(t.comingSoon, {
+              description: formatWalletText(t.comingSoonDesc, { label: t.cmdDeposit }),
+            }))
+        }
+        comingSoonLabel={t.comingSoon}
+        comingSoonDesc={t.comingSoonDesc}
+      />
+      <div aria-hidden className="h-12" />
+      <CommandButton
+        item={commands[1]}
+        onPayClick={onPayClick}
+        onDepositClick={onDepositClick}
+        comingSoonLabel={t.comingSoon}
+        comingSoonDesc={t.comingSoonDesc}
+      />
+      {commands.slice(2).map((item) => (
+        <CommandButton
+          key={item.id}
+          item={item}
+          onPayClick={onPayClick}
+          onDepositClick={
+            onDepositClick ??
+            (() =>
+              toast(t.comingSoon, {
+                description: formatWalletText(t.comingSoonDesc, { label: t.cmdDeposit }),
+              }))
+          }
+          comingSoonLabel={t.comingSoon}
+          comingSoonDesc={t.comingSoonDesc}
+        />
       ))}
     </div>
   )
@@ -104,7 +144,7 @@ export function UniversalCommandBar({
       )}
     >
       <div className="mb-2 text-center text-[8px] font-light uppercase tracking-[0.28em] text-white/40">
-        Command
+        {t.commandTitle}
       </div>
       {grid}
     </div>

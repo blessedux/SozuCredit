@@ -50,7 +50,7 @@ import {
   LEDGER_VAULT_SELECT_NONE,
   type LedgerTransactionEditRow,
 } from "@/components/ledger/ledger-transaction-edit-dialog"
-import { LedgerStackedRouteSkeleton } from "@/components/ledger/ledger-stacked-route-skeleton"
+import { LedgerTransactionsRouteSkeleton } from "@/components/ledger/ledger-transactions-route-skeleton"
 import { LedgerCategoryCombobox } from "@/components/ledger/ledger-category-combobox"
 import { LedgerTransactionsTableSkeleton } from "@/components/ledger/ledger-transactions-table-skeleton"
 import { ExpenseBreakdownDonut, type DonutDatum } from "@/components/ledger/expense-breakdown-donut"
@@ -120,7 +120,7 @@ function categoryBreakdownToDonut(slices: CategoryBreakdownSlice[]): DonutDatum[
 
 export default function LedgerTransactionsPage() {
   return (
-    <Suspense fallback={<LedgerStackedRouteSkeleton />}>
+    <Suspense fallback={<LedgerTransactionsRouteSkeleton />}>
       <LedgerTransactionsContent />
     </Suspense>
   )

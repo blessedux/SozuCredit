@@ -7,7 +7,7 @@
 
 import { memo } from "react"
 import { ArrowUp, Wallet } from "lucide-react"
-import { getWalletTexts } from "@/lib/wallet-texts"
+import { useWalletLanguage } from "@/lib/wallet-language"
 
 interface BottomMenuBarProps {
   onSendClick: () => void
@@ -20,7 +20,7 @@ export const BottomMenuBar = memo(function BottomMenuBar({
   onWalletClick,
   unreadCount = 0,
 }: BottomMenuBarProps) {
-  const t = getWalletTexts("es")
+  const { t } = useWalletLanguage()
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-10 border-t border-white/10 bg-black/40 px-4 py-3 backdrop-blur-md md:px-6 md:py-4 lg:px-10 xl:px-12">
