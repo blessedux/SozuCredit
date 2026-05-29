@@ -10,6 +10,8 @@ export type SdpInvitePayload = {
   sep24Base: string;
   /** SDP stellar.toml SIGNING_KEY (SEP-10 server account id) */
   sdpSigningPublicKey: string;
+  /** SDP multi-tenant name — sent as SDP-Tenant-Name header on every SDP API call */
+  tenantName?: string;
   /** Embedded-wallet invitation token when present on the registration link */
   token?: string;
   /** Epoch seconds */

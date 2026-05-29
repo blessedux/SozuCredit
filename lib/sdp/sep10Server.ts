@@ -35,6 +35,7 @@ export async function requestSep10Challenge(params: {
   clientDomain: string;
   sdpHomeDomain: string;
   sdpSigningPublicKey: string;
+  tenantName?: string;
 }): Promise<Sep10ChallengeResult> {
   const {
     webAuthEndpoint,
@@ -42,6 +43,7 @@ export async function requestSep10Challenge(params: {
     clientDomain,
     sdpHomeDomain,
     sdpSigningPublicKey,
+    tenantName,
   } = params;
 
   const u = new URL(webAuthEndpoint);
@@ -49,10 +51,15 @@ export async function requestSep10Challenge(params: {
   u.searchParams.set("client_domain", clientDomain.trim());
   u.searchParams.set("home_domain", sdpHomeDomain.trim());
 
+  const sdpHeaders: HeadersInit = {
+    Accept: "application/json",
+    ...(tenantName ? { "SDP-Tenant-Name": tenantName } : {}),
+  };
+
   let res: Response;
   try {
     res = await fetch(u.toString(), {
-      headers: { Accept: "application/json" },
+      headers: sdpHeaders,
       next: { revalidate: 0 },
     });
   } catch (e) {
@@ -135,6 +142,7 @@ export async function submitSep10SignedTransaction(params: {
   webAuthDomain: string;
   userAccountId: string;
   clientSigningSecret: string;
+  tenantName?: string;
 }): Promise<Sep10TokenResult> {
   const {
     webAuthEndpoint,
@@ -145,6 +153,7 @@ export async function submitSep10SignedTransaction(params: {
     webAuthDomain,
     userAccountId,
     clientSigningSecret,
+    tenantName,
   } = params;
 
   try {
@@ -203,6 +212,7 @@ export async function submitSep10SignedTransaction(params: {
       headers: {
         Accept: "application/json",
         "Content-Type": contentType,
+        ...(tenantName ? { "SDP-Tenant-Name": tenantName } : {}),
       },
       body,
       next: { revalidate: 0 },

@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { invite, clientSigningSecret, stellarAccount } = ctx;
+  const { invite, clientSigningSecret, stellarAccount, tenantName } = ctx;
 
   const tokenResult = await submitSep10SignedTransaction({
     webAuthEndpoint: invite.webAuthEndpoint,
@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
     webAuthDomain,
     userAccountId: stellarAccount,
     clientSigningSecret,
+    tenantName,
   });
 
   if (!tokenResult.ok) {

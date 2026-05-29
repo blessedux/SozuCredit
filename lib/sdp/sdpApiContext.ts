@@ -17,6 +17,8 @@ export type SdpApiContext =
       clientSigningSecret: string;
       stellarAccount: string;
       userId: string;
+      /** SDP-Tenant-Name header value — required for multi-tenant SDP */
+      tenantName: string;
     }
   | { ok: false; status: number; error: string };
 
@@ -93,6 +95,12 @@ export async function getSdpApiContext(): Promise<SdpApiContext> {
     };
   }
 
+  // SDP multi-tenant header: prefer value from invite cookie, then env var
+  const tenantName =
+    invite.tenantName?.trim() ||
+    process.env.SDP_TENANT_NAME?.trim() ||
+    "";
+
   return {
     ok: true,
     invite,
@@ -100,6 +108,7 @@ export async function getSdpApiContext(): Promise<SdpApiContext> {
     clientSigningSecret,
     stellarAccount,
     userId,
+    tenantName,
   };
 }
 

@@ -8,7 +8,7 @@ export async function GET() {
     return NextResponse.json({ error: ctx.error }, { status: ctx.status });
   }
 
-  const { invite, clientDomain, stellarAccount } = ctx;
+  const { invite, clientDomain, stellarAccount, tenantName } = ctx;
 
   const challenge = await requestSep10Challenge({
     webAuthEndpoint: invite.webAuthEndpoint,
@@ -16,6 +16,7 @@ export async function GET() {
     clientDomain,
     sdpHomeDomain: invite.sdpHost,
     sdpSigningPublicKey: invite.sdpSigningPublicKey,
+    tenantName,
   });
 
   if (!challenge.ok) {

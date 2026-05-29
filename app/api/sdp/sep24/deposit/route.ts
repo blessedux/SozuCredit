@@ -18,7 +18,7 @@ export async function POST() {
     );
   }
 
-  const { invite, stellarAccount } = ctx;
+  const { invite, stellarAccount, tenantName } = ctx;
   const { code, issuer } = parseSdpAssetParam(invite.asset);
 
   const extra: Record<string, string> = {};
@@ -32,6 +32,7 @@ export async function POST() {
     account: stellarAccount,
     assetCode: code,
     assetIssuer: issuer,
+    tenantName,
     extra: Object.keys(extra).length ? extra : undefined,
   });
 

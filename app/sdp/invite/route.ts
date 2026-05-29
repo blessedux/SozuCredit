@@ -51,6 +51,9 @@ export async function GET(request: NextRequest) {
   const assetParam = incoming.get("asset")?.trim() || "";
   const nameParam = incoming.get("name")?.trim() || "";
   const tokenParam = incoming.get("token")?.trim() || "";
+  // tenant is an UNSIGNED extra param — strip before signature verification
+  const tenantParam = incoming.get("tenant")?.trim() || "";
+  incoming.delete("tenant");
 
   if (!domainParam || !assetParam) {
     return htmlError(
@@ -93,6 +96,7 @@ export async function GET(request: NextRequest) {
     webAuthEndpoint: toml.webAuthEndpoint,
     sep24Base: toml.transferServerSep24,
     sdpSigningPublicKey: toml.signingKey,
+    ...(tenantParam ? { tenantName: tenantParam } : {}),
     ...(tokenParam ? { token: tokenParam } : {}),
     exp,
   };

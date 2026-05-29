@@ -47,6 +47,7 @@ export async function postSep24DepositInteractive(params: {
   account: string;
   assetCode: string;
   assetIssuer: string | null;
+  tenantName?: string;
   /** Extra fields some anchors expect */
   extra?: Record<string, string>;
 }): Promise<Sep24InteractiveResult> {
@@ -79,6 +80,7 @@ export async function postSep24DepositInteractive(params: {
       Accept: "application/json",
       "Content-Type": "application/x-www-form-urlencoded",
       Authorization: `Bearer ${params.jwt}`,
+      ...(params.tenantName ? { "SDP-Tenant-Name": params.tenantName } : {}),
     },
     body: form.toString(),
     redirect: "manual",
