@@ -42,14 +42,21 @@ export async function POST(request: NextRequest) {
     const currentBalance = await getUSDCBalance(wallet.publicKey)
     console.log("[Auto-Deposit API] Current USDC balance:", currentBalance)
 
+    // Allow caller to pass strategy + idle-balance flag
+    const body = await request.json().catch(() => ({}))
+    const strategyId = body.strategyId === "yieldblox" ? "yieldblox" : "fixed"
+    const depositIdleBalance = body.depositIdleBalance === true
+
     // Check and trigger auto-deposit if needed
     const result = await checkAndTriggerAutoDeposit(
       user.id,
       wallet.previousUsdcBalance ?? null,
       currentBalance,
       {
-        minDepositAmount: 10.0, // $10 minimum
-        networkFeeBuffer: 0.4,  // Always keep $0.4 in wallet (never deposit 100%)
+        minDepositAmount: Number(process.env.VAULT_MIN_DEPOSIT ?? "10"),
+        networkFeeBuffer: Number(process.env.VAULT_NETWORK_FEE_BUFFER ?? "0.4"),
+        strategyId,
+        depositIdleBalance,
       }
     )
 

@@ -27,11 +27,60 @@ export async function GET(request: NextRequest) {
 
     console.log("[Auto-Deposit E2E Test] Starting end-to-end test for userId:", user.id)
 
+    const url = new URL(request.url)
+    const strategyId = url.searchParams.get("strategyId") === "yieldblox" ? "yieldblox" : "fixed"
+
     const results: Record<string, any> = {
       userId: user.id,
       timestamp: new Date().toISOString(),
+      strategyId,
       testSteps: [],
       summary: {},
+    }
+
+    // Step 0: Config validation
+    try {
+      const { getDeFindexConfig, validateDeFindexConfig } = await import("@/lib/defindex/config")
+      const { getStrategyConfig } = await import("@/lib/defindex/strategy-catalog")
+      const config = getDeFindexConfig(strategyId)
+      const strategy = getStrategyConfig(strategyId)
+      const valid = validateDeFindexConfig(config)
+      results.testSteps.push({
+        step: 0,
+        name: "Config Validation",
+        status: valid ? "passed" : "failed",
+        data: {
+          network: config.network,
+          strategyId,
+          vaultAddress: strategy.vaultAddress,
+          strategyAddress: strategy.strategyAddress,
+          assetAddress: strategy.assetAddress,
+          blendPoolId: strategy.blendPoolId,
+          minDeposit: config.minDepositAmount,
+          feeBuffer: config.networkFeeBuffer,
+          configValid: valid,
+        },
+      })
+    } catch (err) {
+      results.testSteps.push({ step: 0, name: "Config Validation", status: "failed", error: String(err) })
+    }
+
+    // Step 0b: Live APY check
+    try {
+      const { getRealTimeAPY } = await import("@/lib/defindex/apy-calculator")
+      const apyResult = await getRealTimeAPY(strategyId)
+      results.testSteps.push({
+        step: 0,
+        name: "Live APY",
+        status: apyResult.success ? "passed" : "failed",
+        data: {
+          source: apyResult.data?.source,
+          yearlyApy: apyResult.data?.yearly,
+          confidence: apyResult.data?.confidence,
+        },
+      })
+    } catch (err) {
+      results.testSteps.push({ step: 0, name: "Live APY", status: "failed", error: String(err) })
     }
 
     // Step 1: Get wallet
@@ -244,6 +293,59 @@ export async function GET(request: NextRequest) {
         name: "Monitor Balance and Auto-Deposit",
         status: "skipped",
         note: "Add ?trigger=true to actually trigger auto-deposit check",
+      })
+    }
+
+    // Step 9: DeFindex SDK — build deposit XDR (simulation only, no signing)
+    console.log("[Auto-Deposit E2E Test] Step 9: DeFindex SDK deposit simulation...")
+    try {
+      const { buildDepositXdr, getVaultUserBalance } = await import("@/lib/defindex/vault-sdk")
+      const { getDepositableUsdcBalance } = await import("@/lib/stellar/soroban-token")
+      const { getDeFindexConfig } = await import("@/lib/defindex/config")
+
+      const config = getDeFindexConfig(strategyId)
+      const blendBalance = await getDepositableUsdcBalance(wallet.publicKey, config.network)
+
+      // Try building a deposit XDR for the minimum deposit amount (no signing)
+      const testDepositAmount = Math.max(config.minDepositAmount, 0.001)
+      let xdrPreview = "(skipped — balance below minimum)"
+      let xdrBuilt = false
+
+      if (blendBalance >= config.minDepositAmount) {
+        const { xdr } = await buildDepositXdr(
+          wallet.publicKey,
+          testDepositAmount,
+          strategyId,
+          config.network
+        )
+        xdrPreview = xdr.slice(0, 80) + "..."
+        xdrBuilt = true
+      }
+
+      // Read on-chain vault balance
+      const vaultBalance = await getVaultUserBalance(wallet.publicKey, strategyId, config.network)
+
+      results.testSteps.push({
+        step: 9,
+        name: "DeFindex SDK Simulation",
+        status: "passed",
+        data: {
+          blendUsdcBalance: blendBalance,
+          vaultAddressQueried: config.defindexVaultAddress,
+          dfTokens: vaultBalance.dfTokens,
+          underlyingUsdc: vaultBalance.underlyingUsdc,
+          depositXdrBuilt: xdrBuilt,
+          xdrPreview,
+          readyToDeposit: blendBalance >= config.minDepositAmount,
+          minDeposit: config.minDepositAmount,
+        },
+      })
+    } catch (err) {
+      results.testSteps.push({
+        step: 9,
+        name: "DeFindex SDK Simulation",
+        status: "failed",
+        error: err instanceof Error ? err.message : String(err),
       })
     }
 

@@ -1,258 +1,202 @@
 /**
  * Auto-Deposit Service
- * Monitors wallet balance and automatically deposits funds into DeFindex strategy
+ *
+ * Two modes:
+ *   1. "increase-detect" — deposit when wallet USDC increases above min threshold
+ *      (original behaviour; used for "auto-earn on inbound funds")
+ *   2. "idle-balance"    — deposit (walletBalance − buffer) regardless of whether
+ *      previousBalance was recorded (first-time earn / manual "Start earning" trigger)
+ *
+ * Strategy is passed in; defaults to "fixed".
  */
 
-import { getUSDCBalance, getStellarWallet, updatePreviousUsdcBalance, saveBalanceSnapshot } from "@/lib/turnkey/stellar-wallet"
+import {
+  getStellarWallet,
+  updatePreviousUsdcBalance,
+  saveBalanceSnapshot,
+} from "@/lib/turnkey/stellar-wallet"
+import { getDepositableUsdcBalance } from "@/lib/stellar/soroban-token"
 import { depositToStrategy } from "./vault"
+import type { StrategyId } from "./strategy-catalog"
 
 export interface AutoDepositConfig {
-  minDepositAmount: number // Minimum amount to trigger auto-deposit (in USDC)
-  networkFeeBuffer: number // Buffer to keep in wallet for network fees (in USDC)
-  maxRetries: number // Maximum number of retry attempts
-  retryDelayMs: number // Delay between retries (in milliseconds)
+  minDepositAmount: number
+  networkFeeBuffer: number
+  maxRetries: number
+  retryDelayMs: number
+  strategyId: StrategyId
 }
 
 const DEFAULT_CONFIG: AutoDepositConfig = {
-  minDepositAmount: 10.0, // Minimum $10 USDC to trigger auto-deposit
-  networkFeeBuffer: 0.4, // Always keep $0.4 USDC in wallet for transactions (never deposit 100%)
+  minDepositAmount: Number(process.env.VAULT_MIN_DEPOSIT ?? "10"),
+  networkFeeBuffer: Number(process.env.VAULT_NETWORK_FEE_BUFFER ?? "0.4"),
   maxRetries: 3,
-  retryDelayMs: 5000, // 5 seconds between retries
+  retryDelayMs: 5000,
+  strategyId: "fixed",
 }
 
+// ─── Increase-detect mode (original) ─────────────────────────────────────────
+
 /**
- * Check if balance has increased and trigger auto-deposit if needed
+ * Check if balance has increased and trigger auto-deposit if so.
+ * Also handles idle-balance mode when previousBalance is null and
+ * the caller explicitly passes `depositIdleBalance: true`.
  */
 export async function checkAndTriggerAutoDeposit(
   userId: string,
   previousBalance: number | null,
   currentBalance: number,
-  config: Partial<AutoDepositConfig> = {}
+  config: Partial<AutoDepositConfig> & { depositIdleBalance?: boolean } = {}
 ): Promise<{ triggered: boolean; depositAmount?: number; transactionHash?: string; error?: string }> {
   const finalConfig = { ...DEFAULT_CONFIG, ...config }
-  
-  console.log("[Auto-Deposit] Checking balance for auto-deposit:", {
+
+  console.log("[Auto-Deposit] Checking balance:", {
     userId,
     previousBalance,
     currentBalance,
-    minDepositAmount: finalConfig.minDepositAmount,
+    strategyId: finalConfig.strategyId,
+    depositIdleBalance: config.depositIdleBalance ?? false,
   })
-  
-  // If no previous balance, store current balance and don't deposit yet
-  if (previousBalance === null) {
-    console.log("[Auto-Deposit] No previous balance recorded, storing current balance")
-    return { triggered: false }
-  }
-  
-  // Calculate balance increase
-  const balanceIncrease = currentBalance - previousBalance
-  
-  // Check if balance increased
-  if (balanceIncrease <= 0) {
-    console.log("[Auto-Deposit] Balance did not increase, no deposit needed")
-    return { triggered: false }
-  }
-  
-  console.log("[Auto-Deposit] Balance increased by:", balanceIncrease)
-  
-  // Check if increase meets minimum deposit amount
-  if (balanceIncrease < finalConfig.minDepositAmount) {
-    console.log("[Auto-Deposit] Balance increase below minimum deposit amount, skipping")
-    return { triggered: false }
-  }
-  
-  // Calculate deposit amount (current balance minus network fee buffer)
-  // IMPORTANT: Always leave at least 0.4 USDC in wallet for transactions (never deposit 100%)
-  let depositAmount = currentBalance - finalConfig.networkFeeBuffer
-  
-  // Ensure deposit amount is positive
-  if (depositAmount <= 0) {
-    console.log("[Auto-Deposit] Calculated deposit amount is zero or negative:", depositAmount)
-    return { triggered: false }
-  }
-  
-  // Final safety check: ensure we're leaving at least the buffer amount
-  const remainingInWallet = currentBalance - depositAmount
-  if (remainingInWallet < finalConfig.networkFeeBuffer) {
-    console.warn("[Auto-Deposit] ⚠️ Deposit would leave less than buffer in wallet, adjusting...")
-    depositAmount = currentBalance - finalConfig.networkFeeBuffer
-    if (depositAmount <= 0) {
-      console.log("[Auto-Deposit] Adjusted deposit amount is zero or negative:", depositAmount)
+
+  const maxDepositable = currentBalance - finalConfig.networkFeeBuffer
+
+  // ── Idle-balance mode: deposit whatever is in wallet right now ───────────
+  if (previousBalance === null && config.depositIdleBalance) {
+    if (maxDepositable < finalConfig.minDepositAmount) {
+      console.log("[Auto-Deposit] Idle balance too low, skipping")
       return { triggered: false }
     }
+    console.log("[Auto-Deposit] Idle-balance deposit triggered:", maxDepositable.toFixed(2))
+    return runDeposit(userId, maxDepositable, finalConfig)
   }
-  
-  // Ensure deposit amount meets minimum
-  if (depositAmount < finalConfig.minDepositAmount) {
-    console.log("[Auto-Deposit] Deposit amount below minimum:", {
-      depositAmount,
-      minDepositAmount: finalConfig.minDepositAmount,
-      currentBalance,
-      remainingInWallet: currentBalance - depositAmount
-    })
+
+  // ── No previous balance recorded — store it for next run ─────────────────
+  if (previousBalance === null) {
+    console.log("[Auto-Deposit] No previous balance, recording for next run")
     return { triggered: false }
   }
-  
-  console.log("[Auto-Deposit] ✅ Triggering auto-deposit:", {
-    depositAmount: depositAmount.toFixed(2),
-    remainingInWallet: (currentBalance - depositAmount).toFixed(2),
-    networkFeeBuffer: finalConfig.networkFeeBuffer,
-    note: "Always leaving 0.4 USDC in wallet for transactions (never deposit 100%)"
-  })
-  
-  // Trigger deposit with retry logic
+
+  // ── Increase-detect mode ──────────────────────────────────────────────────
+  const balanceIncrease = currentBalance - previousBalance
+  if (balanceIncrease <= 0) {
+    console.log("[Auto-Deposit] Balance did not increase, skipping")
+    return { triggered: false }
+  }
+
+  if (balanceIncrease < finalConfig.minDepositAmount) {
+    console.log("[Auto-Deposit] Increase below minimum, skipping")
+    return { triggered: false }
+  }
+
+  const depositAmount = Math.max(0, maxDepositable)
+  if (depositAmount < finalConfig.minDepositAmount) {
+    console.log("[Auto-Deposit] Deposit amount below minimum after buffer, skipping")
+    return { triggered: false }
+  }
+
+  console.log("[Auto-Deposit] Increase-detect deposit triggered:", depositAmount.toFixed(2))
+  return runDeposit(userId, depositAmount, finalConfig)
+}
+
+async function runDeposit(
+  userId: string,
+  amount: number,
+  config: AutoDepositConfig
+): Promise<{ triggered: boolean; depositAmount?: number; transactionHash?: string; error?: string }> {
   try {
-    const result = await depositWithRetry(userId, depositAmount, finalConfig)
-    
+    const result = await depositWithRetry(userId, amount, config)
     if (result.success) {
-      console.log("[Auto-Deposit] ✅ Auto-deposit successful!")
-      return {
-        triggered: true,
-        depositAmount,
-        transactionHash: result.transactionHash,
-      }
-    } else {
-      console.error("[Auto-Deposit] ❌ Auto-deposit failed after retries")
-      return {
-        triggered: true,
-        depositAmount,
-        error: result.error || "Deposit failed after retries",
-      }
+      console.log("[Auto-Deposit] ✅ Deposit successful")
+      return { triggered: true, depositAmount: amount, transactionHash: result.transactionHash }
     }
+    return { triggered: true, depositAmount: amount, error: result.error }
   } catch (error) {
-    console.error("[Auto-Deposit] ❌ Auto-deposit error:", error)
-    return {
-      triggered: true,
-      depositAmount,
-      error: error instanceof Error ? error.message : String(error),
-    }
+    return { triggered: true, depositAmount: amount, error: error instanceof Error ? error.message : String(error) }
   }
 }
 
-/**
- * Deposit with retry logic
- */
 async function depositWithRetry(
   userId: string,
   amount: number,
   config: AutoDepositConfig
 ): Promise<{ success: boolean; transactionHash?: string; error?: string }> {
   let lastError: Error | null = null
-  
+
   for (let attempt = 1; attempt <= config.maxRetries; attempt++) {
     try {
-      console.log(`[Auto-Deposit] Deposit attempt ${attempt}/${config.maxRetries}...`)
-      
-      // Get user's wallet
+      console.log(`[Auto-Deposit] Attempt ${attempt}/${config.maxRetries}...`)
       const wallet = await getStellarWallet(userId, true)
-      if (!wallet) {
-        throw new Error("Wallet not found")
-      }
-      
-      // Attempt deposit
-      const result = await depositToStrategy(wallet.publicKey, amount, userId)
-      
+      if (!wallet) throw new Error("Wallet not found")
+
+      const result = await depositToStrategy(
+        wallet.publicKey,
+        amount,
+        userId,
+        config.strategyId
+      )
+
       if (result.success && result.transactionHash) {
-        console.log(`[Auto-Deposit] ✅ Deposit successful on attempt ${attempt}`)
-        
-        // Transaction is already saved by depositToStrategy, but we can verify it
-        // The position and transaction records are handled by depositToStrategy()
-        
-        return {
-          success: true,
-          transactionHash: result.transactionHash,
-        }
-      } else {
-        throw new Error("Deposit returned success=false")
+        return { success: true, transactionHash: result.transactionHash }
       }
+      throw new Error("Deposit returned success=false")
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error))
-      console.error(`[Auto-Deposit] ❌ Deposit attempt ${attempt} failed:`, lastError.message)
-      
-      // If not the last attempt, wait before retrying
+      console.error(`[Auto-Deposit] Attempt ${attempt} failed:`, lastError.message)
       if (attempt < config.maxRetries) {
-        console.log(`[Auto-Deposit] Waiting ${config.retryDelayMs}ms before retry...`)
         await new Promise((resolve) => setTimeout(resolve, config.retryDelayMs))
       }
     }
   }
-  
-  return {
-    success: false,
-    error: lastError?.message || "Deposit failed after all retries",
-  }
+
+  return { success: false, error: lastError?.message ?? "Deposit failed after all retries" }
 }
 
+// ─── Balance monitor (called by API routes / USDC credit hook) ────────────────
+
 /**
- * Monitor wallet balance and trigger auto-deposit when funds are received
- * This should be called periodically (e.g., every 30 seconds) or via webhook
- * Now uses database instead of in-memory store for persistence
+ * Monitor wallet balance and trigger auto-deposit when conditions are met.
+ *
+ * @param depositIdleBalance - When true, deposit even if no previousBalance is
+ *   recorded (first-time earn; user manually triggered "Start earning").
  */
 export async function monitorBalanceAndAutoDeposit(
   userId: string,
-  previousBalanceStore: Map<string, number> | null = null, // Deprecated: kept for backward compatibility
-  config: Partial<AutoDepositConfig> = {}
+  _previousBalanceStore: Map<string, number> | null = null,
+  config: Partial<AutoDepositConfig> & { depositIdleBalance?: boolean } = {}
 ): Promise<{ triggered: boolean; depositAmount?: number; transactionHash?: string }> {
   try {
-    // Get user's wallet
     const wallet = await getStellarWallet(userId, true)
     if (!wallet) {
       console.log("[Auto-Deposit] Wallet not found, skipping")
       return { triggered: false }
     }
-    
-    // Get current USDC balance
-    const currentBalance = await getUSDCBalance(wallet.publicKey)
-    
-    // Get previous balance from database (or fallback to in-memory store for backward compatibility)
-    let previousBalance: number | null = wallet.previousUsdcBalance ?? null
-    
-    // Fallback to in-memory store if database doesn't have it (for backward compatibility)
-    if (previousBalance === null && previousBalanceStore) {
-      previousBalance = previousBalanceStore.get(userId) || null
-      console.log("[Auto-Deposit] Using in-memory store for previous balance (fallback)")
-    }
-    
-    // Check and trigger auto-deposit
-    const result = await checkAndTriggerAutoDeposit(
-      userId,
-      previousBalance,
-      currentBalance,
-      config
+
+    const network = (process.env.NEXT_PUBLIC_STELLAR_NETWORK === "mainnet") ? "mainnet" : "testnet"
+    const currentBalance = await getDepositableUsdcBalance(wallet.publicKey, network)
+    const previousBalance: number | null = wallet.previousUsdcBalance ?? null
+
+    const result = await checkAndTriggerAutoDeposit(userId, previousBalance, currentBalance, config)
+
+    // Always update stored balance
+    await updatePreviousUsdcBalance(userId, currentBalance, true).catch((err) =>
+      console.error("[Auto-Deposit] Error updating previous balance:", err)
     )
-    
-    // Update balance in database (always update, even if no deposit triggered)
-    try {
-      await updatePreviousUsdcBalance(userId, currentBalance, true)
-    } catch (error) {
-      console.error("[Auto-Deposit] Error updating previous balance in database:", error)
-      // Fallback to in-memory store if database update fails
-      if (previousBalanceStore) {
-        previousBalanceStore.set(userId, currentBalance)
-      }
-    }
-    
-    // Save balance snapshot if auto-deposit was triggered
+
     if (result.triggered) {
-      try {
-        await saveBalanceSnapshot(
-          userId,
-          currentBalance,
-          {
-            previousBalance,
-            autoDepositTriggered: true,
-            depositAmount: result.depositAmount,
-            transactionHash: result.transactionHash,
-            snapshotType: "auto_deposit_trigger",
-          },
-          true
-        )
-      } catch (error) {
-        console.error("[Auto-Deposit] Error saving balance snapshot:", error)
-        // Don't fail if snapshot save fails
-      }
+      await saveBalanceSnapshot(
+        userId,
+        currentBalance,
+        {
+          previousBalance,
+          autoDepositTriggered: true,
+          depositAmount: result.depositAmount,
+          transactionHash: result.transactionHash,
+          snapshotType: "auto_deposit_trigger",
+        },
+        true
+      ).catch(() => null)
     }
-    
+
     return {
       triggered: result.triggered,
       depositAmount: result.depositAmount,
@@ -263,4 +207,3 @@ export async function monitorBalanceAndAutoDeposit(
     return { triggered: false }
   }
 }
-

@@ -5,13 +5,13 @@
 "use client"
 
 import { memo } from "react"
-import { TrendingUp, Info, X } from "lucide-react"
+import { TrendingUp, Info, X, Loader2 } from "lucide-react"
 import type { DefindexBalance } from "@/hooks/use-wallet-data"
 import type { TreasuryProjection, TreasuryPrefs, TreasuryMode } from "@/lib/treasury/types"
 import { TREASURY_MODE_CONFIG } from "@/lib/treasury/treasury-modes"
 import { formatFiatAmount } from "@/lib/ledger/format-fiat"
 import { treasuryMathBreakdown } from "@/lib/treasury/projection-display"
-import { openBlendStrategyAsset, getBlendStrategyLink } from "@/lib/defindex/blend-strategy-link"
+import { getBlendStrategyLink, openBlendStrategyAsset } from "@/lib/defindex/blend-strategy-link"
 import { PurchasingPowerPnlChart } from "@/components/wallet/purchasing-power-pnl-chart"
 import { useWalletLanguage } from "@/lib/wallet-language"
 import {
@@ -19,6 +19,8 @@ import {
   getTreasuryModeDescription,
   getTreasuryModeLabel,
 } from "@/lib/wallet-texts"
+import { useEarnYield } from "@/hooks/use-earn-yield"
+import { useYieldPrefs } from "@/hooks/use-yield-prefs"
 
 export type BalanceAuditPanelProps = {
   defindexBalance: DefindexBalance | null
@@ -32,6 +34,8 @@ export type BalanceAuditPanelProps = {
   showHeader?: boolean
   hideChart?: boolean
   walletNetwork?: "testnet" | "mainnet"
+  /** Called after a successful deposit/withdraw to refresh balances. */
+  onRefresh?: () => void
 }
 
 export const BalanceAuditPanel = memo(function BalanceAuditPanel({
@@ -46,12 +50,16 @@ export const BalanceAuditPanel = memo(function BalanceAuditPanel({
   showHeader = true,
   hideChart = false,
   walletNetwork = "testnet",
+  onRefresh,
 }: BalanceAuditPanelProps) {
   const { t } = useWalletLanguage()
+  const { prefs: yieldPrefs } = useYieldPrefs()
+  const { state: earnState, deposit, withdraw } = useEarnYield(onRefresh)
+
   const proj = treasuryProjection
   const fiat = treasuryPrefs.referenceFiat
   const mathLines = proj ? treasuryMathBreakdown(proj, t) : []
-  const blendLink = getBlendStrategyLink(walletNetwork)
+  const blendLink = getBlendStrategyLink(walletNetwork, yieldPrefs.strategy)
   const modeConfig = TREASURY_MODE_CONFIG[treasuryPrefs.mode]
 
   const protocolApy =
@@ -66,6 +74,16 @@ export const BalanceAuditPanel = memo(function BalanceAuditPanel({
   const protocolApyLabel = apyLoading ? "..." : `${protocolApy.toFixed(2)}%`
   const effectiveApy =
     proj && proj.merchantApy > 0 && proj.merchantApy !== proj.protocolApy ? proj.merchantApy : null
+
+  const strategyBalance = defindexBalance?.strategyBalance ?? 0
+  const walletBalance = defindexBalance?.walletBalance ?? 0
+
+  const MIN_DEPOSIT = Number(process.env.NEXT_PUBLIC_VAULT_MIN_DEPOSIT || "10") || 10
+  const FEE_BUFFER = Number(process.env.NEXT_PUBLIC_VAULT_FEE_BUFFER || "0.4") || 0.4
+  const maxDepositable = Math.max(0, walletBalance - FEE_BUFFER)
+
+  const canDeposit = maxDepositable >= MIN_DEPOSIT
+  const earnBusy = earnState.status === "signing" || earnState.status === "submitting"
 
   return (
     <div className="space-y-5 py-1">
@@ -111,7 +129,7 @@ export const BalanceAuditPanel = memo(function BalanceAuditPanel({
             <div className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/10">
               <span className="text-white/80 text-sm">{t.defiStrategyLabel}</span>
               <span className="text-green-400 font-medium tabular-nums">
-                ${defindexBalance.strategyBalance === 0 ? "0" : defindexBalance.strategyBalance.toFixed(2)} USD
+                ${strategyBalance === 0 ? "0" : strategyBalance.toFixed(2)} USD
               </span>
             </div>
             <div className="flex justify-between items-center p-3 bg-white/10 rounded-lg border-2 border-white/20">
@@ -131,6 +149,100 @@ export const BalanceAuditPanel = memo(function BalanceAuditPanel({
           </div>
         ) : (
           <p className="text-white/50 text-sm text-center py-4">{t.noBalanceData}</p>
+        )}
+      </div>
+
+      {/* ── Earn CTAs ─────────────────────────────────────────────── */}
+      <div className="space-y-2 border-t border-white/10 pt-4">
+        <p className="text-[10px] uppercase tracking-widest text-white/40">Rendimiento DeFi</p>
+
+        {earnState.status === "success" ? (
+          <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2.5">
+            <p className="text-xs text-emerald-300 font-medium">
+              {earnState.depositedAmount !== undefined
+                ? `✓ Depositado $${earnState.depositedAmount.toFixed(2)} USD`
+                : earnState.withdrawnAmount !== undefined
+                  ? `✓ Retirado $${earnState.withdrawnAmount?.toFixed(2)} USD`
+                  : "✓ Operación exitosa"}
+            </p>
+            {earnState.transactionHash && (
+              <p className="text-[10px] text-emerald-300/60 mt-0.5 truncate">
+                tx: {earnState.transactionHash.slice(0, 24)}...
+              </p>
+            )}
+          </div>
+        ) : earnState.status === "error" ? (
+          <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2.5">
+            <p className="text-xs text-rose-300">{earnState.errorMessage ?? "Error desconocido"}</p>
+          </div>
+        ) : null}
+
+        {strategyBalance === 0 ? (
+          /* No strategy position yet — show "Start earning" */
+          <button
+            type="button"
+            disabled={!canDeposit || earnBusy}
+            onClick={() => deposit()}
+            className={`w-full rounded-lg py-3 px-4 text-sm font-semibold transition-colors flex items-center justify-center gap-2 ${
+              canDeposit && !earnBusy
+                ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                : "bg-white/10 text-white/40 cursor-not-allowed"
+            }`}
+          >
+            {earnBusy ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {earnState.status === "signing" ? "Firmando..." : "Enviando..."}
+              </>
+            ) : (
+              <>
+                <TrendingUp className="h-4 w-4" />
+                {canDeposit ? "Empezar a ganar" : `Mínimo $${MIN_DEPOSIT} USDC`}
+              </>
+            )}
+          </button>
+        ) : (
+          /* Has strategy position — show Add + Withdraw */
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              disabled={!canDeposit || earnBusy}
+              onClick={() => deposit()}
+              className={`rounded-lg py-2.5 px-3 text-xs font-medium transition-colors flex items-center justify-center gap-1.5 ${
+                canDeposit && !earnBusy
+                  ? "bg-emerald-600/80 hover:bg-emerald-600 text-white"
+                  : "bg-white/10 text-white/40 cursor-not-allowed"
+              }`}
+            >
+              {earnBusy && earnState.depositedAmount !== undefined ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <TrendingUp className="h-3.5 w-3.5" />
+              )}
+              Agregar
+            </button>
+            <button
+              type="button"
+              disabled={strategyBalance <= 0 || earnBusy}
+              onClick={() => withdraw()}
+              className={`rounded-lg py-2.5 px-3 text-xs font-medium transition-colors flex items-center justify-center gap-1.5 ${
+                strategyBalance > 0 && !earnBusy
+                  ? "bg-white/10 hover:bg-white/20 text-white/80"
+                  : "bg-white/5 text-white/30 cursor-not-allowed"
+              }`}
+            >
+              {earnBusy && earnState.withdrawnAmount !== undefined ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : null}
+              Retirar
+            </button>
+          </div>
+        )}
+
+        {!canDeposit && strategyBalance === 0 && (
+          <p className="text-[10px] text-white/35 text-center">
+            Deposita USDC en tu billetera para empezar a generar rendimiento.
+          </p>
         )}
       </div>
 
@@ -349,33 +461,28 @@ export const BalanceAuditPanel = memo(function BalanceAuditPanel({
         )}
       </div>
 
+      {/* ── Verify on Blend (secondary link) ─────────────────────── */}
       <div className="border-t border-white/10 pt-4 space-y-2">
         <button
           type="button"
-          onClick={() => openBlendStrategyAsset(walletNetwork)}
-          className="w-full py-3 px-4 rounded-lg text-sm font-medium bg-green-600 hover:bg-green-700 text-white transition-colors flex items-center justify-between"
+          onClick={() => openBlendStrategyAsset(walletNetwork, yieldPrefs.strategy)}
+          className="w-full py-2.5 px-4 rounded-lg text-xs font-medium bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-white/60 transition-colors flex items-center justify-between"
         >
-          <div className="flex flex-col items-start gap-0.5 text-left">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 shrink-0" />
-              <span>{t.viewBlendPool}</span>
-            </div>
-            <span className="pl-6 text-[10px] font-normal text-green-100/70">{blendLink.poolLabel}</span>
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-3.5 h-3.5 shrink-0" />
+            <span>{t.viewBlendPool}</span>
           </div>
-          <div className="flex flex-col items-end tabular-nums">
-            <span className="text-base font-semibold">{protocolApyLabel}</span>
-            <span className="text-[10px] text-green-100/80">{t.poolApyLabel}</span>
+          <div className="flex items-center gap-2 tabular-nums">
+            <span className="text-sm font-semibold text-white/80">{protocolApyLabel}</span>
+            <span className="text-[10px] text-white/40">{t.poolApyLabel}</span>
           </div>
         </button>
-        {effectiveApy !== null ? (
-          <p className="text-[10px] text-center text-white/40 tabular-nums">
-            {formatWalletText(t.effectiveApyCompare, { apy: effectiveApy.toFixed(2) })}
-          </p>
-        ) : (
-          <p className="text-[10px] text-center text-white/35">
-            {formatWalletText(t.verifyBlendPool, { network: blendLink.network })}
-          </p>
-        )}
+        <p className="text-[10px] text-center text-white/30">
+          {blendLink.poolLabel}
+          {effectiveApy !== null
+            ? ` · ${formatWalletText(t.effectiveApyCompare, { apy: effectiveApy.toFixed(2) })}`
+            : ""}
+        </p>
       </div>
     </div>
   )

@@ -60,6 +60,8 @@ interface BalanceDisplayProps {
   onUpdateTreasuryPrefs?: (next: Partial<TreasuryPrefs>) => void
   onAuditExpandedChange?: (expanded: boolean) => void
   walletNetwork?: "testnet" | "mainnet"
+  /** Called after a successful earn deposit/withdraw to refresh balances. */
+  onRefresh?: () => void
 }
 
 export const BalanceDisplay = memo(function BalanceDisplay({
@@ -80,6 +82,7 @@ export const BalanceDisplay = memo(function BalanceDisplay({
   onUpdateTreasuryPrefs,
   onAuditExpandedChange,
   walletNetwork = "testnet",
+  onRefresh,
 }: BalanceDisplayProps) {
   const { t } = useWalletLanguage()
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -394,6 +397,7 @@ export const BalanceDisplay = memo(function BalanceDisplay({
                   showHeader
                   hideChart
                   walletNetwork={walletNetwork}
+                  onRefresh={onRefresh}
                 />
               </div>
             </div>

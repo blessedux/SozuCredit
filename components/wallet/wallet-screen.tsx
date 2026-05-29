@@ -25,6 +25,7 @@ import { usePullToRefresh } from "@/hooks/use-pull-to-refresh"
 import { signalAppReady } from "@/lib/app-ready"
 
 // Components
+import { WalletActivationOnboarding } from "@/components/wallet/wallet-activation-onboarding"
 import { BalanceDisplay } from "@/components/wallet/balance-display"
 import { TransactionHistory } from "@/components/wallet/transaction-history"
 import { BottomMenuBar } from "@/components/wallet/bottom-menu-bar"
@@ -87,6 +88,7 @@ export function WalletScreen({
     fetchWalletUSDCBalance,
     fetchXLMBalance,
     fetchTransactionHistory,
+    fetchDefindexBalance,
     fetchAPY,
     setWalletAddress,
     setWalletNetwork,
@@ -132,6 +134,10 @@ export function WalletScreen({
   const [activationNeeded, setActivationNeeded] = useState(false)
   const [isActivating, setIsActivating] = useState(false)
   const [activationMessage, setActivationMessage] = useState<string | null>(null)
+  const [showActivationOnboarding, setShowActivationOnboarding] = useState(false)
+  const [activationSettled, setActivationSettled] = useState(false)
+  const [walletRevealed, setWalletRevealed] = useState(true)
+  const autoActivationStartedRef = useRef(false)
 
   // Balance animation refs
   const animatedBalanceRef = useRef(0)
@@ -181,8 +187,9 @@ export function WalletScreen({
 
   useEffect(() => {
     if (shellLayout !== "landing" || isBalanceLoading) return
+    if (!walletRevealed || showActivationOnboarding) return
     signalAppReady()
-  }, [shellLayout, isBalanceLoading])
+  }, [shellLayout, isBalanceLoading, walletRevealed, showActivationOnboarding])
 
   const historyChartsLoading =
     cashflowSummary.loading ||
@@ -256,6 +263,17 @@ export function WalletScreen({
     if (uid) fetchAPY(uid)
   }, [walletAddress, fetchXLMBalance, fetchWalletUSDCBalance, fetchAPY])
 
+  // Refresh after earn deposit/withdraw: reload USDC + defindex balance + APY
+  const handleEarnRefresh = useCallback(() => {
+    if (!walletAddress) return
+    const uid = typeof window !== "undefined" ? sessionStorage.getItem("dev_username") : null
+    fetchWalletUSDCBalance(walletAddress)
+    if (uid) {
+      fetchDefindexBalance(uid)
+      fetchAPY(uid)
+    }
+  }, [walletAddress, fetchWalletUSDCBalance, fetchDefindexBalance, fetchAPY])
+
   const { pull, progress, refreshing, isPulling, handlers: pullHandlers } = usePullToRefresh({
     onRefresh: handleBalanceRefresh,
     disabled: isLoading || isBalanceLoading || shellLayout !== "landing" || isBalanceAuditExpanded,
@@ -315,28 +333,62 @@ export function WalletScreen({
 
   useEffect(() => { void refreshActivationState() }, [refreshActivationState])
 
-  const handleActivateWallet = useCallback(async () => {
+  const handleActivationOnboardingExit = useCallback(async () => {
+    setShowActivationOnboarding(false)
+    setWalletRevealed(true)
+    setActivationSettled(false)
+    await refreshActivationState()
+  }, [refreshActivationState])
+
+  const runActivationWithOnboarding = useCallback(async () => {
     if (!walletAddress || walletNetwork !== "testnet" || isActivating) return
+
     setIsActivating(true)
-    setActivationMessage("Activando…")
+    setActivationSettled(false)
+    setShowActivationOnboarding(true)
+    setWalletRevealed(false)
+    setActivationMessage(null)
+
     try {
       const userId = getUserId()
       const result = await getOrCreateRealWallet(userId || undefined, {
         onStatusUpdate: (s) => setActivationMessage(s.message),
       })
       if (result.status === "error") throw new Error(result.error || result.message)
+
       const uid = typeof window !== "undefined" ? sessionStorage.getItem("dev_username") : null
       if (uid) fetchXLMBalance(walletAddress, uid, { gateBalance: true })
       fetchWalletUSDCBalance(walletAddress)
       fetchTransactionHistory(walletAddress)
-      await refreshActivationState()
-      setActivationMessage(null)
     } catch (e) {
       setActivationMessage(e instanceof Error ? e.message : String(e))
+      autoActivationStartedRef.current = false
     } finally {
+      setActivationSettled(true)
       setIsActivating(false)
     }
-  }, [walletAddress, walletNetwork, isActivating, fetchXLMBalance, fetchWalletUSDCBalance, fetchTransactionHistory, refreshActivationState])
+  }, [
+    walletAddress,
+    walletNetwork,
+    isActivating,
+    fetchXLMBalance,
+    fetchWalletUSDCBalance,
+    fetchTransactionHistory,
+  ])
+
+  useEffect(() => {
+    if (!walletAddress || walletNetwork !== "testnet" || !activationNeeded) return
+    if (autoActivationStartedRef.current || isActivating || showActivationOnboarding) return
+    autoActivationStartedRef.current = true
+    void runActivationWithOnboarding()
+  }, [
+    walletAddress,
+    walletNetwork,
+    activationNeeded,
+    isActivating,
+    showActivationOnboarding,
+    runActivationWithOnboarding,
+  ])
 
   const handleFetchAPY = useCallback(() => {
     const userId = typeof window !== "undefined" ? sessionStorage.getItem("dev_username") : null
@@ -346,7 +398,10 @@ export function WalletScreen({
   const handleWalletCreated = useCallback(async (publicKey: string, network: "testnet" | "mainnet") => {
     setWalletAddress(publicKey)
     setWalletNetwork(network)
-    if (typeof window !== "undefined") sessionStorage.setItem("stellar_public_key", publicKey)
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("stellar_public_key", publicKey)
+      if (network === "testnet") sessionStorage.setItem("sozu_auto_activate", "1")
+    }
     const userId = typeof window !== "undefined" ? sessionStorage.getItem("dev_username") : null
     if (userId) {
       try {
@@ -364,7 +419,23 @@ export function WalletScreen({
         console.error("[Wallet] Error fetching balance after wallet creation:", error)
       }
     }
-  }, [setWalletAddress, setWalletNetwork])
+    await refreshActivationState()
+  }, [setWalletAddress, setWalletNetwork, refreshActivationState])
+
+  const walletContentClass = cn(
+    "transition-opacity duration-700 ease-out",
+    walletRevealed && !showActivationOnboarding
+      ? "opacity-100"
+      : "opacity-0 pointer-events-none",
+  )
+
+  const activationOnboarding = (
+    <WalletActivationOnboarding
+      open={showActivationOnboarding}
+      activationSettled={activationSettled}
+      onExitComplete={() => void handleActivationOnboardingExit()}
+    />
+  )
 
   const balanceBlock = (
     <Suspense fallback={<WalletLazySectionSkeleton className="mb-8" />}>
@@ -386,6 +457,7 @@ export function WalletScreen({
         onUpdateTreasuryPrefs={treasuryData.updatePrefs}
         onAuditExpandedChange={shellLayout === "landing" ? setIsBalanceAuditExpanded : undefined}
         walletNetwork={walletNetwork}
+        onRefresh={handleEarnRefresh}
       />
     </Suspense>
   )
@@ -434,8 +506,7 @@ export function WalletScreen({
           walletAddress={walletAddress}
           walletNetwork={walletNetwork}
           unreadCount={unreadCount}
-          onActivateWallet={walletNetwork === "testnet" ? handleActivateWallet : undefined}
-          showActivateWallet={activationNeeded}
+          showActivateWallet={false}
           onOpenNotifications={() => { setIsProfileSheetOpen(false); setIsNotificationsOpen(true) }}
           onWalletCreated={handleWalletCreated}
           onSwipeHandlers={swipeHandlers}
@@ -459,6 +530,7 @@ export function WalletScreen({
             treasuryPrefs={treasuryData.prefs}
             onUpdateTreasuryPrefs={treasuryData.updatePrefs}
             walletNetwork={walletNetwork}
+            onRefresh={handleEarnRefresh}
           />
         </Suspense>
       ) : null}
@@ -488,7 +560,13 @@ export function WalletScreen({
   if (shellLayout === "landing") {
     return (
       <WalletErrorBoundary>
-        <div className="relative h-full w-full overflow-hidden touch-pan-x select-none">
+        {activationOnboarding}
+        <div
+          className={cn(
+            "relative h-full w-full overflow-hidden touch-pan-x select-none",
+            walletContentClass,
+          )}
+        >
           <div
             ref={landingRef}
             className="flex h-full flex-col overflow-hidden"
@@ -540,20 +618,9 @@ export function WalletScreen({
                     )}
                     aria-hidden={isBalanceAuditExpanded || isBalanceLoading}
                   >
-                    {walletAddress && walletNetwork === "testnet" && activationNeeded && (
-                      <div className="mt-4">
-                        <Button
-                          onClick={handleActivateWallet}
-                          disabled={isActivating}
-                          className="h-11 w-full text-sm font-semibold bg-white text-black hover:bg-white/90 rounded-lg"
-                        >
-                          {isActivating ? t.activating : t.activateWallet}
-                        </Button>
-                        {activationMessage && (
-                          <p className="mt-2 text-xs text-white/60">{activationMessage}</p>
-                        )}
-                      </div>
-                    )}
+                    {activationMessage ? (
+                      <p className="mt-4 text-center text-xs text-red-300/90">{activationMessage}</p>
+                    ) : null}
 
                     {!walletAddress && !isBalanceLoading && (
                       <div className="mt-3">
@@ -593,7 +660,8 @@ export function WalletScreen({
   if (shellLayout === "history") {
     return (
       <WalletErrorBoundary>
-        <div className="relative h-full w-full overflow-hidden">
+        {activationOnboarding}
+        <div className={cn("relative h-full w-full overflow-hidden", walletContentClass)}>
           <div className="relative z-10 h-full overflow-y-auto overscroll-none no-scrollbar touch-pan-x px-4 pt-[max(3.5rem,env(safe-area-inset-top))] pb-[max(5rem,env(safe-area-inset-bottom))]">
             <div className="mx-auto w-full max-w-7xl space-y-5">
               <div className="flex justify-end">
@@ -640,7 +708,8 @@ export function WalletScreen({
 
   return (
     <WalletErrorBoundary>
-      <div className="relative h-full w-full">
+      {activationOnboarding}
+      <div className={cn("relative h-full w-full", walletContentClass)}>
         {(isLoading || isBalanceLoading) ? (
           <div className="relative z-10 h-full">
             <WalletSkeleton layout="desktop" />
@@ -678,18 +747,9 @@ export function WalletScreen({
                   <div className="min-w-0 lg:col-span-5 xl:col-span-4">
                     {balanceBlock}
 
-                    {walletAddress && walletNetwork === "testnet" && activationNeeded && (
-                      <div className="mt-4 lg:mt-6">
-                        <Button
-                          onClick={handleActivateWallet}
-                          disabled={isActivating}
-                          className="h-12 min-h-[48px] w-full text-base font-semibold bg-white text-black hover:bg-white/90 rounded-lg"
-                        >
-                          {isActivating ? t.activating : t.activateWallet}
-                        </Button>
-                        {activationMessage && <p className="mt-2 text-xs text-white/60">{activationMessage}</p>}
-                      </div>
-                    )}
+                    {activationMessage ? (
+                      <p className="mt-4 text-center text-xs text-red-300/90 lg:text-left">{activationMessage}</p>
+                    ) : null}
 
                     {!walletAddress && (
                       <div className="mt-2 lg:mt-4">

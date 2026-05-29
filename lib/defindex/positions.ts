@@ -234,6 +234,51 @@ async function updatePositionManually(
 }
 
 /**
+ * Update position record when a withdrawal is confirmed.
+ */
+export async function updatePositionOnWithdraw(
+  userId: string,
+  strategyAddress: string,
+  amount: number,
+  useServiceClient = false
+): Promise<string | null> {
+  let supabase = await createClient()
+
+  if (useServiceClient) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (supabaseServiceKey && supabaseUrl) {
+      supabase = createServiceClient(supabaseUrl, supabaseServiceKey) as any
+    }
+  }
+
+  try {
+    const { data: position } = await supabase
+      .from("defindex_positions")
+      .select("id, shares, total_withdrawn")
+      .eq("user_id", userId)
+      .eq("strategy_address", strategyAddress)
+      .maybeSingle()
+
+    if (!position) return null
+
+    await supabase
+      .from("defindex_positions")
+      .update({
+        total_withdrawn: (Number(position.total_withdrawn) || 0) + amount,
+        last_withdrawal_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", position.id)
+
+    return position.id
+  } catch (error) {
+    console.error("[Defindex Positions] Error in updatePositionOnWithdraw:", error)
+    return null
+  }
+}
+
+/**
  * Save transaction record
  */
 export async function saveTransaction(

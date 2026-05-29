@@ -70,9 +70,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Try live APY — fall back to 15.5% on failure
+    const rawStrategyId = url.searchParams.get("strategyId")
+    const strategyId = rawStrategyId === "yieldblox" ? "yieldblox" : "fixed"
+
     let protocolApy = 15.5
     try {
-      const apyResult = await getRealTimeAPY()
+      const apyResult = await getRealTimeAPY(strategyId)
       if (apyResult.success && apyResult.data) {
         protocolApy = apyResult.data.yearly
       }

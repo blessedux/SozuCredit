@@ -20,6 +20,9 @@ import {
 import { loadTreasuryPrefs, saveTreasuryPrefs } from "@/lib/treasury/prefs-storage"
 import type { TreasuryPrefs, ReferenceFiat, TreasuryMode } from "@/lib/treasury/types"
 import { TREASURY_MODE_CONFIG } from "@/lib/treasury/treasury-modes"
+import { useYieldPrefs } from "@/hooks/use-yield-prefs"
+import { getStrategyCatalog } from "@/lib/defindex/strategy-catalog"
+import { getBlendStrategyLink } from "@/lib/defindex/blend-strategy-link"
 import { ledgerUserHeaders } from "@/lib/ledger/client-headers"
 import { getUserId } from "@/lib/wallet-utils"
 import {
@@ -90,6 +93,10 @@ export default function SettingsPage() {
 
   // Treasury preferences
   const [treasuryPrefs, setTreasuryPrefs] = useState<TreasuryPrefs>(() => loadTreasuryPrefs())
+
+  // Yield preferences
+  const { prefs: yieldPrefs, setStrategy: setYieldStrategy, setAutoEarn, loaded: yieldLoaded } = useYieldPrefs()
+  const strategyCatalog = getStrategyCatalog(process.env.NEXT_PUBLIC_STELLAR_NETWORK)
   const [pairingCopied, setPairingCopied] = useState(false)
 
   useEffect(() => {
@@ -575,6 +582,92 @@ export default function SettingsPage() {
 
             <p className="text-[11px] text-white/30 leading-relaxed">
               Estimaciones basadas en tasas históricas. No garantizado. No constituye asesoramiento financiero.
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* ── Yield Strategy Settings ──────────────────────────────── */}
+        <Card className="border-white/15 bg-black/55 backdrop-blur-xl">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center gap-2">
+              <BarChart3 className="w-5 h-5" />
+              Estrategia de rendimiento
+            </CardTitle>
+            <CardDescription className="text-white/60">
+              Elige cómo tu USDC genera rendimiento en DeFindex + Blend Capital.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {/* Strategy selector */}
+            <div className="space-y-2">
+              <Label className="text-white/80 text-sm">Pool de Blend</Label>
+              {yieldLoaded && (
+                <div className="space-y-2">
+                  {(["fixed", "yieldblox"] as const).map((stratId) => {
+                    const cfg = strategyCatalog[stratId]
+                    const active = yieldPrefs.strategy === stratId
+                    const link = getBlendStrategyLink(process.env.NEXT_PUBLIC_STELLAR_NETWORK, stratId)
+                    return (
+                      <div key={stratId} className="flex items-start gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setYieldStrategy(stratId)}
+                          className={`flex-1 rounded-lg border px-4 py-3 text-left transition-colors ${
+                            active
+                              ? "border-emerald-500/60 bg-emerald-500/10"
+                              : "border-white/10 bg-white/[0.02] hover:border-white/25"
+                          }`}
+                        >
+                          <div className={`text-sm font-medium ${active ? "text-emerald-300" : "text-white/80"}`}>
+                            {cfg.label}
+                          </div>
+                          <div className="text-xs text-white/45 mt-0.5">{cfg.description}</div>
+                        </button>
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-3 text-white/40 hover:text-white/70 transition-colors"
+                          title={`Verificar ${cfg.label} en Blend`}
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                        </a>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Auto-earn toggle */}
+            <div className="space-y-2">
+              <Label className="text-white/80 text-sm">Auto-earn</Label>
+              <button
+                type="button"
+                onClick={() => setAutoEarn(!yieldPrefs.autoEarn)}
+                className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
+                  yieldPrefs.autoEarn
+                    ? "border-emerald-500/60 bg-emerald-500/10"
+                    : "border-white/10 bg-white/[0.02] hover:border-white/25"
+                }`}
+              >
+                <div className={`text-sm font-medium ${yieldPrefs.autoEarn ? "text-emerald-300" : "text-white/80"}`}>
+                  {yieldPrefs.autoEarn ? "Activado" : "Desactivado"}
+                </div>
+                <div className="text-xs text-white/45 mt-0.5">
+                  Mueve automáticamente el USDC nuevo a la estrategia seleccionada.
+                </div>
+              </button>
+            </div>
+
+            {process.env.NEXT_PUBLIC_STELLAR_NETWORK !== "mainnet" && (
+              <p className="text-[11px] text-amber-400/60 leading-relaxed">
+                En testnet se usa BlendUSDC (no el USDC real). Obtén tokens de prueba en testnet.blend.capital.
+              </p>
+            )}
+
+            <p className="text-[11px] text-white/30 leading-relaxed">
+              DeFindex administra los fondos en el pool de Blend seleccionado. El rendimiento no está garantizado.
             </p>
           </CardContent>
         </Card>
