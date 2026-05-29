@@ -62,9 +62,19 @@ export function SdpRegisterFlow() {
     }
 
     setStatus("busy");
+
+    // x-user-id lets getSdpApiContext authenticate passkey users who don't
+    // have a Supabase session (their userId lives in sessionStorage only).
+    const authHeaders: HeadersInit = wallet.userId
+      ? { "x-user-id": wallet.userId }
+      : {};
+
     try {
       // ── Step 1: SEP-10 challenge ──────────────────────────────────────────
-      const chRes = await fetch("/api/sdp/sep10/challenge", { credentials: "include" });
+      const chRes = await fetch("/api/sdp/sep10/challenge", {
+        credentials: "include",
+        headers: authHeaders,
+      });
       const chData = await chRes.json().catch(() => ({})) as {
         transaction_xdr?: string;
         network_passphrase?: string;
@@ -98,7 +108,7 @@ export function SdpRegisterFlow() {
       const tokRes = await fetch("/api/sdp/sep10/token", {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({
           transaction_xdr: signed.transactionXdr,
           network_passphrase: networkPassphrase,
@@ -114,6 +124,7 @@ export function SdpRegisterFlow() {
       const depRes = await fetch("/api/sdp/sep24/deposit", {
         method: "POST",
         credentials: "include",
+        headers: authHeaders,
       });
       const depData = await depRes.json().catch(() => ({})) as { url?: string; error?: string };
       if (!depRes.ok) throw new Error(depData.error ?? "Could not start verification");
