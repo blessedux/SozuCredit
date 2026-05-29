@@ -65,9 +65,12 @@ export function SdpRegisterFlow() {
 
     // x-user-id lets getSdpApiContext authenticate passkey users who don't
     // have a Supabase session (their userId lives in sessionStorage only).
-    const authHeaders: HeadersInit = wallet.userId
-      ? { "x-user-id": wallet.userId }
-      : {};
+    // x-stellar-public-key is used as fallback when the wallet isn't yet in
+    // the DB — SEP-10 verifies ownership cryptographically so this is safe.
+    const authHeaders: HeadersInit = {
+      ...(wallet.userId ? { "x-user-id": wallet.userId } : {}),
+      ...(wallet.publicKey ? { "x-stellar-public-key": wallet.publicKey } : {}),
+    };
 
     try {
       // ── Step 1: SEP-10 challenge ──────────────────────────────────────────

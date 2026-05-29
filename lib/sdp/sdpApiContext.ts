@@ -67,13 +67,30 @@ export async function getSdpApiContext(): Promise<SdpApiContext> {
     };
   }
 
+  // Primary: look up wallet from DB.
+  // Fallback: accept x-stellar-public-key header sent by the passkey client
+  // (the key is stored in sessionStorage after passkey login). Security is
+  // preserved because SEP-10 requires the user to sign a challenge with the
+  // matching private key — a fake key would fail token exchange.
+  let stellarAccount: string | null = null;
+
   const wallet = await getStellarWallet(userId, true);
-  const stellarAccount = wallet?.publicKey?.trim();
+  stellarAccount = wallet?.publicKey?.trim() ?? null;
+
+  if (!stellarAccount) {
+    const { headers } = await import("next/headers");
+    const hdrs = await headers();
+    const headerKey = hdrs.get("x-stellar-public-key")?.trim() ?? null;
+    if (headerKey && headerKey.startsWith("G") && headerKey.length === 56) {
+      stellarAccount = headerKey;
+    }
+  }
+
   if (!stellarAccount) {
     return {
       ok: false,
       status: 400,
-      error: "No Stellar wallet found on your account. Create a wallet first.",
+      error: "No Stellar wallet found. Please sign in with your passkey again.",
     };
   }
 
