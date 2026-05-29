@@ -51,9 +51,15 @@ export async function GET(request: NextRequest) {
   const assetParam = incoming.get("asset")?.trim() || "";
   const nameParam = incoming.get("name")?.trim() || "";
   const tokenParam = incoming.get("token")?.trim() || "";
-  // tenant is an UNSIGNED extra param — strip before signature verification
+  // Unsigned extra params — strip before signature verification
   const tenantParam = incoming.get("tenant")?.trim() || "";
+  const beneficiaryEmailParam = incoming.get("be")?.trim() || "";
+  const beneficiaryNameParam = incoming.get("bn")?.trim() || "";
+  const beneficiaryDobParam = incoming.get("bd")?.trim() || "";
   incoming.delete("tenant");
+  incoming.delete("be");
+  incoming.delete("bn");
+  incoming.delete("bd");
 
   if (!domainParam || !assetParam) {
     return htmlError(
@@ -98,6 +104,9 @@ export async function GET(request: NextRequest) {
     sdpSigningPublicKey: toml.signingKey,
     ...(tenantParam ? { tenantName: tenantParam } : {}),
     ...(tokenParam ? { token: tokenParam } : {}),
+    ...(beneficiaryEmailParam ? { expectedBeneficiaryEmail: beneficiaryEmailParam } : {}),
+    ...(beneficiaryNameParam ? { expectedFullName: beneficiaryNameParam } : {}),
+    ...(beneficiaryDobParam ? { expectedDateOfBirth: beneficiaryDobParam } : {}),
     exp,
   };
 

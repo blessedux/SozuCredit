@@ -12,12 +12,20 @@ export async function GET() {
   const payload = parseInviteCookie(raw);
 
   if (!payload) {
-    return NextResponse.json({ organizationName: null, asset: null }, { status: 200 });
+    return NextResponse.json(
+      { organizationName: null, asset: null, requiresIdentityVerification: false },
+      { status: 200 }
+    );
   }
+
+  const requiresIdentityVerification = Boolean(
+    payload.expectedFullName || payload.expectedDateOfBirth
+  );
 
   return NextResponse.json({
     organizationName: payload.organizationName,
     asset: payload.asset,
     sdpHost: payload.sdpHost,
+    requiresIdentityVerification,
   });
 }

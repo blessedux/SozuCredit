@@ -8,6 +8,9 @@ import { Transaction, Networks } from "@stellar/stellar-sdk";
 const CTA_CLASS =
   "inline-flex items-center justify-center gap-2 w-full rounded-xl border border-orange-400/35 bg-orange-500/15 hover:bg-orange-500/25 active:bg-orange-500/30 backdrop-blur-md disabled:opacity-50 disabled:cursor-not-allowed text-orange-100 font-semibold py-3 px-6 transition-colors";
 
+const INPUT_CLASS =
+  "w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-orange-400/40";
+
 type WalletState = {
   publicKey: string | null;
   credentialId: string | null;
@@ -15,6 +18,7 @@ type WalletState = {
 };
 
 type Status = "idle" | "busy" | "done" | "error";
+type Step = "identity" | "funds";
 
 export function SdpRegisterFlow() {
   const [wallet, setWallet] = useState<WalletState>({
@@ -23,6 +27,11 @@ export function SdpRegisterFlow() {
     userId: null,
   });
   const [orgName, setOrgName] = useState<string>("");
+  const [requiresIdentity, setRequiresIdentity] = useState(false);
+  const [step, setStep] = useState<Step>("identity");
+  const [fullName, setFullName] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [identityVerified, setIdentityVerified] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -35,12 +44,18 @@ export function SdpRegisterFlow() {
     });
   }, []);
 
-  const loadOrgName = useCallback(async () => {
+  const loadContext = useCallback(async () => {
     try {
       const res = await fetch("/api/sdp/context", { credentials: "include" });
       if (res.ok) {
-        const d = (await res.json().catch(() => ({}))) as { organizationName?: string };
+        const d = (await res.json().catch(() => ({}))) as {
+          organizationName?: string;
+          requiresIdentityVerification?: boolean;
+        };
         if (d.organizationName) setOrgName(d.organizationName);
+        const needsIdentity = Boolean(d.requiresIdentityVerification);
+        setRequiresIdentity(needsIdentity);
+        setStep(needsIdentity ? "identity" : "funds");
       }
     } catch {
       // non-fatal — org name is just display text
@@ -49,14 +64,43 @@ export function SdpRegisterFlow() {
 
   useEffect(() => {
     loadWallet();
-    loadOrgName();
+    loadContext();
     window.addEventListener("storage", loadWallet);
     return () => window.removeEventListener("storage", loadWallet);
-  }, [loadWallet, loadOrgName]);
+  }, [loadWallet, loadContext]);
+
+  const verifyIdentity = async () => {
+    setError(null);
+    if (!fullName.trim() || !dateOfBirth.trim()) {
+      setError("Completá tu nombre completo y fecha de nacimiento.");
+      return;
+    }
+
+    setStatus("busy");
+    try {
+      const res = await fetch("/api/sdp/verify-identity", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          full_name: fullName.trim(),
+          date_of_birth: dateOfBirth.trim(),
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "No pudimos verificar tu identidad.");
+
+      setIdentityVerified(true);
+      setStep("funds");
+      setStatus("idle");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Algo salió mal. Intentá de nuevo.");
+      setStatus("error");
+    }
+  };
 
   /**
-   * Single action: SEP-10 passkey sign → SEP-24 deposit redirect.
-   * Trustline is handled automatically by the wallet creation flow.
+   * SEP-10 passkey sign → SEP-24 deposit redirect.
    */
   const requestFunds = async () => {
     setError(null);
@@ -146,13 +190,82 @@ export function SdpRegisterFlow() {
         <div className="space-y-2">
           <h1 className="text-xl font-semibold text-white">Tenés un pago esperándote</h1>
           <p className="text-sm text-white/55">
-            Iniciá sesión con tu passkey para recibirlo.
+            Creá tu cuenta con passkey y elegí tu SozuTag para recibirlo.
           </p>
         </div>
         <Link href="/auth?sdpInvite=1" className={CTA_CLASS}>
           <Fingerprint className="w-4 h-4 shrink-0 opacity-80" aria-hidden />
-          Iniciar sesión con passkey
+          Crear cuenta con passkey
         </Link>
+      </div>
+    );
+  }
+
+  if (requiresIdentity && step === "identity" && !identityVerified) {
+    return (
+      <div className="max-w-sm mx-auto mt-12 space-y-6">
+        <div className="space-y-1">
+          <h1 className="text-xl font-semibold text-white text-center">Confirmá tu identidad</h1>
+          {orgName && (
+            <p className="text-sm text-white/55 text-center">
+              Pago de <span className="text-white">{orgName}</span>
+            </p>
+          )}
+          <p className="text-xs text-white/45 text-center pt-1">
+            Ingresá los mismos datos que la organización registró para este beneficiario.
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label htmlFor="sdp-full-name" className="block text-sm text-white/70 mb-1">
+              Nombre completo
+            </label>
+            <input
+              id="sdp-full-name"
+              type="text"
+              autoComplete="name"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              placeholder="Ej. María García"
+              className={INPUT_CLASS}
+            />
+          </div>
+          <div>
+            <label htmlFor="sdp-dob" className="block text-sm text-white/70 mb-1">
+              Fecha de nacimiento
+            </label>
+            <input
+              id="sdp-dob"
+              type="date"
+              value={dateOfBirth}
+              onChange={(e) => setDateOfBirth(e.target.value)}
+              className={INPUT_CLASS}
+            />
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => void verifyIdentity()}
+          disabled={status === "busy"}
+          className={CTA_CLASS}
+        >
+          {status === "busy" ? (
+            <>
+              <span className="h-4 w-4 rounded-full border-2 border-orange-200/30 border-t-orange-100 animate-spin" />
+              Verificando…
+            </>
+          ) : (
+            "Continuar"
+          )}
+        </button>
+
+        {error && (
+          <div className="rounded-lg bg-red-950/50 border border-red-800/50 p-3">
+            <p className="text-sm text-red-400">{error}</p>
+          </div>
+        )}
       </div>
     );
   }
@@ -199,8 +312,7 @@ export function SdpRegisterFlow() {
 
       {(status === "idle" || status === "error") && (
         <p className="text-xs text-white/40 text-center">
-          Verás una confirmación con passkey y luego te redirigiremos para completar tu verificación
-          de identidad.
+          Firmá con passkey para autorizar la recepción del pago en tu billetera.
         </p>
       )}
 

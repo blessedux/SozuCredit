@@ -14,6 +14,12 @@ export type SdpInvitePayload = {
   tenantName?: string;
   /** Embedded-wallet invitation token when present on the registration link */
   token?: string;
+  /** Expected beneficiary email (unsigned invite param) */
+  expectedBeneficiaryEmail?: string;
+  /** Expected full name from NGO batch CSV */
+  expectedFullName?: string;
+  /** Expected DOB YYYY-MM-DD from NGO batch verification column */
+  expectedDateOfBirth?: string;
   /** Epoch seconds */
   exp: number;
 };
@@ -74,6 +80,21 @@ export function parseInviteCookie(
       return null;
     }
     if (data.token !== undefined && typeof data.token !== "string") {
+      return null;
+    }
+    if (
+      data.expectedBeneficiaryEmail !== undefined &&
+      typeof data.expectedBeneficiaryEmail !== "string"
+    ) {
+      return null;
+    }
+    if (data.expectedFullName !== undefined && typeof data.expectedFullName !== "string") {
+      return null;
+    }
+    if (
+      data.expectedDateOfBirth !== undefined &&
+      typeof data.expectedDateOfBirth !== "string"
+    ) {
       return null;
     }
     if (data.exp < Math.floor(Date.now() / 1000)) {
