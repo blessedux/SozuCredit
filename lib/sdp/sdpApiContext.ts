@@ -49,14 +49,13 @@ export async function getSdpApiContext(): Promise<SdpApiContext> {
     };
   }
 
-  const clientDomain = process.env.WALLET_CLIENT_DOMAIN?.trim();
-  if (!clientDomain) {
-    return {
-      ok: false,
-      status: 503,
-      error: "Server misconfiguration: WALLET_CLIENT_DOMAIN",
-    };
-  }
+  // WALLET_CLIENT_DOMAIN can be omitted — derive it from NEXT_PUBLIC_APP_URL
+  // or fall back to the well-known production domain.
+  const rawClientDomain =
+    process.env.WALLET_CLIENT_DOMAIN?.trim() ||
+    process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/^https?:\/\//i, "").split("/")[0] ||
+    "credit.sozu.capital";
+  const clientDomain = rawClientDomain.replace(/^https?:\/\//i, "").split("/")[0] || "credit.sozu.capital";
 
   const clientSigningSecret = process.env.SEP10_CLIENT_SIGNING_SECRET?.trim();
   if (!clientSigningSecret) {
