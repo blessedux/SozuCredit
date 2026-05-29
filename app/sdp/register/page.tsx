@@ -1,6 +1,6 @@
 import { SdpRegisterFlow } from "@/components/SdpRegisterFlow";
 
-export const metadata = { title: "Claim your payment · Sozu" };
+export const metadata = { title: "Recibir tu pago · Sozu" };
 
 export default function SdpRegisterPage() {
   return (
