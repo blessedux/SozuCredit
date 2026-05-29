@@ -10,7 +10,7 @@ type WalletState = {
   userId: string | null;
 };
 
-type Step = "idle" | "sep10-busy" | "sep10-done" | "deposit-busy" | "done";
+type Status = "idle" | "busy" | "done" | "error";
 
 export function SdpRegisterFlow() {
   const [wallet, setWallet] = useState<WalletState>({
@@ -19,12 +19,9 @@ export function SdpRegisterFlow() {
     userId: null,
   });
   const [orgName, setOrgName] = useState<string>("");
-  const [step, setStep] = useState<Step>("idle");
+  const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [pollTx, setPollTx] = useState<unknown[] | null>(null);
-  const [pollError, setPollError] = useState<string | null>(null);
 
-  // Read wallet state from sessionStorage (SozuCredit stores keys here post-login)
   const loadWallet = useCallback(() => {
     if (typeof window === "undefined") return;
     setWallet({
@@ -34,20 +31,15 @@ export function SdpRegisterFlow() {
     });
   }, []);
 
-  // Read invite org name from cookie via the context API
   const loadOrgName = useCallback(async () => {
     try {
-      const res = await fetch("/api/sdp/sep10/challenge", { credentials: "include" });
-      // We just want to check if the context loads; org name comes from a future info endpoint.
-      // If it 400s with the "no wallet" error we still want to show the UI.
-      if (res.status === 400) {
-        const d = await res.json().catch(() => ({})) as { error?: string };
-        if (d.error?.includes("invitation")) {
-          setOrgName("Unknown Organization");
-        }
+      const res = await fetch("/api/sdp/context", { credentials: "include" });
+      if (res.ok) {
+        const d = await res.json().catch(() => ({})) as { organizationName?: string };
+        if (d.organizationName) setOrgName(d.organizationName);
       }
     } catch {
-      // non-fatal
+      // non-fatal — org name is just display text
     }
   }, []);
 
@@ -58,20 +50,20 @@ export function SdpRegisterFlow() {
     return () => window.removeEventListener("storage", loadWallet);
   }, [loadWallet, loadOrgName]);
 
-  const runSep10WithPasskey = async () => {
+  /**
+   * Single action: SEP-10 passkey sign → SEP-24 deposit redirect.
+   * Trustline is handled automatically by the wallet creation flow.
+   */
+  const requestFunds = async () => {
     setError(null);
     if (!wallet.publicKey) {
-      setError("No Stellar wallet found. Please set up your wallet first.");
-      return;
-    }
-    if (!wallet.userId) {
-      setError("Session missing. Please log in again.");
+      setError("No wallet found. Please sign in first.");
       return;
     }
 
-    setStep("sep10-busy");
+    setStatus("busy");
     try {
-      // 1. Fetch challenge from SDP via our proxy
+      // ── Step 1: SEP-10 challenge ──────────────────────────────────────────
       const chRes = await fetch("/api/sdp/sep10/challenge", { credentials: "include" });
       const chData = await chRes.json().catch(() => ({})) as {
         transaction_xdr?: string;
@@ -81,17 +73,17 @@ export function SdpRegisterFlow() {
         home_domains?: string[];
         error?: string;
       };
-      if (!chRes.ok) throw new Error(chData.error ?? "Challenge request failed");
+      if (!chRes.ok) throw new Error(chData.error ?? "Could not start authentication");
 
-      // 2. Build the Stellar transaction from the XDR
       const networkPassphrase =
         chData.network_passphrase ??
         (process.env.NEXT_PUBLIC_STELLAR_NETWORK === "public"
           ? Networks.PUBLIC
           : Networks.TESTNET);
+
       const tx = new Transaction(chData.transaction_xdr as string, networkPassphrase);
 
-      // 3. Sign with passkey — triggers biometric prompt + signs locally with IndexedDB keypair
+      // ── Step 2: Sign with passkey (biometric prompt) ──────────────────────
       const { signTransactionWithPasskeyApproval } = await import(
         "@/lib/stellar/client-signing"
       );
@@ -99,18 +91,16 @@ export function SdpRegisterFlow() {
         tx,
         wallet.credentialId ?? "",
         wallet.publicKey,
-        wallet.userId
+        wallet.userId ?? ""
       );
 
-      const signedXdr = signed.transactionXdr;
-
-      // 4. Submit signed XDR + context to our token route → gets JWT cookie
+      // ── Step 3: Exchange signed XDR for SDP JWT ───────────────────────────
       const tokRes = await fetch("/api/sdp/sep10/token", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          transaction_xdr: signedXdr,
+          transaction_xdr: signed.transactionXdr,
           network_passphrase: networkPassphrase,
           server_account_id: chData.server_account_id,
           web_auth_domain: chData.web_auth_domain,
@@ -118,157 +108,104 @@ export function SdpRegisterFlow() {
         }),
       });
       const tokData = await tokRes.json().catch(() => ({})) as { error?: string };
-      if (!tokRes.ok) throw new Error(tokData.error ?? "Token exchange failed");
+      if (!tokRes.ok) throw new Error(tokData.error ?? "Authentication failed");
 
-      setStep("sep10-done");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Authentication failed");
-      setStep("idle");
-    }
-  };
-
-  const openDeposit = async () => {
-    setError(null);
-    setStep("deposit-busy");
-    try {
-      const res = await fetch("/api/sdp/sep24/deposit", {
+      // ── Step 4: Start SEP-24 deposit → redirect to verification ──────────
+      const depRes = await fetch("/api/sdp/sep24/deposit", {
         method: "POST",
         credentials: "include",
       });
-      const data = await res.json().catch(() => ({})) as { url?: string; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Deposit start failed");
-      const url = data.url;
-      if (typeof url === "string" && url.startsWith("http")) {
-        window.location.assign(url);
+      const depData = await depRes.json().catch(() => ({})) as { url?: string; error?: string };
+      if (!depRes.ok) throw new Error(depData.error ?? "Could not start verification");
+
+      if (typeof depData.url === "string" && depData.url.startsWith("http")) {
+        setStatus("done");
+        window.location.assign(depData.url);
       } else {
-        throw new Error("No interactive URL returned");
+        throw new Error("No verification URL returned");
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not open verification page");
-      setStep("sep10-done");
+      setError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
+      setStatus("error");
     }
   };
 
-  const pollTransactions = async () => {
-    setPollError(null);
-    try {
-      const res = await fetch("/api/sdp/sep24/transactions", { credentials: "include" });
-      const data = await res.json().catch(() => ({})) as { transactions?: unknown[]; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Poll failed");
-      setPollTx(data.transactions ?? []);
-    } catch (e) {
-      setPollError(e instanceof Error ? e.message : "Poll failed");
-    }
-  };
-
+  // ── Not yet signed in ────────────────────────────────────────────────────
   if (!wallet.publicKey) {
     return (
-      <div className="space-y-4 max-w-lg">
-        <h1 className="text-xl font-semibold">Disbursement registration</h1>
-        <p className="text-sm text-gray-400">
-          Sign in or create your Sozu account on the auth page (passkey). That derives your Stellar wallet. Then return here to continue disbursement registration.
-        </p>
+      <div className="max-w-sm mx-auto mt-12 space-y-6 text-center">
+        <div className="space-y-2">
+          <div className="text-4xl">💸</div>
+          <h1 className="text-xl font-semibold text-white">You have a payment waiting</h1>
+          <p className="text-sm text-gray-400">
+            Sign in with your passkey to claim it.
+          </p>
+        </div>
         <Link
           href="/auth?sdpInvite=1"
-          className="inline-block rounded-md bg-white text-gray-900 py-2 px-4 text-sm font-medium"
+          className="inline-flex items-center justify-center w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-semibold py-3 px-6 transition-colors"
         >
-          Sign in or create account
+          Sign in with passkey
         </Link>
       </div>
     );
   }
 
+  // ── Signed in — single claim action ──────────────────────────────────────
   return (
-    <div className="space-y-8 max-w-lg">
-      <div>
-        <h1 className="text-xl font-semibold">Receive your payment</h1>
+    <div className="max-w-sm mx-auto mt-12 space-y-6">
+      <div className="space-y-1">
+        <div className="text-4xl text-center">💸</div>
+        <h1 className="text-xl font-semibold text-white text-center">
+          {status === "done" ? "Redirecting…" : "Claim your payment"}
+        </h1>
         {orgName && (
-          <p className="text-sm text-gray-400 mt-1">
-            From <span className="text-white">{orgName}</span>
+          <p className="text-sm text-gray-400 text-center">
+            from <span className="text-white">{orgName}</span>
           </p>
         )}
-        <p className="text-sm text-gray-400 mt-1">
-          Wallet{" "}
-          <span className="text-gray-200 font-mono text-xs break-all">
-            {wallet.publicKey}
-          </span>
-        </p>
-        <p className="text-sm text-gray-400 mt-2">
-          Complete three steps to register your wallet and receive disbursements. Step 1 will prompt your biometric / passkey to sign in securely.
-        </p>
       </div>
 
-      {/* Step 1 — SEP-10 passkey authentication */}
-      <section className="rounded-lg border border-white/10 bg-black/30 p-4 space-y-3">
-        <h2 className="text-sm font-medium text-white">1. Authenticate with your passkey</h2>
-        <p className="text-xs text-gray-400">
-          Tap the button below. You will see a biometric / passkey prompt to securely prove ownership of your wallet.
-        </p>
-        {step === "sep10-done" ? (
-          <p className="text-sm text-emerald-400">Authenticated with disbursement platform.</p>
-        ) : (
-          <>
-            <button
-              type="button"
-              disabled={step === "sep10-busy"}
-              onClick={() => void runSep10WithPasskey()}
-              className="rounded-md bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 px-4 py-2 text-sm font-medium text-white"
-            >
-              {step === "sep10-busy" ? "Authenticating…" : "Authenticate"}
-            </button>
-            {error && <p className="text-sm text-red-400">{error}</p>}
-          </>
-        )}
-      </section>
-
-      {/* Step 2 — USDC trustline */}
-      <section className="rounded-lg border border-white/10 bg-black/30 p-4 space-y-3">
-        <h2 className="text-sm font-medium text-white">2. USDC trustline</h2>
-        <p className="text-xs text-gray-400">
-          Your wallet needs a USDC trustline to receive stablecoin payments. Check your wallet settings if you have not set one up.
-        </p>
-        <Link href="/wallet" className="text-sm text-blue-400 hover:underline">
-          Check trustline in Wallet
-        </Link>
-      </section>
-
-      {/* Step 3 — SEP-24 identity verification */}
-      <section className="rounded-lg border border-white/10 bg-black/30 p-4 space-y-3">
-        <h2 className="text-sm font-medium text-white">3. Complete identity verification</h2>
-        <p className="text-xs text-gray-400">
-          You will be redirected to the disbursement organization to complete phone or ID verification. Do not share any codes with third parties.
-        </p>
+      {status !== "done" && (
         <button
           type="button"
-          disabled={step !== "sep10-done" || step === ("deposit-busy" as Step)}
-          onClick={() => void openDeposit()}
-          className="rounded-md bg-white text-gray-900 hover:bg-gray-100 disabled:opacity-50 px-4 py-2 text-sm font-medium"
+          onClick={() => void requestFunds()}
+          disabled={status === "busy"}
+          className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 px-6 transition-colors flex items-center justify-center gap-2"
         >
-          {step === "deposit-busy" ? "Opening…" : "Continue to verification"}
+          {status === "busy" ? (
+            <>
+              <span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+              Authenticating…
+            </>
+          ) : (
+            "Request funds"
+          )}
         </button>
-        {error && step === "sep10-done" && (
+      )}
+
+      {status === "busy" && (
+        <p className="text-xs text-gray-500 text-center">
+          Your passkey prompt will appear. Follow your device&apos;s biometric or PIN confirmation.
+        </p>
+      )}
+
+      {(status === "idle" || status === "error") && (
+        <p className="text-xs text-gray-600 text-center">
+          You&apos;ll see a passkey confirmation, then be redirected to complete your identity check.
+        </p>
+      )}
+
+      {error && (
+        <div className="rounded-lg bg-red-950/50 border border-red-800/50 p-3">
           <p className="text-sm text-red-400">{error}</p>
-        )}
-      </section>
-
-      {/* Status poll */}
-      <section className="rounded-lg border border-white/10 bg-black/30 p-4 space-y-3">
-        <h2 className="text-sm font-medium text-white">Registration status</h2>
-        <button
-          type="button"
-          disabled={step !== "sep10-done"}
-          onClick={() => void pollTransactions()}
-          className="rounded-md border border-white/20 px-4 py-2 text-sm disabled:opacity-50 text-white"
-        >
-          Refresh status
-        </button>
-        {pollError && <p className="text-sm text-red-400">{pollError}</p>}
-        {pollTx && (
-          <pre className="text-xs text-gray-400 overflow-auto max-h-48 p-2 bg-black/50 rounded">
-            {JSON.stringify(pollTx, null, 2)}
-          </pre>
-        )}
-      </section>
+          {error.includes("wallet") && (
+            <Link href="/auth?sdpInvite=1" className="text-xs text-red-300 underline mt-1 block">
+              Sign in again
+            </Link>
+          )}
+        </div>
+      )}
     </div>
   );
 }
