@@ -14,6 +14,15 @@ import { Input } from "@/components/ui/input"
 import { useSendPayment } from "@/hooks/use-send-payment"
 import { useWalletLanguage } from "@/lib/wallet-language"
 import { QrScannerModal } from "@/components/wallet/qr-scanner-modal"
+import { formatReferenceAmount } from "@/lib/ledger/format-fiat"
+import {
+  fiatDecimals,
+  fiatFromUsdcAmount,
+  usdcFromInputAmount,
+} from "@/lib/payment/send-amount-currency"
+import type { ReferenceFiat } from "@/lib/treasury/types"
+
+import type { PaymentReceipt } from "@/lib/payment/payment-receipt"
 
 interface SendPaymentModalProps {
   isOpen: boolean
@@ -21,7 +30,8 @@ interface SendPaymentModalProps {
   walletAddress: string
   walletNetwork: "testnet" | "mainnet"
   defindexBalance: { walletBalance: number; strategyBalance: number; totalBalance: number } | null
-  onSuccess: (transactionHash: string) => void
+  referenceFiat: ReferenceFiat
+  onSuccess: (receipt: PaymentReceipt) => void
   onRefresh: () => void
 }
 
@@ -31,12 +41,14 @@ export const SendPaymentModal = memo(function SendPaymentModal({
   walletAddress,
   walletNetwork,
   defindexBalance,
+  referenceFiat,
   onSuccess,
   onRefresh,
 }: SendPaymentModalProps) {
   const {
     sendRecipient,
     sendAmount,
+    amountInputCurrency,
     isSending,
     sendStep,
     isResolvingRecipient,
@@ -46,18 +58,46 @@ export const SendPaymentModal = memo(function SendPaymentModal({
     isVibrating,
     setSendRecipient,
     setSendAmount,
-    setSendStep,
     setIsManualMode,
     setSendMemo,
     setRecipientError,
+    toggleAmountCurrency,
     handleResolveRecipient,
     handleSendPayment,
     resetSendPayment,
-  } = useSendPayment(walletAddress, walletNetwork, defindexBalance, onSuccess, onRefresh)
+  } = useSendPayment(
+    walletAddress,
+    walletNetwork,
+    defindexBalance,
+    referenceFiat,
+    onSuccess,
+    onRefresh,
+  )
 
   const { t } = useWalletLanguage()
   const [isScannerOpen, setIsScannerOpen] = useState(false)
   const [pendingAutoResolve, setPendingAutoResolve] = useState(false)
+
+  const parsedAmount = parseFloat(sendAmount)
+  const hasValidAmount = sendAmount.length > 0 && !Number.isNaN(parsedAmount) && parsedAmount > 0
+  const inputCurrencyLabel = amountInputCurrency === "fiat" ? referenceFiat : "USDC"
+  const amountPlaceholder =
+    amountInputCurrency === "fiat" && fiatDecimals(referenceFiat) === 0 ? "0" : "0.00"
+  const amountStep =
+    amountInputCurrency === "fiat" && fiatDecimals(referenceFiat) === 0 ? "1" : "0.01"
+  const amountMin =
+    amountInputCurrency === "fiat" && fiatDecimals(referenceFiat) === 0 ? "1" : "0.01"
+
+  const approxLine = hasValidAmount
+    ? amountInputCurrency === "fiat"
+      ? t.sendApproxUsdc.replace(
+          "{amount}",
+          usdcFromInputAmount(parsedAmount, "fiat", referenceFiat).toFixed(2),
+        )
+      : t.sendApproxFiat
+          .replace("{amount}", formatReferenceAmount(fiatFromUsdcAmount(parsedAmount, referenceFiat), referenceFiat))
+          .replace("{fiat}", referenceFiat)
+    : null
 
   // Auto-resolve after a QR scan — fires once sendRecipient state has settled
   useEffect(() => {
@@ -252,33 +292,46 @@ export const SendPaymentModal = memo(function SendPaymentModal({
                 </span>
               </div>
               <div className="text-center py-2">
-                <div className="text-4xl font-bold text-white">
-                  {sendAmount || "0.00"}
+                <div className="text-4xl font-bold text-white tabular-nums">
+                  {sendAmount || amountPlaceholder}
                 </div>
-                <div className="text-white/60 text-sm mt-1">{t.currencyDisplay}</div>
+                <button
+                  type="button"
+                  onClick={toggleAmountCurrency}
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.06] px-3 py-1 text-sm font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+                  aria-label={t.sendTapToSwitchCurrency}
+                >
+                  <span>{inputCurrencyLabel}</span>
+                  <span className="text-white/40 text-xs">↕</span>
+                </button>
+                {approxLine ? (
+                  <p className="text-white/45 text-xs mt-2">{approxLine}</p>
+                ) : (
+                  <p className="text-white/35 text-xs mt-2">{t.sendTapToSwitchCurrency}</p>
+                )}
               </div>
 
             <Input
               type="number"
               inputMode="decimal"
-              step="0.01"
-              min="0.01"
+              step={amountStep}
+              min={amountMin}
               value={sendAmount}
               onChange={(e) => setSendAmount(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && sendAmount && parseFloat(sendAmount) > 0 && !isSending) {
+                if (e.key === "Enter" && hasValidAmount && !isSending) {
                   e.preventDefault()
                   handleSendPayment()
                 }
               }}
-              placeholder="0.00"
+              placeholder={amountPlaceholder}
               className="bg-white/5 border-white/20 text-white placeholder:text-white/40 text-2xl text-center h-16 font-semibold"
               autoFocus
             />
 
             <Button
               onClick={handleSendPayment}
-              disabled={!sendAmount || isSending || parseFloat(sendAmount) <= 0}
+              disabled={!hasValidAmount || isSending}
               className="w-full bg-white text-black hover:bg-white/90 font-semibold disabled:opacity-50 disabled:cursor-not-allowed h-14 text-lg"
             >
               {isSending ? (

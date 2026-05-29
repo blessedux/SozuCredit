@@ -19,6 +19,7 @@ interface TransactionHistoryProps {
   walletNetwork: "testnet" | "mainnet"
   addressToTagMap: Record<string, string>
   isLoading: boolean
+  onSelectTransaction?: (transaction: Transaction) => void
 }
 
 export const TransactionHistory = memo(function TransactionHistory({
@@ -27,6 +28,7 @@ export const TransactionHistory = memo(function TransactionHistory({
   walletNetwork,
   addressToTagMap,
   isLoading,
+  onSelectTransaction,
 }: TransactionHistoryProps) {
   const { t } = useWalletLanguage()
   const [isExpanded, setIsExpanded] = useState(false)
@@ -57,7 +59,7 @@ export const TransactionHistory = memo(function TransactionHistory({
           ) : (
             <>
               {(isExpanded ? transactions : transactions.slice(0, 3)).map((tx, index) => {
-                const paymentOp = tx.operations.find((op: any) => op.type === "payment")
+                const paymentOp = tx.operations.find((op: { type: string }) => op.type === "payment")
                 if (!paymentOp) return null
 
                 const isSent = paymentOp.from === walletAddress
@@ -76,9 +78,18 @@ export const TransactionHistory = memo(function TransactionHistory({
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: opacity, x: 0 }}
                       transition={{ duration: 0.3 }}
-                      onClick={() => !isExpanded && setIsExpanded(true)}
+                      role={onSelectTransaction ? "button" : undefined}
+                      tabIndex={onSelectTransaction ? 0 : undefined}
+                      onClick={() => onSelectTransaction?.(tx)}
+                      onKeyDown={(e) => {
+                        if (!onSelectTransaction) return
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault()
+                          onSelectTransaction(tx)
+                        }
+                      }}
                       className={`flex items-center gap-3 rounded-lg bg-white/5 p-3 transition-colors hover:bg-white/10 sm:gap-4 sm:p-4 ${
-                        !isExpanded ? "cursor-pointer" : ""
+                        onSelectTransaction ? "cursor-pointer" : ""
                       }`}
                     >
                       <div className="mt-0.5 shrink-0 sm:mt-0">

@@ -31,6 +31,10 @@ import { BottomMenuBar } from "@/components/wallet/bottom-menu-bar"
 import { PullToRefreshIndicator } from "@/components/wallet/pull-to-refresh-indicator"
 import { CashflowSummaryCard } from "@/components/wallet/cashflow-summary-card"
 import { UniversalCommandBar } from "@/components/home/universal-command-bar"
+import type { PaymentReceipt } from "@/lib/payment/payment-receipt"
+import { transactionToPaymentReceipt } from "@/lib/payment/transaction-to-receipt"
+import type { Transaction } from "@/hooks/use-wallet-data"
+import type { ReceiptModalVariant } from "@/components/wallet/success-modal"
 
 // Lazy load modals
 const SendPaymentModal = lazy(() => import("@/components/wallet/send-payment-modal").then(mod => ({ default: mod.SendPaymentModal })))
@@ -123,7 +127,8 @@ export function WalletScreen({
   const [isDepositOpen, setIsDepositOpen] = useState(false)
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
-  const [transactionHash, setTransactionHash] = useState<string | null>(null)
+  const [paymentReceipt, setPaymentReceipt] = useState<PaymentReceipt | null>(null)
+  const [receiptModalVariant, setReceiptModalVariant] = useState<ReceiptModalVariant>("success")
   const [activationNeeded, setActivationNeeded] = useState(false)
   const [isActivating, setIsActivating] = useState(false)
   const [activationMessage, setActivationMessage] = useState<string | null>(null)
@@ -272,11 +277,28 @@ export function WalletScreen({
   }, [shellLayout, isPulling, pull])
 
   // Success handler
-  const handleSendSuccess = useCallback((hash: string) => {
-    setTransactionHash(hash)
+  const handleSendSuccess = useCallback((receipt: PaymentReceipt) => {
+    setPaymentReceipt(receipt)
+    setReceiptModalVariant("success")
     setShowSuccessModal(true)
     setSendModalOpen(false)
   }, [setSendModalOpen])
+
+  const handleTransactionSelect = useCallback(
+    (tx: Transaction) => {
+      const receipt = transactionToPaymentReceipt(
+        tx,
+        walletAddress,
+        walletNetwork,
+        addressToTagMap,
+      )
+      if (!receipt) return
+      setPaymentReceipt(receipt)
+      setReceiptModalVariant("history")
+      setShowSuccessModal(true)
+    },
+    [walletAddress, walletNetwork, addressToTagMap],
+  )
 
   const refreshActivationState = useCallback(async () => {
     if (!walletAddress || walletNetwork !== "testnet") {
@@ -377,6 +399,7 @@ export function WalletScreen({
           walletAddress={walletAddress}
           walletNetwork={walletNetwork}
           defindexBalance={defindexBalance}
+          referenceFiat={treasuryData.prefs.referenceFiat}
           onSuccess={handleSendSuccess}
           onRefresh={handleRefresh}
         />
@@ -393,8 +416,13 @@ export function WalletScreen({
       <Suspense fallback={null}>
         <SuccessModal
           isOpen={showSuccessModal}
-          onClose={() => { setShowSuccessModal(false); setTransactionHash(null) }}
-          transactionHash={transactionHash}
+          onClose={() => {
+            setShowSuccessModal(false)
+            setPaymentReceipt(null)
+            setReceiptModalVariant("success")
+          }}
+          receipt={paymentReceipt}
+          variant={receiptModalVariant}
         />
       </Suspense>
 
@@ -600,6 +628,7 @@ export function WalletScreen({
                 walletNetwork={walletNetwork}
                 addressToTagMap={addressToTagMap}
                 isLoading={historyTxLoading}
+                onSelectTransaction={handleTransactionSelect}
               />
             </div>
           </div>
@@ -683,6 +712,7 @@ export function WalletScreen({
                         walletNetwork={walletNetwork}
                         addressToTagMap={addressToTagMap}
                         isLoading={isLoadingTransactions}
+                        onSelectTransaction={handleTransactionSelect}
                       />
                     </Suspense>
                   </div>

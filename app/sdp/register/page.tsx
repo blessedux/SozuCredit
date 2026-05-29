@@ -4,8 +4,8 @@ export const metadata = { title: "Claim your payment · Sozu" };
 
 export default function SdpRegisterPage() {
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col">
-      <header className="border-b border-white/10 px-6 py-4">
+    <div className="relative z-10 flex min-h-screen flex-col bg-transparent text-white">
+      <header className="border-b border-white/10 bg-black/50 px-6 py-4 backdrop-blur-xl backdrop-saturate-150">
         <span className="text-sm font-semibold tracking-tight text-white">Sozu Credit</span>
       </header>
       <main className="flex-1 px-4 pb-16">

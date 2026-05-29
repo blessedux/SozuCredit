@@ -5,16 +5,32 @@
 
 import { useState, useCallback } from "react"
 import { getUserId } from "@/lib/wallet-utils"
+import type { PaymentReceipt } from "@/lib/payment/payment-receipt"
+import {
+  formatRecipientDisplayLabel,
+  getSenderDisplayLabel,
+} from "@/lib/payment/payment-receipt"
+import {
+  convertAmountForCurrencySwitch,
+  defaultSendAmountCurrency,
+  usdcFromInputAmount,
+  type SendAmountCurrency,
+} from "@/lib/payment/send-amount-currency"
+import type { ReferenceFiat } from "@/lib/treasury/types"
 
 export function useSendPayment(
   walletAddress: string,
   walletNetwork: "testnet" | "mainnet",
   defindexBalance: { walletBalance: number; strategyBalance: number; totalBalance: number } | null,
-  onSuccess?: (transactionHash: string) => void,
+  referenceFiat: ReferenceFiat,
+  onSuccess?: (receipt: PaymentReceipt) => void,
   onRefresh?: () => void
 ) {
   const [sendRecipient, setSendRecipient] = useState("")
   const [sendAmount, setSendAmount] = useState("")
+  const [amountInputCurrency, setAmountInputCurrency] = useState<SendAmountCurrency>(() =>
+    defaultSendAmountCurrency(referenceFiat),
+  )
   const [isSending, setIsSending] = useState(false)
   const [sendStep, setSendStep] = useState<"recipient" | "amount">("recipient")
   const [resolvedRecipientAddress, setResolvedRecipientAddress] = useState<string | null>(null)
@@ -24,17 +40,35 @@ export function useSendPayment(
   const [recipientError, setRecipientError] = useState<string | null>(null)
   const [isVibrating, setIsVibrating] = useState(false)
 
+  const toggleAmountCurrency = useCallback(() => {
+    const nextCurrency: SendAmountCurrency =
+      amountInputCurrency === "fiat" ? "usdc" : "fiat"
+    const parsed = parseFloat(sendAmount)
+    if (sendAmount && !Number.isNaN(parsed) && parsed > 0) {
+      setSendAmount(
+        convertAmountForCurrencySwitch(
+          parsed,
+          amountInputCurrency,
+          nextCurrency,
+          referenceFiat,
+        ),
+      )
+    }
+    setAmountInputCurrency(nextCurrency)
+  }, [amountInputCurrency, referenceFiat, sendAmount])
+
   // Reset send payment state
   const resetSendPayment = useCallback(() => {
     setSendStep("recipient")
     setSendRecipient("")
     setSendAmount("")
+    setAmountInputCurrency(defaultSendAmountCurrency(referenceFiat))
     setResolvedRecipientAddress(null)
     setIsManualMode(false)
     setSendMemo("")
     setRecipientError(null)
     setIsVibrating(false)
-  }, [])
+  }, [referenceFiat])
 
   // Resolve recipient (Sozu tag or Stellar address)
   const handleResolveRecipient = useCallback(async () => {
@@ -116,7 +150,11 @@ export function useSendPayment(
       return
     }
 
-    const amount = parseFloat(sendAmount)
+    const inputAmount = parseFloat(sendAmount)
+    const amount = usdcFromInputAmount(inputAmount, amountInputCurrency, referenceFiat)
+    if (amount <= 0) {
+      return
+    }
     if (!walletAddress) {
       alert("Wallet address not found. Please create a wallet first.")
       return
@@ -292,7 +330,17 @@ export function useSendPayment(
         
         // Call success callback
         if (onSuccess) {
-          onSuccess(result.transactionHash)
+          onSuccess({
+            amount,
+            currency: "USDC",
+            fromLabel: getSenderDisplayLabel(),
+            toLabel: formatRecipientDisplayLabel(sendRecipient, resolvedRecipientAddress),
+            toAddress: resolvedRecipientAddress ?? undefined,
+            transactionHash: result.transactionHash,
+            network: walletNetwork,
+            memo: sendMemo.trim() || null,
+            completedAt: new Date().toISOString(),
+          })
         }
         
         // Reset state
@@ -320,12 +368,14 @@ export function useSendPayment(
     } finally {
       setIsSending(false)
     }
-  }, [sendAmount, resolvedRecipientAddress, walletAddress, walletNetwork, defindexBalance, sendMemo, onSuccess, onRefresh, resetSendPayment])
+  }, [sendAmount, amountInputCurrency, referenceFiat, sendRecipient, resolvedRecipientAddress, walletAddress, walletNetwork, defindexBalance, sendMemo, onSuccess, onRefresh, resetSendPayment])
 
   return {
     // State
     sendRecipient,
     sendAmount,
+    amountInputCurrency,
+    referenceFiat,
     isSending,
     sendStep,
     resolvedRecipientAddress,
@@ -341,6 +391,7 @@ export function useSendPayment(
     setIsManualMode,
     setSendMemo,
     setRecipientError,
+    toggleAmountCurrency,
     handleResolveRecipient,
     handleSendPayment,
     resetSendPayment,

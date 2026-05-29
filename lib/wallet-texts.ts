@@ -39,10 +39,36 @@ export type WalletTexts = {
   resolving: string;
   sending: string;
   send: string;
+  sendTapToSwitchCurrency: string;
+  sendApproxUsdc: string;
+  sendApproxFiat: string;
   // Success Modal
   transactionSuccessful: string;
   transactionSuccessfulDesc: string;
   done: string;
+  receiptShareTitle: string;
+  receiptShareHeading: string;
+  receiptShareFooter: string;
+  receiptAmountLabel: string;
+  receiptFromLabel: string;
+  receiptToLabel: string;
+  receiptDateLabel: string;
+  receiptNetworkLabel: string;
+  receiptNetworkTestnet: string;
+  receiptNetworkMainnet: string;
+  receiptTxLabel: string;
+  receiptMemoLabel: string;
+  receiptCopyInvoice: string;
+  receiptCopied: string;
+  receiptCopyFailed: string;
+  receiptSmsLabel: string;
+  receiptMoreLabel: string;
+  receiptDetailTitle: string;
+  receiptDetailDesc: string;
+  receiptShareImage: string;
+  receiptSharingImage: string;
+  receiptImageSaved: string;
+  receiptShareImageFailed: string;
   // Transaction History
   loadingTransactions: string;
   noTransactions: string;
@@ -353,10 +379,36 @@ export const walletTexts = {
     resolving: "Resolviendo...",
     sending: "Enviando...",
     send: "Enviar",
+    sendTapToSwitchCurrency: "Toca la moneda para cambiar",
+    sendApproxUsdc: "≈ {amount} USDC",
+    sendApproxFiat: "≈ {amount} {fiat}",
     // Success Modal
     transactionSuccessful: "Transacción Exitosa",
     transactionSuccessfulDesc: "Tu pago fue enviado exitosamente",
     done: "Hecho",
+    receiptShareTitle: "📄 Comprobante Sozu",
+    receiptShareHeading: "Compartir comprobante",
+    receiptShareFooter: "Enviado con Sozu Wallet",
+    receiptAmountLabel: "Monto",
+    receiptFromLabel: "De",
+    receiptToLabel: "Para",
+    receiptDateLabel: "Fecha",
+    receiptNetworkLabel: "Red",
+    receiptNetworkTestnet: "Stellar Testnet",
+    receiptNetworkMainnet: "Stellar Mainnet",
+    receiptTxLabel: "Tx",
+    receiptMemoLabel: "Memo",
+    receiptCopyInvoice: "Copiar comprobante",
+    receiptCopied: "Comprobante copiado",
+    receiptCopyFailed: "No se pudo copiar",
+    receiptSmsLabel: "Mensajes",
+    receiptMoreLabel: "Más",
+    receiptDetailTitle: "Detalle de transacción",
+    receiptDetailDesc: "Comprobante de pago",
+    receiptShareImage: "Compartir como imagen",
+    receiptSharingImage: "Preparando imagen…",
+    receiptImageSaved: "Comprobante guardado — adjúntalo en tu app",
+    receiptShareImageFailed: "No se pudo compartir la imagen",
     // Transaction History
     loadingTransactions: "Cargando transacciones...",
     noTransactions: "Aún no hay transacciones",
@@ -639,10 +691,36 @@ export const walletTexts = {
     resolving: "Resolving...",
     sending: "Sending...",
     send: "Send",
+    sendTapToSwitchCurrency: "Tap currency to switch",
+    sendApproxUsdc: "≈ {amount} USDC",
+    sendApproxFiat: "≈ {amount} {fiat}",
     // Success Modal
     transactionSuccessful: "Transaction Successful",
     transactionSuccessfulDesc: "Your payment was sent successfully",
     done: "Done",
+    receiptShareTitle: "📄 Sozu receipt",
+    receiptShareHeading: "Share receipt",
+    receiptShareFooter: "Sent with Sozu Wallet",
+    receiptAmountLabel: "Amount",
+    receiptFromLabel: "From",
+    receiptToLabel: "To",
+    receiptDateLabel: "Date",
+    receiptNetworkLabel: "Network",
+    receiptNetworkTestnet: "Stellar Testnet",
+    receiptNetworkMainnet: "Stellar Mainnet",
+    receiptTxLabel: "Tx",
+    receiptMemoLabel: "Memo",
+    receiptCopyInvoice: "Copy receipt",
+    receiptCopied: "Receipt copied",
+    receiptCopyFailed: "Could not copy",
+    receiptSmsLabel: "Messages",
+    receiptMoreLabel: "More",
+    receiptDetailTitle: "Transaction details",
+    receiptDetailDesc: "Payment receipt",
+    receiptShareImage: "Share as image",
+    receiptSharingImage: "Preparing image…",
+    receiptImageSaved: "Receipt saved — attach it in your app",
+    receiptShareImageFailed: "Could not share image",
     // Transaction History
     loadingTransactions: "Loading transactions...",
     noTransactions: "No transactions yet",

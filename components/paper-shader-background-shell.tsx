@@ -13,7 +13,7 @@ const AuthOrangeOrbShader = dynamic(
   { ssr: false },
 )
 
-const SHADER_PATHS = ["/auth", "/wallet", "/home", "/settings", "/ledger", "/credit"]
+const SHADER_PATHS = ["/auth", "/wallet", "/home", "/settings", "/ledger", "/credit", "/sdp"]
 
 function shouldShowPaperShader(pathname: string) {
   return SHADER_PATHS.some(

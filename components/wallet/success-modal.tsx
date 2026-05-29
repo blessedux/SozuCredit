@@ -1,6 +1,6 @@
 /**
- * Success modal component
- * Displays transaction success confirmation
+ * Success / receipt modal component
+ * Displays transaction confirmation or history receipt with share options
  */
 
 "use client"
@@ -10,40 +10,65 @@ import { Check } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { useWalletLanguage } from "@/lib/wallet-language"
+import type { PaymentReceipt } from "@/lib/payment/payment-receipt"
+import { TransactionReceiptCard } from "@/components/wallet/transaction-receipt-card"
+import { TransactionReceiptShare } from "@/components/wallet/transaction-receipt-share"
+
+export type ReceiptModalVariant = "success" | "history"
 
 interface SuccessModalProps {
   isOpen: boolean
   onClose: () => void
-  transactionHash: string | null
+  receipt: PaymentReceipt | null
+  variant?: ReceiptModalVariant
 }
 
 export const SuccessModal = memo(function SuccessModal({
   isOpen,
   onClose,
-  transactionHash,
+  receipt,
+  variant = "success",
 }: SuccessModalProps) {
   const { t } = useWalletLanguage()
-  
+  const isSuccess = variant === "success"
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="bg-black/80 backdrop-blur-md border-white/20 text-white max-w-md">
+      <DialogContent className="max-h-[90vh] overflow-y-auto border-white/20 bg-black/80 text-white backdrop-blur-md sm:max-w-md">
         <DialogHeader className="sr-only">
-          <DialogTitle>{t.transactionSuccessful}</DialogTitle>
-          <DialogDescription>{t.transactionSuccessfulDesc}</DialogDescription>
+          <DialogTitle>{isSuccess ? t.transactionSuccessful : t.receiptDetailTitle}</DialogTitle>
+          <DialogDescription>
+            {isSuccess ? t.transactionSuccessfulDesc : t.receiptDetailDesc}
+          </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-4 text-center">
-          <div className="w-16 h-16 mx-auto bg-green-500/20 rounded-full flex items-center justify-center">
-            <Check className="w-8 h-8 text-green-500" />
-          </div>
-          <div className="text-2xl font-bold text-white">{t.transactionSuccessful}</div>
-          {transactionHash && (
-            <div className="text-sm text-white/60 font-mono">
-              {transactionHash.substring(0, 8)}...{transactionHash.substring(transactionHash.length - 8)}
+        <div className="space-y-5 py-2 text-center">
+          {isSuccess ? (
+            <>
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-500/20">
+                <Check className="h-8 w-8 text-green-500" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-white">{t.transactionSuccessful}</div>
+                <p className="mt-1 text-sm text-white/55">{t.transactionSuccessfulDesc}</p>
+              </div>
+            </>
+          ) : (
+            <div>
+              <div className="text-2xl font-bold text-white">{t.receiptDetailTitle}</div>
+              <p className="mt-1 text-sm text-white/55">{t.receiptDetailDesc}</p>
             </div>
           )}
+
+          {receipt ? (
+            <>
+              <TransactionReceiptCard receipt={receipt} />
+              <TransactionReceiptShare receipt={receipt} />
+            </>
+          ) : null}
+
           <Button
             onClick={onClose}
-            className="w-full bg-white text-black hover:bg-white/90 font-semibold h-14 text-lg"
+            className="h-14 w-full bg-white text-lg font-semibold text-black hover:bg-white/90"
           >
             {t.done}
           </Button>

@@ -135,9 +135,8 @@ export function SdpRegisterFlow() {
     return (
       <div className="max-w-sm mx-auto mt-12 space-y-6 text-center">
         <div className="space-y-2">
-          <div className="text-4xl">💸</div>
           <h1 className="text-xl font-semibold text-white">You have a payment waiting</h1>
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-white/55">
             Sign in with your passkey to claim it.
           </p>
         </div>
@@ -155,12 +154,11 @@ export function SdpRegisterFlow() {
   return (
     <div className="max-w-sm mx-auto mt-12 space-y-6">
       <div className="space-y-1">
-        <div className="text-4xl text-center">💸</div>
         <h1 className="text-xl font-semibold text-white text-center">
           {status === "done" ? "Redirecting…" : "Claim your payment"}
         </h1>
         {orgName && (
-          <p className="text-sm text-gray-400 text-center">
+          <p className="text-sm text-white/55 text-center">
             from <span className="text-white">{orgName}</span>
           </p>
         )}
@@ -185,13 +183,13 @@ export function SdpRegisterFlow() {
       )}
 
       {status === "busy" && (
-        <p className="text-xs text-gray-500 text-center">
+        <p className="text-xs text-white/45 text-center">
           Your passkey prompt will appear. Follow your device&apos;s biometric or PIN confirmation.
         </p>
       )}
 
       {(status === "idle" || status === "error") && (
-        <p className="text-xs text-gray-600 text-center">
+        <p className="text-xs text-white/40 text-center">
           You&apos;ll see a passkey confirmation, then be redirected to complete your identity check.
         </p>
       )}
