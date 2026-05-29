@@ -6,16 +6,20 @@ import { useSearchParams } from "next/navigation"
 import { useHorizontalPanelSwipe } from "@/hooks/use-horizontal-panel-swipe"
 import { WalletDataProvider } from "@/components/wallet/wallet-data-provider"
 import { WalletLanguageProvider } from "@/lib/wallet-language"
-import { signalAppReady } from "@/lib/app-ready"
-
-const WalletScreen = dynamic(
-  () => import("@/components/wallet/wallet-screen").then((mod) => ({ default: mod.WalletScreen })),
-  { ssr: false },
-)
+import { signalShellReady } from "@/lib/app-ready"
+// Static import: landing panel is always mounted, so paying the dynamic chunk
+// cost on cold start would delay the first paint unnecessarily.
+import { WalletScreen } from "@/components/wallet/wallet-screen"
 
 const SettingsPanel = dynamic(
   () => import("@/app/settings/page").then(mod => ({ default: mod.default })),
   { ssr: false, loading: () => null },
+)
+
+// History panel lazy-loads — only needed after the user swipes right.
+const WalletScreenHistory = dynamic(
+  () => import("@/components/wallet/wallet-screen").then((mod) => ({ default: mod.WalletScreen })),
+  { ssr: false },
 )
 
 // 0 = Settings  |  1 = Landing (balance + commands)  |  2 = History
@@ -68,12 +72,18 @@ export function MobileAppShell() {
     window.history.replaceState(window.history.state, "", next)
   }, [searchParams])
 
+  // Signal that the shell has painted so the preloader can dismiss immediately.
+  // Double-rAF ensures we're past the first composite frame before fading.
   useEffect(() => {
-    if (activePanel === 0) return
-    // Landing wallet screen signals when balance is ready; fallback for edge cases.
-    const timer = window.setTimeout(signalAppReady, 4000)
-    return () => window.clearTimeout(timer)
-  }, [activePanel])
+    const raf1 = requestAnimationFrame(() => {
+      const raf2 = requestAnimationFrame(() => {
+        signalShellReady()
+      })
+      return () => cancelAnimationFrame(raf2)
+    })
+    return () => cancelAnimationFrame(raf1)
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only
+  }, [])
 
   const goLeft = useCallback(() => {
     setActivePanel(p => Math.max(0, p - 1))
@@ -128,24 +138,22 @@ export function MobileAppShell() {
           ) : null}
         </div>
 
-        {/* Panel 1 — Landing: balance card + commands */}
+        {/* Panel 1 — Landing: balance card + commands (statically imported, critical path) */}
         <div className="h-full overflow-hidden" style={{ width: `${100 / PANEL_COUNT}%` }}>
-          <Suspense fallback={null}>
-            <WalletScreen
-              shellLayout="landing"
-              isSendModalOpen={isSendModalOpen}
-              onSendModalOpenChange={setIsSendModalOpen}
-              onPayClick={handlePayClick}
-              hideBottomBar
-            />
-          </Suspense>
+          <WalletScreen
+            shellLayout="landing"
+            isSendModalOpen={isSendModalOpen}
+            onSendModalOpenChange={setIsSendModalOpen}
+            onPayClick={handlePayClick}
+            hideBottomBar
+          />
         </div>
 
-        {/* Panel 2 — Transaction history (mounted after first visit) */}
+        {/* Panel 2 — Transaction history (lazy: only mounted after first swipe) */}
         <div className="relative h-full overflow-hidden" style={{ width: `${100 / PANEL_COUNT}%` }}>
           {historyMounted ? (
             <Suspense fallback={null}>
-              <WalletScreen shellLayout="history" hideBottomBar />
+              <WalletScreenHistory shellLayout="history" hideBottomBar />
             </Suspense>
           ) : null}
         </div>

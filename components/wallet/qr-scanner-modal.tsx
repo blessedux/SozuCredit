@@ -100,7 +100,11 @@ export function QrScannerModal({ isOpen, onClose, onScan }: QrScannerModalProps)
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) { stopCamera(); onClose() } }}>
-      <DialogContent className="bg-black/90 backdrop-blur-md border-white/20 text-white max-w-sm p-0 overflow-hidden rounded-2xl">
+      <DialogContent
+        className="bg-black/70 backdrop-blur-sm border-white/20 text-white max-w-sm p-0 overflow-hidden rounded-2xl"
+        showCloseButton={false}
+        overlayClassName="bg-black/30 backdrop-blur-none"
+      >
         <div className="relative w-full aspect-square">
           {/* Video feed */}
           <video

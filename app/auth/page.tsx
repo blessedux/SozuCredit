@@ -4,7 +4,7 @@ import { WelcomeModal } from "@/components/welcome-modal"
 import { TagInputModal } from "@/components/tag-input-modal"
 import { WalletSkeleton } from "@/components/ui/wallet-skeleton"
 import { Button } from "@/components/ui/button"
-import { Fingerprint } from "lucide-react"
+import { Fingerprint, Share, Plus, X } from "lucide-react"
 import { AnimatePresence, motion } from "framer-motion"
 import {
   generateRegistrationChallenge,
@@ -17,6 +17,7 @@ import {
 import { createClient } from "@/lib/supabase/client"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useState, useRef, useEffect, useCallback, Suspense } from "react"
+import { usePwaInstall } from "@/hooks/use-pwa-install"
 
 function AuthPageContent() {
   const [isAuthenticating, setIsAuthenticating] = useState(false)
@@ -26,9 +27,15 @@ function AuthPageContent() {
   const [resumeLoginTag, setResumeLoginTag] = useState<string | null>(null)
   const [tagModalPrefill, setTagModalPrefill] = useState<string | null>(null)
   const [referralCode, setReferralCode] = useState<string | null>(null)
+  const [showIosInstallModal, setShowIosInstallModal] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirectingRef = useRef(false)
+  const { canInstall, triggerInstall, isIos, isInstalled } = usePwaInstall()
+  // Stores a passkey credential captured during discovery-mode auth that failed
+  // (credential not in DB). Passed to proceedWithRegistration so the user isn't
+  // prompted for a second biometric after entering their SozuTag.
+  const pendingCredentialRef = useRef<Awaited<ReturnType<typeof getPasskey>>>(null)
 
   /** SDP onboarding: middleware sends unauthenticated users to /auth?sdpInvite=1 */
   const postAuthPath = searchParams.get("sdpInvite") === "1" ? "/sdp/register" : "/home"
@@ -94,7 +101,13 @@ function AuthPageContent() {
   )
 
   const attemptLoginWithTag = useCallback(
-    async (tag: string): Promise<{ ok: boolean; cancelled?: boolean; error?: string }> => {
+    async (tag: string): Promise<{
+      ok: boolean
+      cancelled?: boolean
+      error?: string
+      /** Credential captured during a failed auth attempt — reuse for registration to skip second biometric. */
+      capturedCredential?: Awaited<ReturnType<typeof getPasskey>> | null
+    }> => {
       try {
         const challenge = await generateAuthChallenge(tag)
         let credential: Awaited<ReturnType<typeof getPasskey>>
@@ -109,7 +122,9 @@ function AuthPageContent() {
         if (!credential) return { ok: false, cancelled: true }
         const authResult = await verifyAuthentication(tag, credential, challenge?.challenge)
         if (!authResult?.success || !authResult.userId) {
-          return { ok: false, error: "Could not sign in" }
+          // Auth failed (account deleted / credential not in DB).
+          // Return the credential so the caller can stash it for registration reuse.
+          return { ok: false, error: "Could not sign in", capturedCredential: credential }
         }
         await finalizePasskeyLoginSuccess(authResult.userId, authResult.username, credential)
         return { ok: true }
@@ -168,6 +183,14 @@ function AuthPageContent() {
         return
       }
       console.log("[Auth] Login with stored tag failed:", result.error, result.cancelled)
+
+      // Stash credential for registration reuse — avoids a second biometric prompt
+      // when the user enters a SozuTag after a failed login (e.g. deleted account).
+      if (result.capturedCredential) {
+        pendingCredentialRef.current = result.capturedCredential
+        console.log("[Auth] Captured credential stashed for registration reuse")
+      }
+
       setIsAuthenticating(false)
       if (result.cancelled) {
         setResumeLoginTag(usernameToUse)
@@ -215,7 +238,11 @@ function AuthPageContent() {
       const authResult = await verifyAuthentication("", credential, discoveryChallenge.challenge)
 
       if (!authResult || !authResult.success) {
-        console.log("[Auth] Discovery mode authentication failed")
+        // Auth failed: this passkey isn't registered in our DB yet (e.g. deleted account).
+        // Keep the credential so proceedWithRegistration can reuse it — the user won't
+        // need a second biometric after they enter their SozuTag.
+        console.log("[Auth] Discovery mode authentication failed — credential captured for registration reuse")
+        pendingCredentialRef.current = credential
         setIsAuthenticating(false)
         setShowTagModal(true)
         return
@@ -248,7 +275,11 @@ function AuthPageContent() {
     setResumeLoginTag(null)
     setTagModalPrefill(null)
     setIsAuthenticating(true)
-    void proceedWithRegistration(tag)
+    // Consume any credential captured during a failed discovery-mode auth so that
+    // proceedWithRegistration can skip the second biometric prompt.
+    const captured = pendingCredentialRef.current
+    pendingCredentialRef.current = null
+    void proceedWithRegistration(tag, captured)
   }
 
   const handleLoginPasskeyFromModal = async (tag: string) => {
@@ -284,11 +315,16 @@ function AuthPageContent() {
     }
   }
 
-  const proceedWithRegistration = async (tag: string) => {
-    console.log("[Auth] ====== Starting registration with tag:", tag)
+  const proceedWithRegistration = async (
+    tag: string,
+    /** Credential already captured from a prior (failed) discovery-mode auth.
+     *  When provided the browser biometric prompt is skipped entirely. */
+    existingCredential?: Awaited<ReturnType<typeof getPasskey>> | null,
+  ) => {
+    console.log("[Auth] ====== Starting registration with tag:", tag, existingCredential ? "(reusing captured credential)" : "")
 
     try {
-      let credential = null
+      let credential: Awaited<ReturnType<typeof getPasskey>> = existingCredential ?? null
       const usernameToRegister = tag
 
       // Store tag in localStorage for future logins
@@ -317,38 +353,43 @@ function AuthPageContent() {
         throw challengeError
       }
 
-      // Update challenge to use tag as displayName for passkey
-      if (challenge.user) {
-        challenge.user.displayName = usernameToRegister
-        challenge.user.name = usernameToRegister
-      }
-
-      // PHASE 1: Generate a temporary userId client-side for userHandle storage
-      const tempUserId = crypto.randomUUID()
-      console.log("[Auth] Reg Step 1.5: Generated temporary userId for userHandle:", tempUserId)
-
-      console.log("[Auth] Reg Step 2: Challenge generated, calling createPasskey with tag as displayName...")
-
-      try {
-        // Pass userId and tag to createPasskey so it can be stored in userHandle and used as displayName
-        credential = await createPasskey(challenge, tempUserId, usernameToRegister)
-        console.log("[Auth] Reg Step 3: createPasskey result:", credential ? "Got credential" : "No credential")
-        if (credential?.response?.userHandle) {
-          console.log("[Auth] UserHandle stored in passkey:", credential.response.userHandle)
+      if (!existingCredential) {
+        // Normal path: no prior credential — prompt the user for a new passkey.
+        // Update challenge to use tag as displayName for passkey
+        if (challenge.user) {
+          challenge.user.displayName = usernameToRegister
+          challenge.user.name = usernameToRegister
         }
-      } catch (passkeyError) {
-        // Check if user cancelled the passkey prompt
-        if (passkeyError instanceof DOMException && (
-          passkeyError.name === "NotAllowedError" ||
-          passkeyError.name === "AbortError"
-        )) {
-          console.log("[Auth] User cancelled passkey registration")
-          setIsAuthenticating(false)
-          setTagModalPrefill(usernameToRegister)
-          setShowTagModal(true)
-          return
+
+        // PHASE 1: Generate a temporary userId client-side for userHandle storage
+        const tempUserId = crypto.randomUUID()
+        console.log("[Auth] Reg Step 1.5: Generated temporary userId for userHandle:", tempUserId)
+
+        console.log("[Auth] Reg Step 2: Challenge generated, calling createPasskey with tag as displayName...")
+
+        try {
+          // Pass userId and tag to createPasskey so it can be stored in userHandle and used as displayName
+          credential = await createPasskey(challenge, tempUserId, usernameToRegister)
+          console.log("[Auth] Reg Step 3: createPasskey result:", credential ? "Got credential" : "No credential")
+          if (credential?.response?.userHandle) {
+            console.log("[Auth] UserHandle stored in passkey:", credential.response.userHandle)
+          }
+        } catch (passkeyError) {
+          // Check if user cancelled the passkey prompt
+          if (passkeyError instanceof DOMException && (
+            passkeyError.name === "NotAllowedError" ||
+            passkeyError.name === "AbortError"
+          )) {
+            console.log("[Auth] User cancelled passkey registration")
+            setIsAuthenticating(false)
+            setTagModalPrefill(usernameToRegister)
+            setShowTagModal(true)
+            return
+          }
+          throw passkeyError // Re-throw other errors
         }
-        throw passkeyError // Re-throw other errors
+      } else {
+        console.log("[Auth] Reg Step 2–3: Skipping createPasskey — reusing credential from prior discovery auth")
       }
 
       if (!credential) {
@@ -659,6 +700,24 @@ function AuthPageContent() {
         <p className="max-w-sm px-2 text-center text-[10px] font-extralight tracking-[0.12em] text-white">
           Passkey on this device
         </p>
+
+        {/* PWA install prompt — hidden once installed or in standalone mode */}
+        {!isInstalled && (canInstall || isIos) && (
+          <button
+            type="button"
+            onClick={() => {
+              if (canInstall) {
+                void triggerInstall()
+              } else {
+                setShowIosInstallModal(true)
+              }
+            }}
+            className="flex items-center gap-1.5 text-white/40 text-[10px] font-extralight tracking-[0.1em] hover:text-white/60 transition-colors"
+          >
+            <Plus className="w-3 h-3" />
+            Agregar a pantalla de inicio
+          </button>
+        )}
       </div>
 
       {/* Welcome Modal - Shows on first visit */}
@@ -679,6 +738,92 @@ function AuthPageContent() {
         onLoginPasskey={handleLoginPasskeyFromModal}
         onLoginPin={handlePinLoginFromModal}
       />
+
+      {/* iOS "Add to Home Screen" instructions modal */}
+      <AnimatePresence>
+        {showIosInstallModal && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              key="ios-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowIosInstallModal(false)}
+            />
+
+            {/* Bottom sheet */}
+            <motion.div
+              key="ios-sheet"
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 28, stiffness: 300 }}
+              className="fixed bottom-0 left-0 right-0 z-50 rounded-t-2xl bg-[#111] border-t border-white/10 px-6 pt-5 pb-[max(1.5rem,env(safe-area-inset-bottom))]"
+            >
+              {/* Handle */}
+              <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-white/20" />
+
+              {/* Header */}
+              <div className="flex items-start justify-between mb-6">
+                <div>
+                  <p className="text-white font-semibold text-base">Agregar a pantalla de inicio</p>
+                  <p className="text-white/45 text-xs mt-0.5">Abre Sozu como una app nativa</p>
+                </div>
+                <button
+                  onClick={() => setShowIosInstallModal(false)}
+                  className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center shrink-0 ml-4"
+                  aria-label="Cerrar"
+                >
+                  <X className="w-3.5 h-3.5 text-white/60" />
+                </button>
+              </div>
+
+              {/* Steps */}
+              <ol className="space-y-4">
+                <li className="flex items-start gap-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/8 text-[11px] font-semibold text-white/60">1</span>
+                  <div className="pt-0.5">
+                    <p className="text-white/85 text-sm leading-snug">
+                      Toca el botón <span className="inline-flex items-center gap-0.5 align-middle">
+                        <Share className="w-3.5 h-3.5 text-[#0a84ff]" />
+                      </span> <span className="text-white/50">Compartir</span> en la barra inferior de Safari
+                    </p>
+                  </div>
+                </li>
+
+                <li className="flex items-start gap-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/8 text-[11px] font-semibold text-white/60">2</span>
+                  <div className="pt-0.5">
+                    <p className="text-white/85 text-sm leading-snug">
+                      Desplázate y toca <span className="font-medium text-white">"Agregar a inicio"</span>
+                    </p>
+                  </div>
+                </li>
+
+                <li className="flex items-start gap-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/8 text-[11px] font-semibold text-white/60">3</span>
+                  <div className="pt-0.5">
+                    <p className="text-white/85 text-sm leading-snug">
+                      Toca <span className="font-medium text-white">"Agregar"</span> en la esquina superior derecha
+                    </p>
+                  </div>
+                </li>
+              </ol>
+
+              {/* Dismiss button */}
+              <button
+                onClick={() => setShowIosInstallModal(false)}
+                className="mt-6 w-full py-3.5 rounded-2xl bg-white/8 text-white/60 text-sm font-medium hover:bg-white/12 transition-colors"
+              >
+                Entendido
+              </button>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

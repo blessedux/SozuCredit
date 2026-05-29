@@ -8,7 +8,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react"
 import { getWalletTexts, type WalletTexts, type WalletLanguage } from "@/lib/wallet-texts"
 
-const STORAGE_KEY = "sozu_app_language:v1"
+const STORAGE_KEY = "sozu_app_language:v2"
 
 interface LanguageContextType {
   language: WalletLanguage
@@ -22,7 +22,9 @@ function readStoredLanguage(): WalletLanguage {
   if (typeof window === "undefined") return "es"
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
-    return stored === "en" || stored === "es" ? stored : "es"
+    if (stored === "en" || stored === "es") return stored
+    // Default to Spanish for all new users
+    return "es"
   } catch {
     return "es"
   }

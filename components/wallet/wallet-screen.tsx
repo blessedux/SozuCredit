@@ -22,7 +22,7 @@ import { useSwipeGestures } from "@/hooks/use-swipe-gestures"
 import { useTreasuryProjection } from "@/hooks/use-treasury-projection"
 import { useCashflowSummary } from "@/hooks/use-cashflow-summary"
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh"
-import { signalAppReady } from "@/lib/app-ready"
+import { signalAppReady } from "@/lib/app-ready" // kept for analytics/telemetry consumers
 
 // Components
 import { WalletActivationOnboarding } from "@/components/wallet/wallet-activation-onboarding"
@@ -38,6 +38,7 @@ import type { Transaction } from "@/hooks/use-wallet-data"
 import type { ReceiptModalVariant } from "@/components/wallet/success-modal"
 
 // Lazy load modals
+import { WalletSwitcherModal } from "@/components/wallet/wallet-switcher-modal"
 const SendPaymentModal = lazy(() => import("@/components/wallet/send-payment-modal").then(mod => ({ default: mod.SendPaymentModal })))
 const DepositModal = lazy(() => import("@/components/home/deposit-modal").then(mod => ({ default: mod.DepositModal })))
 const ProfileSheet = lazy(() => import("@/components/wallet/profile-sheet").then(mod => ({ default: mod.ProfileSheet })))
@@ -98,6 +99,8 @@ export function WalletScreen({
   const { notifications, unreadCount, markAsRead } = useNotifications()
 
   // UI State
+  const [isWalletSwitcherOpen, setIsWalletSwitcherOpen] = useState(false)
+  const swipeUpStartY = useRef<number | null>(null)
   const [isBalanceVisible, setIsBalanceVisible] = useState(true)
   const [animatedBalance, setAnimatedBalance] = useState<number>(0)
   const [isTrustModalOpen, setIsTrustModalOpen] = useState(false)
@@ -185,6 +188,7 @@ export function WalletScreen({
   const treasuryData = useTreasuryProjection(animatedBalance)
   const cashflowSummary = useCashflowSummary(shellLayout === "history")
 
+  // Signal data-ready for analytics once balance is loaded (preloader is already gone by this point).
   useEffect(() => {
     if (shellLayout !== "landing" || isBalanceLoading) return
     if (!walletRevealed || showActivationOnboarding) return
@@ -544,6 +548,14 @@ export function WalletScreen({
           onMarkAsRead={markAsRead}
         />
       </Suspense>
+
+      <WalletSwitcherModal
+        isOpen={isWalletSwitcherOpen}
+        onClose={() => setIsWalletSwitcherOpen(false)}
+        walletAddress={walletAddress}
+        walletNetwork={walletNetwork}
+        sozuTag={username}
+      />
     </>
   )
 
@@ -570,19 +582,40 @@ export function WalletScreen({
           <div
             ref={landingRef}
             className="flex h-full flex-col overflow-hidden"
-            onTouchStart={pullHandlers.onTouchStart}
+            onTouchStart={(e) => {
+              pullHandlers.onTouchStart(e)
+              // Record start Y for swipe-up-to-open wallet switcher
+              swipeUpStartY.current = e.touches[0].clientY
+            }}
             onTouchMove={pullHandlers.onTouchMove}
-            onTouchEnd={pullHandlers.onTouchEnd}
+            onTouchEnd={(e) => {
+              pullHandlers.onTouchEnd(e)
+              if (swipeUpStartY.current === null) return
+              const startY = swipeUpStartY.current
+              swipeUpStartY.current = null
+              const dy = startY - e.changedTouches[0].clientY
+              // Only open if swipe starts in the top header zone (≤140px from top)
+              // and finger moves up at least 32px
+              if (dy > 32 && startY < 140) setIsWalletSwitcherOpen(true)
+            }}
             onMouseDown={pullHandlers.onMouseDown}
             onMouseMove={pullHandlers.onMouseMove}
             onMouseUp={pullHandlers.onMouseUp}
           >
-            <header className="flex shrink-0 flex-col items-center gap-1.5 pt-[max(1.25rem,env(safe-area-inset-top))]">
-              <img
-                src="/sozucapital_logo_tb.png"
-                alt="Sozu Wallet"
-                className="h-10 w-10 object-contain opacity-90"
-              />
+            <header
+              className="flex shrink-0 flex-col items-center gap-1.5 pt-[max(1.25rem,env(safe-area-inset-top))]"
+            >
+              <button
+                onClick={() => setIsWalletSwitcherOpen(true)}
+                className="rounded-full focus:outline-none active:scale-90 transition-transform duration-100"
+                aria-label="Cambiar billetera"
+              >
+                <img
+                  src="/sozucapital_logo_tb.png"
+                  alt="Sozu Wallet"
+                  className="h-10 w-10 object-contain opacity-90 hover:opacity-100 transition-opacity"
+                />
+              </button>
               {walletNetwork === "testnet" && (
                 <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold tracking-widest uppercase border border-yellow-500/40 text-yellow-400 bg-yellow-500/10">
                   {t.testnetBadge}
@@ -590,7 +623,9 @@ export function WalletScreen({
               )}
             </header>
 
-            <PullToRefreshIndicator pull={pull} progress={progress} refreshing={refreshing} />
+            <div className="pt-6">
+              <PullToRefreshIndicator pull={pull} progress={progress} refreshing={refreshing} />
+            </div>
 
             <div
               className="flex min-h-0 flex-1 flex-col px-4 transition-transform duration-150 ease-out"

@@ -4,6 +4,9 @@ import dynamic from "next/dynamic"
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 import { deferNonCritical } from "@/lib/defer-non-critical"
+import { usePageVisibility } from "@/hooks/use-page-visibility"
+import { useShaderPerformanceTier } from "@/hooks/use-shader-performance-tier"
+import type { ShaderTier } from "@/hooks/use-shader-performance-tier"
 
 const AuthOrangeOrbShader = dynamic(
   () =>
@@ -29,6 +32,8 @@ export function PaperShaderBackgroundShell({
   const pathname = usePathname()
   const showShader = shouldShowPaperShader(pathname)
   const [shaderReady, setShaderReady] = useState(false)
+  const isVisible = usePageVisibility()
+  const tier = useShaderPerformanceTier()
 
   useEffect(() => {
     if (!showShader) {
@@ -38,18 +43,27 @@ export function PaperShaderBackgroundShell({
     deferNonCritical(() => setShaderReady(true))
   }, [showShader])
 
+  // Hard-unmount the shader when the page is hidden — this triggers
+  // ShaderMount.dispose() on every GrainGradient canvas, cancelling all
+  // rAF loops and freeing the WebGL context. On Android PWAs this is the
+  // only reliable way to prevent the GPU from running in the background.
+  const shaderActive = showShader && shaderReady && isVisible && tier !== "static"
+
   const isLedger =
     pathname === "/ledger" ||
     pathname.startsWith("/ledger/") ||
     pathname === "/credit" ||
     pathname.startsWith("/credit/")
 
+  const variant = isLedger ? "blobs" : "orb"
+
   return (
     <>
-      {showShader && shaderReady ? (
+      {shaderActive ? (
         <AuthOrangeOrbShader
           className="pointer-events-none fixed inset-0 z-0"
-          variant={isLedger ? "blobs" : "orb"}
+          variant={variant}
+          tier={tier}
         />
       ) : null}
       {children}

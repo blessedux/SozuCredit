@@ -1,107 +1,75 @@
 // Service Worker for SozuCredit PWA
-const CACHE_NAME = 'sozucredit-v1';
-const RUNTIME_CACHE = 'sozucredit-runtime-v1';
+const CACHE_NAME = 'sozucredit-v3';
+const RUNTIME_CACHE = 'sozucredit-runtime-v3';
 
-// Assets to cache immediately
-const STATIC_ASSETS = [
-  '/',
+// Precache: icon used by the inline preloader + manifest so the splash paints offline
+const PRECACHE_ASSETS = [
+  '/icons/sozu_icon_192.png',
+  '/icons/sozu_icon_512.png',
   '/manifest.json',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png',
 ];
 
-// Install event - cache static assets
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing service worker...');
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      console.log('[SW] Caching static assets');
-      return cache.addAll(STATIC_ASSETS).catch((err) => {
-        console.log('[SW] Error caching static assets:', err);
-        // Don't fail installation if some assets fail to cache
-        return Promise.resolve();
-      });
-    })
+    caches.open(CACHE_NAME).then((cache) =>
+      cache.addAll(PRECACHE_ASSETS).catch(() => Promise.resolve())
+    )
   );
-  // Force the waiting service worker to become the active service worker
   self.skipWaiting();
 });
 
-// Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating service worker...');
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((cacheName) => {
-            return cacheName !== CACHE_NAME && cacheName !== RUNTIME_CACHE;
-          })
-          .map((cacheName) => {
-            console.log('[SW] Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          })
-      );
-    })
+    caches.keys().then((names) =>
+      Promise.all(
+        names
+          .filter((n) => n !== CACHE_NAME && n !== RUNTIME_CACHE)
+          .map((n) => caches.delete(n))
+      )
+    )
   );
-  // Claim all clients immediately
   return self.clients.claim();
 });
 
-// Fetch event - network first with cache fallback
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip non-GET requests
-  if (request.method !== 'GET') {
+  if (request.method !== 'GET') return;
+  if (!url.protocol.startsWith('http')) return;
+
+  // /_next/static — immutable hashed assets: cache-first, no network needed after first fetch
+  if (url.pathname.startsWith('/_next/static/')) {
+    event.respondWith(
+      caches.open(RUNTIME_CACHE).then(async (cache) => {
+        const cached = await cache.match(request);
+        if (cached) return cached;
+        const response = await fetch(request);
+        if (response.ok) cache.put(request, response.clone());
+        return response;
+      })
+    );
     return;
   }
 
-  // Skip chrome-extension and other non-http(s) requests
-  if (!url.protocol.startsWith('http')) {
-    return;
-  }
+  // API routes — always network, never cache
+  if (url.pathname.startsWith('/api/')) return;
 
-  // Strategy: Network first, then cache
+  // Everything else — network-first with cache fallback
   event.respondWith(
     fetch(request)
       .then((response) => {
-        // Clone the response
-        const responseToCache = response.clone();
-
-        // Cache successful responses (except API calls)
-        if (
-          response.status === 200 &&
-          response.type === 'basic' &&
-          !url.pathname.startsWith('/api/')
-        ) {
-          caches.open(RUNTIME_CACHE).then((cache) => {
-            cache.put(request, responseToCache);
-          });
+        if (response.ok && response.type === 'basic') {
+          caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, response.clone()));
         }
-
         return response;
       })
-      .catch(() => {
-        // Network failed, try cache
-        return caches.match(request).then((cachedResponse) => {
-          if (cachedResponse) {
-            return cachedResponse;
-          }
-
-          // If it's a navigation request, return index.html
-          if (request.mode === 'navigate') {
-            return caches.match('/');
-          }
-
-          // Return a fallback for other requests
-          return new Response('Offline', {
-            status: 503,
-            statusText: 'Service Unavailable',
-          });
-        });
-      })
+      .catch(() =>
+        caches.match(request).then((cached) => {
+          if (cached) return cached;
+          if (request.mode === 'navigate') return caches.match('/home') ?? caches.match('/');
+          return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+        })
+      )
   );
 });
-

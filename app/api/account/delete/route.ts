@@ -1,4 +1,3 @@
-import { createClient } from "@/lib/supabase/server"
 import { createClient as createServiceClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
@@ -9,43 +8,27 @@ export async function OPTIONS(request: NextRequest) {
   return handleOPTIONS(request)
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 /**
  * DELETE /api/account/delete
  * Permanently delete user account and free up the Sozu tag
- * 
- * This is a destructive operation that:
- * 1. Deletes the profile (frees up username for others to claim)
- * 2. Deletes the auth.users entry
- * 3. Deletes related data (wallets, passkeys, trust points, vaults, etc.)
+ *
+ * Auth: x-user-id header (UUID) — this app uses sessionStorage-based auth,
+ * not Supabase session cookies, so we authenticate via the x-user-id header
+ * that every authenticated client request carries.
  */
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    
-    // Get authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
-    if (authError || !user) {
+    // Authenticate via x-user-id header (same pattern as all other routes)
+    const userId = request.headers.get("x-user-id")?.trim()
+    if (!userId || !UUID_RE.test(userId)) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401, headers: corsHeaders(request) }
       )
     }
 
-    const userId = user.id
-
-    // Get username before deletion (for logging)
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("username")
-      .eq("id", userId)
-      .single()
-
-    const username = profile?.username || "unknown"
-
-    console.log(`[Delete Account] Starting account deletion for user: ${userId}, username: ${username}`)
-
-    // Use service client for deletions (bypasses RLS)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
@@ -58,6 +41,17 @@ export async function DELETE(request: NextRequest) {
     }
 
     const serviceClient = createServiceClient(supabaseUrl, supabaseServiceKey)
+
+    // Get username before deletion (for logging)
+    const { data: profile } = await serviceClient
+      .from("profiles")
+      .select("username")
+      .eq("id", userId)
+      .single()
+
+    const username = profile?.username || "unknown"
+
+    console.log(`[Delete Account] Starting account deletion for user: ${userId}, username: ${username}`)
 
     // Delete in order (respecting foreign key constraints)
     // 1. Delete stellar wallet
@@ -174,9 +168,6 @@ export async function DELETE(request: NextRequest) {
     // The profile deletion is the main thing that frees up the username
     // The auth.users entry can be cleaned up manually or via a database function
     
-    // Sign out the user
-    await supabase.auth.signOut()
-
     console.log(`[Delete Account] ✅ Account deletion complete for user: ${userId}, username: ${username}`)
 
     return NextResponse.json(

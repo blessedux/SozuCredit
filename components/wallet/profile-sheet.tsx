@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useWalletLanguage } from "@/lib/wallet-language"
 import { copyToClipboard, getUserId } from "@/lib/wallet-utils"
+import { createClient as createSupabaseClient } from "@/lib/supabase/client"
 import { getPublicKeyFromSession } from "@/lib/storage/key-utils"
 
 type Tab = "profile" | "cashout" | "defi" | "logout"
@@ -447,8 +448,21 @@ export const ProfileSheet = memo(function ProfileSheet({
 
   const handleLogout = useCallback(() => {
     if (confirm(t.logoutConfirm)) {
-      sessionStorage.clear()
-      window.location.replace("/auth")
+      // Sign out of Supabase first to clear sb-*-auth-token cookies.
+      // Without this the middleware redirects /auth → /wallet on reload,
+      // causing the same /home ↔ /wallet infinite loop as account deletion.
+      try {
+        const supabase = createSupabaseClient()
+        supabase.auth.signOut().finally(() => {
+          sessionStorage.clear()
+          localStorage.removeItem("sozu_username")
+          window.location.replace("/auth")
+        })
+      } catch {
+        sessionStorage.clear()
+        localStorage.removeItem("sozu_username")
+        window.location.replace("/auth")
+      }
     }
   }, [t])
 

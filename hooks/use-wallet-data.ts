@@ -440,6 +440,9 @@ export function useWalletData() {
                   if (createData.network) {
                     setWalletNetwork(createData.network)
                   }
+                  if (createData.network === "testnet") {
+                    sessionStorage.setItem("sozu_auto_activate", "1")
+                  }
                   bootstrapWalletFetches(createData.publicKey, userId)
                   return
                 }
@@ -497,6 +500,9 @@ export function useWalletData() {
                 setWalletAddress(createData.publicKey)
                 if (createData.network) {
                   setWalletNetwork(createData.network)
+                }
+                if (createData.network === "testnet") {
+                  sessionStorage.setItem("sozu_auto_activate", "1")
                 }
                 bootstrapWalletFetches(createData.publicKey, userId)
                 return

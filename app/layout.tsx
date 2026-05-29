@@ -58,10 +58,12 @@ export default function RootLayout({
   return (
     <html lang="en" className="bg-black" style={{ backgroundColor: '#000000' }}>
       <body className="font-sans antialiased bg-black" style={{ backgroundColor: '#000000' }}>
-        {/* Injected outside React's tree so PWA shows logo before JS without hydration conflicts */}
+        {/* Injected outside React's tree so PWA shows logo before JS without hydration conflicts.
+            Also registers the sozu:shell-ready listener here so the fade starts before React
+            even mounts, giving the fastest possible preloader dismissal. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{if(document.getElementById("sozu-preloader"))return;var d=document.createElement("div");d.id="sozu-preloader";d.style.cssText="position:fixed;inset:0;z-index:9999;background:#000;display:flex;align-items:center;justify-content:center";var i=document.createElement("img");i.src="/icons/sozu_icon_192.png";i.alt="";i.width=64;i.height=64;i.style.cssText="border-radius:22%;opacity:0.92";d.appendChild(i);document.body.insertBefore(d,document.body.firstChild)}catch(e){}})();`,
+            __html: `(function(){try{if(document.getElementById("sozu-preloader"))return;var d=document.createElement("div");d.id="sozu-preloader";d.style.cssText="position:fixed;inset:0;z-index:9999;background:#000;display:flex;align-items:center;justify-content:center";var i=document.createElement("img");i.src="/icons/sozu_icon_192.png";i.alt="";i.width=64;i.height=64;i.style.cssText="border-radius:22%;opacity:0.92";d.appendChild(i);document.body.insertBefore(d,document.body.firstChild)}catch(e){}})();(function(){function fade(){try{var el=document.getElementById("sozu-preloader");if(!el)return;el.style.transition="opacity 180ms ease";el.style.opacity="0";el.style.pointerEvents="none";setTimeout(function(){if(el.parentNode)el.parentNode.removeChild(el)},180)}catch(e){}}window.addEventListener("sozu:shell-ready",fade,{once:true})})();`,
           }}
         />
         <Preloader />

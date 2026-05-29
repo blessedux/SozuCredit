@@ -1,12 +1,12 @@
 "use client"
 
 import { useEffect } from "react"
-import { SOZU_APP_READY_EVENT } from "@/lib/app-ready"
+import { SOZU_SHELL_READY_EVENT } from "@/lib/app-ready"
 
 const STATIC_PRELOADER_ID = "sozu-preloader"
-const MIN_VISIBLE_MS = 150
-const MAX_VISIBLE_MS = 12_000
-const FADE_MS = 450
+const MIN_VISIBLE_MS = 100
+const MAX_VISIBLE_MS = 8_000
+const FADE_MS = 180
 
 function ensureStaticPreloader(): HTMLElement {
   const existing = document.getElementById(STATIC_PRELOADER_ID)
@@ -58,11 +58,13 @@ export function Preloader() {
     }
 
     const onReady = () => beginFade()
-    window.addEventListener(SOZU_APP_READY_EVENT, onReady, { once: true })
+    // Primary: shell-ready fires as soon as first frame paints (inline script also listens,
+    // this is the React-side fallback in case the inline script missed the event).
+    window.addEventListener(SOZU_SHELL_READY_EVENT, onReady, { once: true })
     maxTimer = setTimeout(beginFade, MAX_VISIBLE_MS)
 
     return () => {
-      window.removeEventListener(SOZU_APP_READY_EVENT, onReady)
+      window.removeEventListener(SOZU_SHELL_READY_EVENT, onReady)
       if (maxTimer) clearTimeout(maxTimer)
       if (fadeTimer) clearTimeout(fadeTimer)
       if (removeTimer) clearTimeout(removeTimer)

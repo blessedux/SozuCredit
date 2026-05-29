@@ -48,6 +48,11 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // Onboarding slide previews (design / copy QA)
+  if (pathname.startsWith("/onboarding")) {
+    return NextResponse.next()
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   })
@@ -61,6 +66,7 @@ export async function updateSession(request: NextRequest) {
   const isTestKeysRoute = pathname === "/test-keys"
   const isCityRoute = pathname.startsWith("/city")
   const isTrackerRoute = pathname.startsWith("/tracker")
+  const isOnboardingRoute = pathname.startsWith("/onboarding")
   const isAuthRoute = pathname.startsWith("/auth")
   const isApiRoute = pathname.startsWith("/api")
   const isDevMode = process.env.NODE_ENV === "development"
@@ -162,7 +168,8 @@ export async function updateSession(request: NextRequest) {
     !isCreditRoute &&
     !isTestKeysRoute &&
     !isCityRoute &&
-    !isTrackerRoute
+    !isTrackerRoute &&
+    !isOnboardingRoute
   ) {
     const url = request.nextUrl.clone()
     url.pathname = "/auth"

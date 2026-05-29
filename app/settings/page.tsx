@@ -25,10 +25,13 @@ import { getStrategyCatalog } from "@/lib/defindex/strategy-catalog"
 import { getBlendStrategyLink } from "@/lib/defindex/blend-strategy-link"
 import { ledgerUserHeaders } from "@/lib/ledger/client-headers"
 import { getUserId } from "@/lib/wallet-utils"
+import { createClient as createSupabaseClient } from "@/lib/supabase/client"
 import {
   createPasskey,
   fetchPasskeyStatus,
   generateAddPasskeyChallenge,
+  generateAuthChallenge,
+  getPasskey,
   initPasskeyPairing,
   verifyAddPasskey,
 } from "@/lib/turnkey/passkeys"
@@ -55,7 +58,6 @@ export default function SettingsPage() {
 
   const [username, setUsername] = useState<string>("")
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
-  const [deleteConfirmation, setDeleteConfirmation] = useState("")
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
@@ -99,6 +101,10 @@ export default function SettingsPage() {
   const strategyCatalog = getStrategyCatalog(process.env.NEXT_PUBLIC_STELLAR_NETWORK)
   const [pairingCopied, setPairingCopied] = useState(false)
 
+  // Resolved sozutag — fetched from the server on mount so we always show
+  // the real username, not the UUID that sessionStorage("dev_username") holds.
+  const [sozuTag, setSozuTag] = useState<string>("")
+
   useEffect(() => {
     // Get username from session storage
     const storedUsername = sessionStorage.getItem("dev_username")
@@ -109,6 +115,19 @@ export default function SettingsPage() {
       router.push("/auth")
     }
   }, [router])
+
+  // Fetch the real sozutag from the profile API as soon as we have a userId.
+  // sessionStorage("dev_username") stores the UUID, not the tag.
+  useEffect(() => {
+    const userId = getUserId()
+    if (!userId) return
+    fetch("/api/auth/passkeys/status", { headers: { "x-user-id": userId } })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.username) setSozuTag(data.username)
+      })
+      .catch(() => {})
+  }, [username])
 
   const loadGmail = useCallback(async () => {
     setGmailLoading(true)
@@ -426,40 +445,64 @@ export default function SettingsPage() {
   }
 
   const handleDeleteAccount = async () => {
-    // Check if they typed the Sozu tag with or without $ prefix
-    const expectedTag = `$${username}`
-    const expectedTagWithoutPrefix = username
-
-    if (deleteConfirmation !== expectedTag && deleteConfirmation !== expectedTagWithoutPrefix) {
-      setDeleteError("Confirmation does not match your Sozu tag")
-      return
-    }
-
     setIsDeleting(true)
     setDeleteError(null)
 
     try {
+      // Step 1: Discovery-mode challenge — no username so any passkey on this device
+      // can satisfy it, regardless of what name it was registered under.
+      const challenge = await generateAuthChallenge()
+
+      // Step 2: Trigger the biometric / passkey prompt
+      const credential = await getPasskey(challenge)
+      if (!credential) {
+        setDeleteError("Passkey sign-in was cancelled. Please try again.")
+        setIsDeleting(false)
+        return
+      }
+
+      // Step 3: Call the delete API — auth via x-user-id (no Supabase session in this app)
+      const userId = getUserId()
+      if (!userId) throw new Error("Session expired. Please log in again.")
       const response = await fetch("/api/account/delete", {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
+          "x-user-id": userId,
         },
       })
 
       const data = await response.json()
-
       if (!response.ok) {
         throw new Error(data.error || "Failed to delete account")
       }
 
-      // Clear session storage
+      // Step 4: Clear all local state and hard-navigate to /auth.
+      // Order matters:
+      //   a) Sign out of Supabase first — this clears the sb-*-auth-token
+      //      httpOnly cookies. Without this the middleware sees a valid
+      //      Supabase session on the next request to /auth and server-redirects
+      //      to /wallet, which then redirects back to /home, which sees empty
+      //      sessionStorage and calls window.location.replace("/auth") again →
+      //      infinite /home ↔ /wallet loop.
+      //   b) Clear sessionStorage + relevant localStorage keys.
+      //   c) Hard-navigate (window.location.replace, not router.push) so the
+      //      entire React tree is torn down and no in-flight useEffect timers
+      //      from WalletDataProvider fire against the now-empty session.
+      try {
+        const supabase = createSupabaseClient()
+        await supabase.auth.signOut()
+      } catch {
+        // Non-fatal: proceed even if signOut fails (e.g. no session existed)
+      }
       sessionStorage.clear()
-
-      // Redirect to auth page
-      router.push("/auth")
+      localStorage.removeItem("sozu_username")
+      window.location.replace("/auth")
     } catch (error) {
-      console.error("[Settings] Error deleting account:", error)
-      setDeleteError(error instanceof Error ? error.message : "Failed to delete account")
+      const msg = error instanceof Error ? error.message : "Failed to delete account"
+      // Surface cancelled passkey as a friendlier message
+      const isCancelled = msg.toLowerCase().includes("cancel") || msg.toLowerCase().includes("notallowed")
+      setDeleteError(isCancelled ? "Passkey sign-in was cancelled. Please try again." : msg)
       setIsDeleting(false)
     }
   }
@@ -1034,76 +1077,80 @@ export default function SettingsPage() {
       </div>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <DialogContent className="bg-black border-red-500/50 text-white">
+      <Dialog
+        open={isDeleteDialogOpen}
+        onOpenChange={(open) => {
+          if (!isDeleting) {
+            setIsDeleteDialogOpen(open)
+            if (!open) setDeleteError(null)
+          }
+        }}
+      >
+        <DialogContent className="bg-black border-red-500/50 text-white max-w-sm">
           <DialogHeader>
             <DialogTitle className="text-red-400 flex items-center gap-2">
               <AlertTriangle className="w-5 h-5" />
               Delete Account
             </DialogTitle>
             <DialogDescription className="text-white/60">
-              This action cannot be undone. This will permanently delete your account and free up your Sozu tag.
+              This action is permanent and cannot be undone. All your data and your Sozu tag{" "}
+              <span className="font-mono text-white/80">${sozuTag}</span> will be freed.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
-            <Alert variant="destructive" className="bg-red-950/50 border-red-500/50">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Warning</AlertTitle>
-              <AlertDescription>
-                You are about to permanently delete your account. All your data will be lost and your Sozu tag will be freed.
-              </AlertDescription>
-            </Alert>
+          <div className="py-2 space-y-4">
+            {/* What gets deleted */}
+            <ul className="text-white/50 text-xs space-y-1 list-disc list-inside">
+              <li>All account data deleted permanently</li>
+              <li>Sozu tag freed — anyone can claim it</li>
+              <li>Wallet &amp; balance records removed</li>
+            </ul>
 
-            <div className="space-y-2">
-              <Label htmlFor="confirmation" className="text-white">
-                Type your Sozu tag <span className="font-mono text-red-400">${username}</span> to confirm:
-              </Label>
-              <Input
-                id="confirmation"
-                type="text"
-                value={deleteConfirmation}
-                onChange={(e) => {
-                  setDeleteConfirmation(e.target.value)
-                  setDeleteError(null)
-                }}
-                placeholder={`Type $${username} to confirm`}
-                className="bg-white/5 border-white/20 text-white placeholder:text-white/40"
-                disabled={isDeleting}
-              />
-            </div>
+            {/* Error feedback */}
+            {deleteError && (
+              <Alert variant="destructive" className="bg-red-950/50 border-red-500/50 py-2">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription className="text-sm">{deleteError}</AlertDescription>
+              </Alert>
+            )}
+
+            {/* Passkey CTA */}
+            <button
+              onClick={handleDeleteAccount}
+              disabled={isDeleting}
+              className="w-full flex items-center gap-3 rounded-xl border border-red-500/40 bg-red-950/30 hover:bg-red-950/60 active:scale-[0.98] transition-all px-4 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {/* Thumbnail / icon */}
+              <div className="w-10 h-10 rounded-full bg-red-500/20 border border-red-500/40 flex items-center justify-center shrink-0">
+                {isDeleting ? (
+                  <Loader2 className="w-5 h-5 text-red-400 animate-spin" />
+                ) : (
+                  <Fingerprint className="w-5 h-5 text-red-400" />
+                )}
+              </div>
+
+              <div className="flex flex-col items-start text-left">
+                <span className="text-white font-semibold text-sm leading-tight">
+                  {isDeleting ? "Deleting account…" : "Sign with passkey"}
+                </span>
+                <span className="text-white/40 text-xs leading-tight mt-0.5">
+                  {isDeleting ? "Please wait" : "Confirm with biometrics to delete"}
+                </span>
+              </div>
+            </button>
           </div>
 
-          <DialogFooter className="flex gap-2">
+          <DialogFooter>
             <Button
-              variant="outline"
+              variant="ghost"
               onClick={() => {
                 setIsDeleteDialogOpen(false)
-                setDeleteConfirmation("")
                 setDeleteError(null)
               }}
               disabled={isDeleting}
-              className="border-white/20 text-white hover:bg-white/10"
+              className="w-full text-white/50 hover:text-white hover:bg-white/5"
             >
               Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDeleteAccount}
-              disabled={isDeleting || (deleteConfirmation !== `$${username}` && deleteConfirmation !== username)}
-              className="bg-red-600 hover:bg-red-700 text-white"
-            >
-              {isDeleting ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                <>
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete Account
-                </>
-              )}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -215,3 +215,34 @@
     @apply hidden!;
   }
 }
+
+/* ── Sozu background shader CSS animations ───────────────────────────────────
+   These drive the "alive" feeling of the orb/atmosphere without any JS/WebGL.
+   All animations respect prefers-reduced-motion.
+   ────────────────────────────────────────────────────────────────────────── */
+
+@keyframes orb-breathe {
+  0%, 100% { transform: translateX(-50%) scale(1); }
+  50%       { transform: translateX(-50%) scale(1.04); }
+}
+
+@keyframes ambient-drift {
+  0%, 100% { opacity: 0.55; }
+  40%       { opacity: 0.80; }
+  70%       { opacity: 0.45; }
+}
+
+.sozu-orb-breathe {
+  animation: orb-breathe 10s ease-in-out infinite;
+}
+
+.sozu-ambient-drift {
+  animation: ambient-drift 14s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sozu-orb-breathe,
+  .sozu-ambient-drift {
+    animation: none;
+  }
+}
