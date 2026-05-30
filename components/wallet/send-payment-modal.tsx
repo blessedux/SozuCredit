@@ -19,6 +19,12 @@ import {
   fiatFromUsdcAmount,
   usdcFromInputAmount,
 } from "@/lib/payment/send-amount-currency"
+import {
+  formatSozuTagLabel,
+  isValidSozuTag,
+  normalizeSozuTag,
+} from "@/lib/payment/sozu-tag-lookup"
+import { formatBalance, getUserId } from "@/lib/wallet-utils"
 import type { ReferenceFiat } from "@/lib/treasury/types"
 
 import type { PaymentReceipt } from "@/lib/payment/payment-receipt"
@@ -85,7 +91,7 @@ export const SendPaymentModal = memo(function SendPaymentModal({
 
   const validateRecipient = useCallback(async (value: string) => {
     const trimmed = value.trim()
-    if (!trimmed || trimmed.length < 2) {
+    if (!trimmed) {
       setValidationState("idle")
       return
     }
@@ -103,24 +109,30 @@ export const SendPaymentModal = memo(function SendPaymentModal({
       return
     }
 
-    // SozuTag — call the API
-    const tag = trimmed.startsWith("$") ? trimmed : `$${trimmed}`
+    const normalizedTag = normalizeSozuTag(trimmed)
+    if (!isValidSozuTag(normalizedTag)) {
+      setValidationState("idle")
+      return
+    }
+
     setValidationState("checking")
     try {
-      const userId = typeof window !== "undefined"
-        ? (localStorage.getItem("dev_username") ?? sessionStorage.getItem("dev_username"))
-        : null
-      if (!userId) { setValidationState("idle"); return }
+      const userId = getUserId()
+      if (!userId) {
+        setValidationState("idle")
+        return
+      }
+
       const res = await fetch("/api/wallet/resolve-recipient", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-user-id": userId },
-        body: JSON.stringify({ recipient: tag }),
+        body: JSON.stringify({ recipient: normalizedTag }),
       })
       if (res.ok) {
         const data = await res.json()
         if (data?.walletAddress) {
           setValidationState("valid")
-          setValidationLabel(tag)
+          setValidationLabel(formatSozuTagLabel(data.tag ?? normalizedTag))
         } else {
           setValidationState("invalid")
           setValidationLabel("Tag no encontrado")
@@ -154,7 +166,6 @@ export const SendPaymentModal = memo(function SendPaymentModal({
 
   const parsedAmount = parseFloat(sendAmount)
   const hasValidAmount = sendAmount.length > 0 && !Number.isNaN(parsedAmount) && parsedAmount > 0
-  const inputCurrencyLabel = amountInputCurrency === "fiat" ? referenceFiat : "USDC"
   const amountPlaceholder =
     amountInputCurrency === "fiat" && fiatDecimals(referenceFiat) === 0 ? "0" : "0.00"
   const amountStep =
@@ -162,16 +173,42 @@ export const SendPaymentModal = memo(function SendPaymentModal({
   const amountMin =
     amountInputCurrency === "fiat" && fiatDecimals(referenceFiat) === 0 ? "1" : "0.01"
 
-  const approxLine = hasValidAmount
+  const balanceSizeClass =
+    "max-w-full overflow-hidden text-[clamp(1.875rem,8vw,3rem)] font-bold leading-none tracking-tight tabular-nums text-white sm:text-5xl lg:text-[clamp(1.75rem,2.8vw,2.5rem)] xl:text-[clamp(1.875rem,2.5vw,2.75rem)]"
+
+  const referenceDisplayValue = (usdcAmount: number) => {
+    const local = fiatFromUsdcAmount(usdcAmount, referenceFiat)
+    return referenceFiat === "CLP" || referenceFiat === "ARS" ? Math.round(local) : local
+  }
+
+  const availableBalance = defindexBalance?.totalBalance ?? 0
+  const availableFiatFormatted = formatReferenceAmount(
+    referenceDisplayValue(availableBalance),
+    referenceFiat,
+  )
+  const availableUsdcFormatted = `${formatBalance(availableBalance)} USDC`
+
+  const displayUsdc = hasValidAmount
+    ? amountInputCurrency === "usdc"
+      ? parsedAmount
+      : usdcFromInputAmount(parsedAmount, "fiat", referenceFiat)
+    : 0
+
+  const displayFiat = hasValidAmount
     ? amountInputCurrency === "fiat"
-      ? t.sendApproxUsdc.replace(
-          "{amount}",
-          usdcFromInputAmount(parsedAmount, "fiat", referenceFiat).toFixed(2),
-        )
-      : t.sendApproxFiat
-          .replace("{amount}", formatReferenceAmount(fiatFromUsdcAmount(parsedAmount, referenceFiat), referenceFiat))
-          .replace("{fiat}", referenceFiat)
-    : null
+      ? referenceFiat === "CLP" || referenceFiat === "ARS"
+        ? Math.round(parsedAmount)
+        : parsedAmount
+      : referenceDisplayValue(parsedAmount)
+    : 0
+
+  const amountFiatFormatted = hasValidAmount
+    ? formatReferenceAmount(displayFiat, referenceFiat)
+    : formatReferenceAmount(0, referenceFiat)
+
+  const amountUsdcFormatted = hasValidAmount
+    ? `${formatBalance(displayUsdc)} USDC`
+    : `${formatBalance(0)} USDC`
 
   // Auto-resolve after a QR scan — fires once sendRecipient state has settled
   useEffect(() => {
@@ -219,8 +256,6 @@ export const SendPaymentModal = memo(function SendPaymentModal({
     onClose()
   }
 
-  const availableBalance = defindexBalance?.totalBalance ?? 0
-
   return (
     <>
     <AnimatePresence>
@@ -263,20 +298,22 @@ export const SendPaymentModal = memo(function SendPaymentModal({
           {/* Drag handle */}
           <div className="mx-auto mt-3 mb-0 h-[3px] w-8 shrink-0 rounded-full bg-white/[0.10]" />
 
-          {/* Balance reference — left-aligned to match balance card's number position */}
+          {/* Balance reference — matches balance card: fiat primary, USDC subline */}
           <div className="flex flex-col items-start px-5 pt-4 pb-2 shrink-0">
             <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-white/30 mb-1">
               Disponible
             </p>
-            <p
-              className="font-bold leading-none tracking-tight tabular-nums text-white"
-              style={{ fontSize: "clamp(1.875rem, 8vw, 3rem)" }}
-            >
-              {availableBalance.toFixed(2)}
-              <span className="ml-2 text-[0.45em] font-semibold text-white/40 tracking-widest align-baseline">
-                USDC
-              </span>
-            </p>
+            <div className="min-w-0 text-left">
+              <div className="flex max-w-full items-baseline gap-1.5 justify-start">
+                <div className={balanceSizeClass}>{availableFiatFormatted}</div>
+                <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-white/40">
+                  {referenceFiat}
+                </span>
+              </div>
+              <p className="mt-1.5 text-xs tabular-nums text-white/35 sm:text-sm">
+                {availableUsdcFormatted}
+              </p>
+            </div>
           </div>
 
           {/* Divider */}
@@ -467,25 +504,23 @@ export const SendPaymentModal = memo(function SendPaymentModal({
                   {sendRecipient.startsWith("$") ? sendRecipient : sendRecipient.startsWith("G") ? `${sendRecipient.slice(0,6)}…${sendRecipient.slice(-4)}` : sendRecipient}
                 </span>
               </div>
-              <div className="text-center py-2">
-                <div className="text-4xl font-bold text-white tabular-nums">
-                  {sendAmount || amountPlaceholder}
+              <button
+                type="button"
+                onClick={toggleAmountCurrency}
+                className="w-full py-2 text-center transition-colors hover:bg-white/[0.03] rounded-xl"
+                aria-label={t.sendTapToSwitchCurrency}
+              >
+                <div className="flex max-w-full items-baseline gap-1.5 justify-center">
+                  <div className={balanceSizeClass}>{amountFiatFormatted}</div>
+                  <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-white/40">
+                    {referenceFiat}
+                  </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={toggleAmountCurrency}
-                  className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.06] px-3 py-1 text-sm font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white"
-                  aria-label={t.sendTapToSwitchCurrency}
-                >
-                  <span>{inputCurrencyLabel}</span>
-                  <span className="text-white/40 text-xs">↕</span>
-                </button>
-                {approxLine ? (
-                  <p className="text-white/45 text-xs mt-2">{approxLine}</p>
-                ) : (
-                  <p className="text-white/35 text-xs mt-2">{t.sendTapToSwitchCurrency}</p>
-                )}
-              </div>
+                <p className="mt-1.5 text-xs tabular-nums text-white/35 sm:text-sm">
+                  {amountUsdcFormatted}
+                </p>
+                <p className="text-white/35 text-xs mt-2">{t.sendTapToSwitchCurrency}</p>
+              </button>
 
             <Input
               type="number"

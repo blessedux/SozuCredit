@@ -16,6 +16,7 @@ import {
   usdcFromInputAmount,
   type SendAmountCurrency,
 } from "@/lib/payment/send-amount-currency"
+import { normalizeSozuTag } from "@/lib/payment/sozu-tag-lookup"
 import type { ReferenceFiat } from "@/lib/treasury/types"
 
 export function useSendPayment(
@@ -105,7 +106,7 @@ export function useSendPayment(
           "x-user-id": userId,
         },
         body: JSON.stringify({
-          recipient: sendRecipient.trim().replace(/^\$+/, "").trim() || sendRecipient.trim(),
+          recipient: normalizeSozuTag(sendRecipient.trim()) || sendRecipient.trim(),
         }),
       })
 

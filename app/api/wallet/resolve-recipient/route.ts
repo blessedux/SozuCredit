@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import {
+  isValidSozuTag,
+  normalizeSozuTag,
+} from "@/lib/payment/sozu-tag-lookup"
 
 const corsHeaders = (request: NextRequest) => ({
   "Access-Control-Allow-Origin": "*",
@@ -14,7 +18,6 @@ export async function OPTIONS(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { recipient: rawRecipient } = await request.json()
-    const userId = request.headers.get("x-user-id")
 
     if (!rawRecipient || typeof rawRecipient !== "string") {
       return NextResponse.json(
@@ -23,9 +26,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const recipient = rawRecipient.trim()
-    // Sozu tags are stored without "$"; users often type "$alice"
-    const sozuTagLookup = recipient.replace(/^\$+/, "").trim()
+    const sozuTagLookup = normalizeSozuTag(rawRecipient)
 
     if (!sozuTagLookup) {
       return NextResponse.json(
@@ -34,17 +35,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if recipient is a Stellar address (starts with G and is 56 chars)
-    const isStellarAddress = /^G[A-Z0-9]{55}$/.test(sozuTagLookup)
-    
-    if (isStellarAddress) {
+    // Stellar address — return as-is
+    if (/^G[A-Z0-9]{55}$/.test(sozuTagLookup)) {
       return NextResponse.json(
         { walletAddress: sozuTagLookup },
         { headers: corsHeaders(request) }
       )
     }
 
-    // Otherwise, treat as Sozu tag and look up wallet
+    if (!isValidSozuTag(sozuTagLookup)) {
+      return NextResponse.json(
+        { error: "Recipient not found. Please check the Sozu tag or wallet address." },
+        { status: 404, headers: corsHeaders(request) }
+      )
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
@@ -57,33 +62,15 @@ export async function POST(request: NextRequest) {
 
     const serviceClient = createClient(supabaseUrl, supabaseServiceKey)
 
-    // Find profile by username (Sozu tag)
-    // Username should be case-sensitive and exact match
     console.log("[Resolve Recipient] Looking up profile for Sozu tag:", sozuTagLookup)
-    
-    // Try exact match first (case-sensitive)
-    let { data: profile, error: profileError } = await serviceClient
+
+    // Case-insensitive match — tags may be stored with different casing than typed.
+    const { data: profiles, error: profileError } = await serviceClient
       .from("profiles")
       .select("id, username")
-      .eq("username", sozuTagLookup)
-      .maybeSingle()
-    
-    // If not found, try case-insensitive match (for debugging)
-    if (!profile && !profileError) {
-      console.log("[Resolve Recipient] Exact match not found, trying case-insensitive...")
-      const { data: profiles } = await serviceClient
-        .from("profiles")
-        .select("id, username")
-        .ilike("username", sozuTagLookup)
-        .limit(5)
-      
-      if (profiles && profiles.length > 0) {
-        console.log("[Resolve Recipient] Found profiles with case-insensitive match:", profiles.map(p => ({ id: p.id, username: p.username })))
-        // Use exact match if available, otherwise use first result
-        profile = profiles.find(p => p.username === sozuTagLookup) || profiles[0]
-        console.log("[Resolve Recipient] Using profile:", { id: profile.id, username: profile.username })
-      }
-    }
+      .ilike("username", sozuTagLookup)
+      .not("username", "is", null)
+      .limit(10)
 
     if (profileError) {
       console.error("[Resolve Recipient] Error finding profile:", profileError)
@@ -93,244 +80,43 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const profile =
+      profiles?.find((p) => p.username === sozuTagLookup) ??
+      profiles?.find((p) => p.username?.toLowerCase() === sozuTagLookup.toLowerCase()) ??
+      profiles?.[0] ??
+      null
+
     if (!profile) {
-      console.log("[Resolve Recipient] Profile not found for username:", recipient)
+      console.log("[Resolve Recipient] Profile not found for username:", sozuTagLookup)
       return NextResponse.json(
         { error: "Recipient not found. Please check the Sozu tag or wallet address." },
         { status: 404, headers: corsHeaders(request) }
       )
     }
 
-    console.log("[Resolve Recipient] ✅ Profile found:", {
+    console.log("[Resolve Recipient] Profile found:", {
       profileId: profile.id,
-      username: profile.username
+      username: profile.username,
     })
 
-    // Get wallet address for this user
-    // IMPORTANT: Always get the most recent wallet (by updated_at DESC, then created_at DESC)
-    // This ensures we get the actual current wallet, not an old one from previous integrations
-    console.log("[Resolve Recipient] Looking up wallet for user_id:", profile.id)
-    
-    // First, check if there are multiple wallets (shouldn't happen due to unique constraint, but let's verify)
-    const { data: allWallets, error: checkError } = await serviceClient
+    const { data: wallets, error: walletError } = await serviceClient
       .from("stellar_wallets")
-      .select("id, public_key, user_id, created_at, updated_at, network, turnkey_wallet_id")
+      .select("public_key, user_id, network, updated_at")
       .eq("user_id", profile.id)
       .order("updated_at", { ascending: false })
-    
-    if (checkError) {
-      console.error("[Resolve Recipient] Error checking wallets:", checkError)
+      .limit(1)
+
+    if (walletError) {
+      console.error("[Resolve Recipient] Error finding wallet:", walletError)
       return NextResponse.json(
         { error: "Failed to lookup recipient wallet. Please try again." },
         { status: 500, headers: corsHeaders(request) }
       )
     }
-    
-    // Always log all wallets found for debugging
-    if (allWallets && allWallets.length > 0) {
-      console.log(`[Resolve Recipient] Found ${allWallets.length} wallet(s) for user_id: ${profile.id}, username: ${recipient}`)
-      // Sort by updated_at DESC, then created_at DESC (client-side since Supabase doesn't support multiple orderings)
-      allWallets.sort((a, b) => {
-        const updatedDiff = new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-        if (updatedDiff !== 0) return updatedDiff
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      })
-      allWallets.forEach((w, i) => {
-        console.log(`[Resolve Recipient]   Wallet ${i + 1}/${allWallets.length}:`, {
-          id: w.id,
-          publicKey: w.public_key ? w.public_key.substring(0, 10) + "..." + w.public_key.substring(w.public_key.length - 10) : "NULL",
-          fullPublicKey: w.public_key, // Log full key for debugging
-          createdAt: w.created_at,
-          updatedAt: w.updated_at,
-          network: w.network,
-          turnkeyWalletId: w.turnkey_wallet_id ? w.turnkey_wallet_id.substring(0, 20) + "..." : null
-        })
-      })
-      
-      if (allWallets.length > 1) {
-        console.warn("[Resolve Recipient] ⚠️ Multiple wallets found - will check which ones exist on network")
-      }
-    } else {
-      console.log("[Resolve Recipient] No wallets found for user_id:", profile.id, "username:", recipient)
-      return NextResponse.json(
-        { error: "Recipient wallet not found. They may not have created a wallet yet." },
-        { status: 404, headers: corsHeaders(request) }
-      )
-    }
-    
-    // Get all wallets and find one that exists on the network
-    // Priority: 1) Wallets that exist on network, 2) Most recent by updated_at
-    let wallet: any = null
-    
-    if (allWallets && allWallets.length > 0) {
-      // Sort all wallets by updated_at DESC, then created_at DESC
-      allWallets.sort((a, b) => {
-        const updatedDiff = new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-        if (updatedDiff !== 0) return updatedDiff
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      })
-      
-      console.log("[Resolve Recipient] Checking which wallets exist on the network...")
-      console.log("[Resolve Recipient] Total wallets to check:", allWallets.length)
-      allWallets.forEach((w, i) => {
-        console.log(`[Resolve Recipient] Wallet ${i + 1}:`, {
-          publicKey: w.public_key.substring(0, 10) + "..." + w.public_key.substring(w.public_key.length - 10),
-          fullPublicKey: w.public_key, // Log full key for debugging
-          updatedAt: w.updated_at,
-          createdAt: w.created_at,
-          network: w.network
-        })
-      })
-      
-      const { Horizon } = await import("@stellar/stellar-sdk")
-      const { getStellarConfig } = await import("@/lib/turnkey/config")
-      const stellarConfig = getStellarConfig()
-      const server = new Horizon.Server(
-        stellarConfig.horizonUrl,
-        { allowHttp: stellarConfig.network === "testnet" }
-      )
-      
-      // Try to find a wallet that exists on the network
-      // Priority: 1) Wallets with USDC trustline/balance (active wallets), 2) Any wallet that exists
-      let walletsWithUSDC: any[] = []
-      
-      for (let i = 0; i < allWallets.length; i++) {
-        const w = allWallets[i]
-        console.log(`[Resolve Recipient] Checking wallet ${i + 1}/${allWallets.length} on network:`, {
-          publicKey: w.public_key.substring(0, 10) + "..." + w.public_key.substring(w.public_key.length - 10),
-          fullPublicKey: w.public_key, // Log full key for debugging
-          network: stellarConfig.network,
-          horizonUrl: stellarConfig.horizonUrl
-        })
-        
-        try {
-          const account = await server.loadAccount(w.public_key)
-          const hasUSDC = account.balances.some((b: any) => b.asset_code === "USDC")
-          const usdcBalance = account.balances.find((b: any) => b.asset_code === "USDC")
-          
-          console.log("[Resolve Recipient] ✅ Found wallet that exists on network:", {
-            publicKey: w.public_key.substring(0, 10) + "..." + w.public_key.substring(w.public_key.length - 10),
-            fullPublicKey: w.public_key, // Log full key for debugging
-            sequence: account.sequenceNumber(),
-            balances: account.balances.length,
-            hasXLM: account.balances.some((b: any) => b.asset_type === "native"),
-            hasUSDC: hasUSDC,
-            usdcBalance: usdcBalance ? usdcBalance.balance : "0"
-          })
-          
-          const walletData = {
-            public_key: w.public_key,
-            user_id: w.user_id,
-            created_at: w.created_at,
-            updated_at: w.updated_at,
-            network: w.network
-          }
-          
-          // If wallet has USDC trustline/balance, prioritize it
-          if (hasUSDC) {
-            console.log("[Resolve Recipient] ⭐ Wallet has USDC trustline - prioritizing this wallet")
-            walletsWithUSDC.push(walletData)
-          } else if (!wallet) {
-            // Store first wallet that exists (as fallback if none have USDC)
-            wallet = walletData
-          }
-        } catch (error: any) {
-          const isNotFound = error?.response?.status === 404 || 
-                            error?.message?.includes("404") || 
-                            error?.message?.includes("Not Found")
-          if (isNotFound) {
-            console.log("[Resolve Recipient] ❌ Wallet doesn't exist on network:", {
-              publicKey: w.public_key.substring(0, 10) + "..." + w.public_key.substring(w.public_key.length - 10),
-              fullPublicKey: w.public_key, // Log full key for debugging
-              error: error.message
-            })
-            continue // Try next wallet
-          } else {
-            // Network error - assume it exists and use it (but don't prioritize if no USDC)
-            console.warn("[Resolve Recipient] ⚠️ Network error checking wallet, assuming it exists:", {
-              publicKey: w.public_key.substring(0, 10) + "..." + w.public_key.substring(w.public_key.length - 10),
-              fullPublicKey: w.public_key, // Log full key for debugging
-              error: error.message
-            })
-            if (!wallet) {
-              wallet = {
-                public_key: w.public_key,
-                user_id: w.user_id,
-                created_at: w.created_at,
-                updated_at: w.updated_at,
-                network: w.network
-              }
-            }
-          }
-        }
-      }
-      
-      // If we found wallets with USDC, use the most recent one (by updated_at)
-      if (walletsWithUSDC.length > 0) {
-        console.log(`[Resolve Recipient] ✅ Found ${walletsWithUSDC.length} wallet(s) with USDC trustline - using the most recent one`)
-        // Sort by updated_at DESC to get the most recent
-        walletsWithUSDC.sort((a, b) => {
-          const updatedDiff = new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-          if (updatedDiff !== 0) return updatedDiff
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        })
-        wallet = walletsWithUSDC[0]
-        console.log("[Resolve Recipient] ✅ Selected wallet with USDC:", {
-          publicKey: wallet.public_key.substring(0, 10) + "..." + wallet.public_key.substring(wallet.public_key.length - 10),
-          fullPublicKey: wallet.public_key, // Log full key for debugging
-          updatedAt: wallet.updated_at
-        })
-      } else if (wallet) {
-        console.log("[Resolve Recipient] ⚠️ No wallets with USDC found, using first wallet that exists on network")
-      }
-      
-      // If no wallet verified on network, fall back to the most recent DB wallet.
-      // The actual Stellar payment will surface a clear error if the address is unfunded.
-      if (!wallet && allWallets.length > 0) {
-        const mostRecent = allWallets[0]
-        console.warn("[Resolve Recipient] ⚠️ No wallets verified on network — falling back to most recent DB wallet:", {
-          username: recipient,
-          publicKey: mostRecent.public_key.substring(0, 10) + "..." + mostRecent.public_key.substring(mostRecent.public_key.length - 10),
-          updatedAt: mostRecent.updated_at,
-        })
-        wallet = {
-          public_key: mostRecent.public_key,
-          user_id: mostRecent.user_id,
-          created_at: mostRecent.created_at,
-          updated_at: mostRecent.updated_at,
-          network: mostRecent.network,
-        }
-      }
-    } else {
-      // Fallback: query directly if allWallets wasn't populated
-      const { data: walletData, error: walletError } = await serviceClient
-        .from("stellar_wallets")
-        .select("public_key, user_id, created_at, updated_at, network")
-        .eq("user_id", profile.id)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      
-      if (walletError) {
-        console.error("[Resolve Recipient] Error finding wallet:", walletError)
-        return NextResponse.json(
-          { error: "Recipient wallet not found. They may not have created a wallet yet." },
-          { status: 404, headers: corsHeaders(request) }
-        )
-      }
-      
-      if (!walletData) {
-        console.log("[Resolve Recipient] No wallet found for user_id:", profile.id)
-        return NextResponse.json(
-          { error: "Recipient wallet not found. They may not have created a wallet yet." },
-          { status: 404, headers: corsHeaders(request) }
-        )
-      }
-      
-      wallet = walletData
-    }
 
-    if (!wallet) {
+    const wallet = wallets?.[0] ?? null
+
+    if (!wallet?.public_key) {
       console.log("[Resolve Recipient] No wallet found for user_id:", profile.id)
       return NextResponse.json(
         { error: "Recipient wallet not found. They may not have created a wallet yet." },
@@ -338,11 +124,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate wallet data
-    if (!wallet.public_key || wallet.public_key.length !== 56 || !wallet.public_key.startsWith("G")) {
-      console.error("[Resolve Recipient] ❌ Invalid wallet public_key format:", {
-        publicKey: wallet.public_key ? wallet.public_key.substring(0, 20) + "..." : "NULL",
-        length: wallet.public_key?.length
+    if (
+      wallet.public_key.length !== 56 ||
+      !wallet.public_key.startsWith("G")
+    ) {
+      console.error("[Resolve Recipient] Invalid wallet public_key format:", {
+        length: wallet.public_key?.length,
       })
       return NextResponse.json(
         { error: "Invalid wallet address format. Please contact support." },
@@ -350,37 +137,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log("[Resolve Recipient] ✅ Wallet found in database:", {
-      publicKey: wallet.public_key.substring(0, 10) + "..." + wallet.public_key.substring(wallet.public_key.length - 10),
-      fullPublicKey: wallet.public_key, // Log full key for debugging
-      userId: wallet.user_id,
-      network: wallet.network,
-      createdAt: wallet.created_at,
-      updatedAt: wallet.updated_at
-    })
+    console.log("[Resolve Recipient] Returning wallet for tag:", profile.username)
 
-    // Verify the wallet belongs to the correct user
-    if (wallet.user_id !== profile.id) {
-      console.error("[Resolve Recipient] ❌ Wallet user_id mismatch!", {
-        walletUserId: wallet.user_id,
-        profileId: profile.id
-      })
-      return NextResponse.json(
-        { error: "Wallet lookup error. Please try again." },
-        { status: 500, headers: corsHeaders(request) }
-      )
-    }
-
-    // Return the full public key (this is the actual wallet address)
-    console.log("[Resolve Recipient] ✅ Returning wallet address:", wallet.public_key.substring(0, 10) + "...")
     return NextResponse.json(
-      { walletAddress: wallet.public_key },
+      {
+        walletAddress: wallet.public_key,
+        tag: profile.username,
+        network: wallet.network,
+      },
       { headers: corsHeaders(request) }
     )
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[Resolve Recipient] Error:", error)
     return NextResponse.json(
-      { error: error.message || "Failed to resolve recipient" },
+      { error: error instanceof Error ? error.message : "Failed to resolve recipient" },
       { status: 500, headers: corsHeaders(request) }
     )
   }

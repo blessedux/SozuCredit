@@ -70,11 +70,11 @@ export async function POST(request: NextRequest) {
     let { data: existingProfile, error: checkError } = await serviceClient
       .from("profiles")
       .select("id, username, recovery_pin_hash")
-      .eq("username", username)
+      .ilike("username", username)
       .maybeSingle()
 
     if (checkError && (checkError.message?.includes("recovery_pin_hash") || checkError.code === "42703")) {
-      const retry = await serviceClient.from("profiles").select("id, username").eq("username", username).maybeSingle()
+      const retry = await serviceClient.from("profiles").select("id, username").ilike("username", username).maybeSingle()
       existingProfile = retry.data as typeof existingProfile
       checkError = retry.error
     }

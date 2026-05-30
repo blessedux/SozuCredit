@@ -96,6 +96,7 @@ export function MobileAppShell() {
   const swipeHandlers = useHorizontalPanelSwipe({
     onSwipeLeft: goRight,
     onSwipeRight: goLeft,
+    disabled: isSendModalOpen,
   })
 
   const handlePayClick = useCallback(() => {
@@ -108,7 +109,9 @@ export function MobileAppShell() {
     <WalletLanguageProvider>
       <WalletDataProvider>
         <div
-          className="overflow-hidden cursor-grab active:cursor-grabbing select-none touch-pan-x"
+          className={`overflow-hidden select-none touch-pan-x ${
+            isSendModalOpen ? "cursor-default" : "cursor-grab active:cursor-grabbing"
+          }`}
           style={{ position: "fixed", inset: 0 }}
       onTouchStart={swipeHandlers.onTouchStart}
       onTouchMove={swipeHandlers.onTouchMove}
