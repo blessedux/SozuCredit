@@ -129,11 +129,11 @@ export function MobileAppShell() {
       >
         {/* Panel 0 — Settings (lazy: only mount when visited) */}
         <div
-          className="h-full overflow-y-auto overscroll-none no-scrollbar bg-[#0a0a0b]"
+          className="h-full overflow-y-auto overscroll-none no-scrollbar"
           style={{ width: `${100 / PANEL_COUNT}%` }}
         >
           {activePanel === 0 ? (
-            <Suspense fallback={<div className="h-full w-full bg-[#0a0a0b]" />}>
+            <Suspense fallback={null}>
               <SettingsPanel />
             </Suspense>
           ) : null}

@@ -190,9 +190,13 @@
   html.app-no-scroll body {
     overflow: hidden;
     overscroll-behavior: none;
-    height: 100%;
+    /* Use dvh so Android PWA bottom bar is correctly excluded */
+    height: 100dvh;
+    max-height: 100dvh;
     width: 100%;
     position: fixed;
+    top: 0;
+    left: 0;
     touch-action: pan-x pinch-zoom;
   }
   body {

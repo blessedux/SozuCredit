@@ -28,6 +28,7 @@ function AuthPageContent() {
   const [tagModalPrefill, setTagModalPrefill] = useState<string | null>(null)
   const [referralCode, setReferralCode] = useState<string | null>(null)
   const [showIosInstallModal, setShowIosInstallModal] = useState(false)
+  const [pwaBannerDismissed, setPwaBannerDismissed] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirectingRef = useRef(false)
@@ -626,6 +627,68 @@ function AuthPageContent() {
 
   return (
     <div className="relative flex h-screen w-full flex-col overflow-hidden">
+
+      {/* ── PWA install banner — fixed top toast, visible on mobile before install ── */}
+      <AnimatePresence>
+        {!isInstalled && !pwaBannerDismissed && (canInstall || isIos) && (
+          <motion.div
+            key="pwa-banner"
+            initial={{ y: "-110%", opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: "-110%", opacity: 0 }}
+            transition={{ type: "spring", damping: 28, stiffness: 300, delay: 1.2 }}
+            className="fixed left-3 right-3 z-[60] rounded-2xl border border-white/[0.10] px-4 py-3"
+            style={{
+              top: "max(0.75rem, env(safe-area-inset-top))",
+              background: "rgba(18, 18, 20, 0.82)",
+              backdropFilter: "blur(24px)",
+              WebkitBackdropFilter: "blur(24px)",
+            }}
+          >
+            <div className="flex items-center gap-3">
+              {/* App icon */}
+              <img
+                src="/icons/sozu_icon_192.png"
+                alt="Sozu"
+                className="h-11 w-11 shrink-0 rounded-[22%] object-cover"
+              />
+
+              {/* Text */}
+              <div className="flex min-w-0 flex-1 flex-col">
+                <p className="text-[13px] font-semibold text-white leading-tight">
+                  Sozu
+                </p>
+                <p className="text-[11px] text-white/45 leading-tight mt-0.5">
+                  {isIos ? "Abre Sozu como app nativa en Safari" : "Instala la app en tu dispositivo"}
+                </p>
+              </div>
+
+              {/* Install / Add CTA */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (canInstall) void triggerInstall()
+                  else setShowIosInstallModal(true)
+                }}
+                className="shrink-0 rounded-full bg-white px-3.5 py-1.5 text-[12px] font-semibold text-black hover:bg-white/90 active:scale-95 transition-transform"
+              >
+                {isIos ? "Ver cómo" : "Instalar"}
+              </button>
+
+              {/* Dismiss */}
+              <button
+                type="button"
+                onClick={() => setPwaBannerDismissed(true)}
+                className="shrink-0 flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.08] text-white/35 hover:text-white/60 transition-colors"
+                aria-label="Cerrar"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* SOZU wordmark — top of screen, matches Passkey caption style */}
       <p className="pointer-events-none absolute top-[max(1.1rem,env(safe-area-inset-top))] left-0 right-0 z-[3] text-center text-[10px] font-extralight tracking-[0.12em] text-white">
         SOZU
@@ -696,23 +759,7 @@ function AuthPageContent() {
           Passkey on this device
         </p>
 
-        {/* PWA install prompt — hidden once installed or in standalone mode */}
-        {!isInstalled && (canInstall || isIos) && (
-          <button
-            type="button"
-            onClick={() => {
-              if (canInstall) {
-                void triggerInstall()
-              } else {
-                setShowIosInstallModal(true)
-              }
-            }}
-            className="flex items-center gap-1.5 text-white/40 text-[10px] font-extralight tracking-[0.1em] hover:text-white/60 transition-colors"
-          >
-            <Plus className="w-3 h-3" />
-            Agregar a pantalla de inicio
-          </button>
-        )}
+        {/* PWA banner placeholder — actual banner is fixed at top, rendered below */}
       </div>
 
       {/* Welcome Modal - Shows on first visit */}
