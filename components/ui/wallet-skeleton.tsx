@@ -48,7 +48,7 @@ function WalletLandingSkeleton() {
           </div>
         </div>
 
-        <div className="shrink-0 pb-[max(5rem,env(safe-area-inset-bottom))] pt-2">
+        <div className="shrink-0 pb-[max(2.5rem,env(safe-area-inset-bottom))] pt-2">
           <CommandBarSkeleton />
         </div>
       </div>
@@ -58,7 +58,7 @@ function WalletLandingSkeleton() {
 
 function WalletHistorySkeleton() {
   return (
-    <div className="relative z-10 h-full overflow-hidden px-4 pt-[max(3.5rem,env(safe-area-inset-top))] pb-[max(5rem,env(safe-area-inset-bottom))]">
+    <div className="relative z-10 h-full overflow-hidden px-4 pt-[max(3.5rem,env(safe-area-inset-top))] pb-[max(2.5rem,env(safe-area-inset-bottom))]">
       <div className="mx-auto w-full max-w-7xl space-y-5">
         <CashflowLinkSkeleton />
         <CashflowSummarySkeleton />

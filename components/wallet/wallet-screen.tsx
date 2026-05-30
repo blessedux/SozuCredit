@@ -661,7 +661,7 @@ export function WalletScreen({
                 </div>
               </div>
 
-              <div className="shrink-0 pb-[max(5rem,env(safe-area-inset-bottom))] pt-2">
+              <div className="shrink-0 pb-[max(2.5rem,env(safe-area-inset-bottom))] pt-2">
                 <div className="mx-auto w-full max-w-[17rem] rounded-[2rem] border border-white/10 bg-black/20 p-3 shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur-md">
                   <div className="mb-2 text-center text-[8px] font-light uppercase tracking-[0.28em] text-white/40">
                     {t.commandTitle}
@@ -686,7 +686,7 @@ export function WalletScreen({
       <WalletErrorBoundary>
         {activationOnboarding}
         <div className={cn("relative h-full w-full overflow-hidden", walletContentClass)}>
-          <div className="relative z-10 h-full overflow-y-auto overscroll-none no-scrollbar touch-pan-x px-4 pt-[max(3.5rem,env(safe-area-inset-top))] pb-[max(5rem,env(safe-area-inset-bottom))]">
+          <div className="relative z-10 h-full overflow-y-auto overscroll-none no-scrollbar touch-pan-x px-4 pt-[max(3.5rem,env(safe-area-inset-top))] pb-[max(2.5rem,env(safe-area-inset-bottom))]">
             <div className="mx-auto w-full max-w-7xl space-y-5">
               <div className="flex justify-end">
                 <Link

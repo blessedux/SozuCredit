@@ -6,6 +6,7 @@
 "use client"
 
 import { memo, useState, useEffect, useRef, useCallback } from "react"
+import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { Send, ScanQrCode, Check, X, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -82,6 +83,11 @@ export const SendPaymentModal = memo(function SendPaymentModal({
   const { t } = useWalletLanguage()
   const [isScannerOpen, setIsScannerOpen] = useState(false)
   const [pendingAutoResolve, setPendingAutoResolve] = useState(false)
+  const [portalReady, setPortalReady] = useState(false)
+
+  useEffect(() => {
+    setPortalReady(true)
+  }, [])
 
   // Real-time recipient validation
   type ValidationState = "idle" | "checking" | "valid" | "invalid"
@@ -174,7 +180,7 @@ export const SendPaymentModal = memo(function SendPaymentModal({
     amountInputCurrency === "fiat" && fiatDecimals(referenceFiat) === 0 ? "1" : "0.01"
 
   const balanceSizeClass =
-    "max-w-full overflow-hidden text-[clamp(1.875rem,8vw,3rem)] font-bold leading-none tracking-tight tabular-nums text-white sm:text-5xl lg:text-[clamp(1.75rem,2.8vw,2.5rem)] xl:text-[clamp(1.875rem,2.5vw,2.75rem)]"
+    "min-w-0 max-w-full overflow-hidden text-[clamp(1.5rem,7vw,3rem)] font-bold leading-none tracking-tight tabular-nums text-white sm:text-5xl lg:text-[clamp(1.75rem,2.8vw,2.5rem)] xl:text-[clamp(1.875rem,2.5vw,2.75rem)]"
 
   const referenceDisplayValue = (usdcAmount: number) => {
     const local = fiatFromUsdcAmount(usdcAmount, referenceFiat)
@@ -256,7 +262,9 @@ export const SendPaymentModal = memo(function SendPaymentModal({
     onClose()
   }
 
-  return (
+  if (!portalReady) return null
+
+  return createPortal(
     <>
     <AnimatePresence>
     {isOpen && (
@@ -272,7 +280,7 @@ export const SendPaymentModal = memo(function SendPaymentModal({
           onClick={handleClose}
         />
 
-        {/* Bottom sheet — top edge aligns with balance card */}
+        {/* Bottom sheet — portaled to body so fixed positioning uses the viewport, not the swipe carousel */}
         <motion.div
           key="send-sheet"
           initial={{ y: "100%" }}
@@ -286,10 +294,11 @@ export const SendPaymentModal = memo(function SendPaymentModal({
             if (info.offset.y > 80 || info.velocity.y > 450) handleClose()
           }}
           transition={{ type: "spring", damping: 32, stiffness: 300 }}
-          className="fixed inset-x-4 z-50 mx-auto flex max-w-md flex-col rounded-[28px] text-white"
+          className="fixed z-50 box-border flex w-auto max-w-md flex-col overflow-hidden rounded-[28px] text-white left-[max(1rem,env(safe-area-inset-left))] right-[max(1rem,env(safe-area-inset-right))] mx-auto"
           style={{
             bottom: "max(1rem, env(safe-area-inset-bottom))",
             top: "clamp(100px, 18dvh, 160px)",
+            maxWidth: "min(28rem, calc(100vw - max(2rem, env(safe-area-inset-left) + env(safe-area-inset-right))))",
             background: "rgba(8,8,10,0.88)",
             backdropFilter: "blur(32px) saturate(160%)",
             WebkitBackdropFilter: "blur(32px) saturate(160%)",
@@ -320,7 +329,7 @@ export const SendPaymentModal = memo(function SendPaymentModal({
           <div className="mx-5 mb-1 h-px bg-white/[0.07] shrink-0" />
 
           {/* Scrollable form content */}
-          <div className="flex-1 overflow-y-auto px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+          <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         {sendStep === "recipient" ? (
           <div className="space-y-4 pt-3 pb-2">
             {!isManualMode ? (
@@ -570,6 +579,7 @@ export const SendPaymentModal = memo(function SendPaymentModal({
       onClose={() => setIsScannerOpen(false)}
       onScan={handleQrScan}
     />
-  </>
+  </>,
+  document.body,
   )
 })

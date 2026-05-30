@@ -626,7 +626,7 @@ function AuthPageContent() {
   }
 
   return (
-    <div className="relative flex h-screen w-full flex-col overflow-hidden">
+    <div className="relative h-[100dvh] max-h-[100dvh] w-full overflow-hidden">
 
       {/* ── PWA install banner — fixed top toast, visible on mobile before install ── */}
       <AnimatePresence>
@@ -713,19 +713,23 @@ function AuthPageContent() {
         </div>
       </div>
 
-      {/* Main Content Area - Shows skeleton UI after authentication */}
-      <div className="relative z-[1] flex-1 overflow-y-auto">
-        {isAuthenticated && (
-          <div className="z-10">
+      {/* Post-auth skeleton — full viewport */}
+      <div className="relative z-[1] h-full overflow-hidden">
+        {isAuthenticated ? (
+          <div className="z-10 h-full">
             <WalletSkeleton isExiting={isExiting} layout="landing" />
           </div>
-        )}
+        ) : null}
       </div>
 
-      <div className={`z-[1] flex w-full flex-col items-center gap-4 px-6 pb-8 transition-all duration-700 ${isAuthenticated
-        ? "scale-95 opacity-0"
-        : "scale-100 opacity-100"
-        }`}>
+      {/* Enter CTA — pinned to viewport bottom with safe-area inset (no scroll needed) */}
+      <div
+        className={`fixed inset-x-0 bottom-0 z-[4] flex w-full flex-col items-center gap-4 px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] transition-all duration-700 ${
+          isAuthenticated
+            ? "pointer-events-none scale-95 opacity-0"
+            : "scale-100 opacity-100"
+        }`}
+      >
         <Button
           onClick={handleAuth}
           disabled={isAuthenticating}
@@ -893,7 +897,7 @@ function AuthPageContent() {
 export default function AuthPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-black dark text-white flex items-center justify-center">
+      <div className="flex min-h-[100dvh] items-center justify-center bg-black text-white">
         <div className="text-white">Loading...</div>
       </div>
     }>
