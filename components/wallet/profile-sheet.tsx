@@ -15,6 +15,7 @@ import { useWalletLanguage } from "@/lib/wallet-language"
 import { copyToClipboard, getUserId } from "@/lib/wallet-utils"
 import { createClient as createSupabaseClient } from "@/lib/supabase/client"
 import { getPublicKeyFromSession } from "@/lib/storage/key-utils"
+import { clearClientSession } from "@/lib/storage/clear-session"
 
 type Tab = "profile" | "cashout" | "defi" | "logout"
 
@@ -453,13 +454,11 @@ export const ProfileSheet = memo(function ProfileSheet({
       // causing the same /home ↔ /wallet infinite loop as account deletion.
       try {
         const supabase = createSupabaseClient()
-        const { clearClientSession } = await import("@/lib/storage/clear-session")
         supabase.auth.signOut().finally(() => {
           clearClientSession()
           window.location.replace("/auth")
         })
       } catch {
-        const { clearClientSession } = await import("@/lib/storage/clear-session")
         clearClientSession()
         window.location.replace("/auth")
       }
