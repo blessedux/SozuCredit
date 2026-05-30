@@ -94,6 +94,60 @@ export const SendPaymentModal = memo(function SendPaymentModal({
   const [validationState, setValidationState] = useState<ValidationState>("idle")
   const [validationLabel, setValidationLabel] = useState<string>("")
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const recipientInputRef = useRef<HTMLInputElement>(null)
+  const manualRecipientInputRef = useRef<HTMLInputElement>(null)
+  const amountInputRef = useRef<HTMLInputElement>(null)
+  const [keyboardInset, setKeyboardInset] = useState(0)
+
+  const resetModalScroll = useCallback(() => {
+    scrollContainerRef.current?.scrollTo({ top: 0, left: 0 })
+  }, [])
+
+  const focusActiveInput = useCallback(() => {
+    const target =
+      sendStep === "amount"
+        ? amountInputRef.current
+        : isManualMode
+          ? manualRecipientInputRef.current
+          : recipientInputRef.current
+    target?.focus({ preventScroll: true })
+    resetModalScroll()
+  }, [sendStep, isManualMode, resetModalScroll])
+
+  // Keep the sheet above the software keyboard without scrolling the modal body.
+  useEffect(() => {
+    if (!isOpen) {
+      setKeyboardInset(0)
+      return
+    }
+
+    const updateKeyboardInset = () => {
+      const vv = window.visualViewport
+      if (!vv) {
+        setKeyboardInset(0)
+        return
+      }
+      const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+      setKeyboardInset(inset)
+      resetModalScroll()
+    }
+
+    updateKeyboardInset()
+    window.visualViewport?.addEventListener("resize", updateKeyboardInset)
+    window.visualViewport?.addEventListener("scroll", updateKeyboardInset)
+    return () => {
+      window.visualViewport?.removeEventListener("resize", updateKeyboardInset)
+      window.visualViewport?.removeEventListener("scroll", updateKeyboardInset)
+    }
+  }, [isOpen, resetModalScroll])
+
+  // Focus after sheet animation — preventScroll stops iOS from jumping the modal.
+  useEffect(() => {
+    if (!isOpen) return
+    const timer = window.setTimeout(() => focusActiveInput(), 320)
+    return () => window.clearTimeout(timer)
+  }, [isOpen, sendStep, isManualMode, focusActiveInput])
 
   const validateRecipient = useCallback(async (value: string) => {
     const trimmed = value.trim()
@@ -174,10 +228,27 @@ export const SendPaymentModal = memo(function SendPaymentModal({
   const hasValidAmount = sendAmount.length > 0 && !Number.isNaN(parsedAmount) && parsedAmount > 0
   const amountPlaceholder =
     amountInputCurrency === "fiat" && fiatDecimals(referenceFiat) === 0 ? "0" : "0.00"
-  const amountStep =
-    amountInputCurrency === "fiat" && fiatDecimals(referenceFiat) === 0 ? "1" : "0.01"
-  const amountMin =
-    amountInputCurrency === "fiat" && fiatDecimals(referenceFiat) === 0 ? "1" : "0.01"
+  const amountUsesIntegerPad =
+    amountInputCurrency === "fiat" && fiatDecimals(referenceFiat) === 0
+  const amountInputMode = amountUsesIntegerPad ? "numeric" : "decimal"
+
+  const handleAmountChange = useCallback(
+    (raw: string) => {
+      if (amountUsesIntegerPad) {
+        setSendAmount(raw.replace(/\D/g, ""))
+        return
+      }
+      const normalized = raw.replace(",", ".")
+      const sanitized = normalized.replace(/[^\d.]/g, "")
+      const dotIndex = sanitized.indexOf(".")
+      setSendAmount(
+        dotIndex === -1
+          ? sanitized
+          : `${sanitized.slice(0, dotIndex + 1)}${sanitized.slice(dotIndex + 1).replace(/\./g, "")}`,
+      )
+    },
+    [amountUsesIntegerPad, setSendAmount],
+  )
 
   const balanceSizeClass =
     "min-w-0 max-w-full overflow-hidden text-[clamp(1.5rem,7vw,3rem)] font-bold leading-none tracking-tight tabular-nums text-white sm:text-5xl lg:text-[clamp(1.75rem,2.8vw,2.5rem)] xl:text-[clamp(1.875rem,2.5vw,2.75rem)]"
@@ -216,7 +287,11 @@ export const SendPaymentModal = memo(function SendPaymentModal({
     ? `${formatBalance(displayUsdc)} USDC`
     : `${formatBalance(0)} USDC`
 
-  // Auto-resolve after a QR scan — fires once sendRecipient state has settled
+  // Re-focus when currency toggles so iOS swaps numeric ↔ decimal pad.
+  useEffect(() => {
+    if (!isOpen || sendStep !== "amount") return
+    amountInputRef.current?.focus({ preventScroll: true })
+  }, [amountInputCurrency, isOpen, sendStep])
   useEffect(() => {
     if (pendingAutoResolve && sendRecipient) {
       setPendingAutoResolve(false)
@@ -296,8 +371,9 @@ export const SendPaymentModal = memo(function SendPaymentModal({
           transition={{ type: "spring", damping: 32, stiffness: 300 }}
           className="fixed z-50 box-border flex w-auto max-w-md flex-col overflow-hidden rounded-[28px] text-white left-[max(1rem,env(safe-area-inset-left))] right-[max(1rem,env(safe-area-inset-right))] mx-auto"
           style={{
-            bottom: "max(1rem, env(safe-area-inset-bottom))",
-            top: "clamp(100px, 18dvh, 160px)",
+            bottom: keyboardInset > 0 ? `${keyboardInset + 8}px` : "max(1rem, env(safe-area-inset-bottom))",
+            top: keyboardInset > 0 ? "auto" : "clamp(100px, 18dvh, 160px)",
+            maxHeight: keyboardInset > 0 ? `calc(var(--sozu-app-height, 100dvh) - ${keyboardInset + 16}px)` : undefined,
             maxWidth: "min(28rem, calc(100vw - max(2rem, env(safe-area-inset-left) + env(safe-area-inset-right))))",
             background: "rgba(8,8,10,0.88)",
             backdropFilter: "blur(32px) saturate(160%)",
@@ -329,7 +405,12 @@ export const SendPaymentModal = memo(function SendPaymentModal({
           <div className="mx-5 mb-1 h-px bg-white/[0.07] shrink-0" />
 
           {/* Scrollable form content */}
-          <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+          <div
+            ref={scrollContainerRef}
+            className={`min-w-0 flex-1 px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] ${
+              keyboardInset > 0 ? "overflow-hidden" : "overflow-x-hidden overflow-y-auto"
+            }`}
+          >
         {sendStep === "recipient" ? (
           <div className="space-y-4 pt-3 pb-2">
             {!isManualMode ? (
@@ -343,12 +424,14 @@ export const SendPaymentModal = memo(function SendPaymentModal({
                 >
                   <div className="relative flex items-center">
                     <Input
+                      ref={recipientInputRef}
                       type="text"
                       value={sendRecipient}
                       onChange={(e) => {
                         setSendRecipient(e.target.value)
                         setRecipientError(null)
                       }}
+                      onFocus={resetModalScroll}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && sendRecipient.trim()) {
                           handleResolveRecipient()
@@ -364,7 +447,7 @@ export const SendPaymentModal = memo(function SendPaymentModal({
                           ? "border-red-500/40"
                           : "border-white/20"
                       }`}
-                      autoFocus
+                      enterKeyHint="next"
                     />
 
                     {/* Validation indicator */}
@@ -454,9 +537,11 @@ export const SendPaymentModal = memo(function SendPaymentModal({
             ) : (
               <>
                 <Input
+                  ref={manualRecipientInputRef}
                   type="text"
                   value={sendRecipient}
                   onChange={(e) => setSendRecipient(e.target.value)}
+                  onFocus={resetModalScroll}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && sendRecipient.trim()) {
                       handleResolveRecipient()
@@ -464,7 +549,7 @@ export const SendPaymentModal = memo(function SendPaymentModal({
                   }}
                   placeholder="Stellar Wallet Address"
                   className="bg-white/5 border-white/20 text-white placeholder:text-white/40 text-lg h-14"
-                  autoFocus
+                  enterKeyHint="next"
                 />
 
                 <Input
@@ -532,12 +617,14 @@ export const SendPaymentModal = memo(function SendPaymentModal({
               </button>
 
             <Input
-              type="number"
-              inputMode="decimal"
-              step={amountStep}
-              min={amountMin}
+              ref={amountInputRef}
+              type="text"
+              inputMode={amountInputMode}
+              pattern={amountUsesIntegerPad ? "[0-9]*" : "[0-9.,]*"}
+              autoComplete="off"
               value={sendAmount}
-              onChange={(e) => setSendAmount(e.target.value)}
+              onChange={(e) => handleAmountChange(e.target.value)}
+              onFocus={resetModalScroll}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && hasValidAmount && !isSending) {
                   e.preventDefault()
@@ -545,8 +632,8 @@ export const SendPaymentModal = memo(function SendPaymentModal({
                 }
               }}
               placeholder={amountPlaceholder}
-              className="bg-white/5 border-white/20 text-white placeholder:text-white/40 text-2xl text-center h-16 font-semibold"
-              autoFocus
+              className="bg-white/5 border-white/20 text-white placeholder:text-white/40 text-2xl text-center h-16 font-semibold tabular-nums"
+              enterKeyHint="done"
             />
 
             <Button

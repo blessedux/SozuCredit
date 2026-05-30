@@ -5,6 +5,7 @@ import { AppReadyFallback } from "@/components/app-ready-fallback"
 import { DeferredAnalytics } from "@/components/deferred-analytics"
 import { PWARegister } from "@/components/pwa-register"
 import { PaperShaderBackgroundShell } from "@/components/paper-shader-background-shell"
+import { ViewportHeightSync } from "@/components/viewport-height-sync"
 import { Preloader } from "@/components/preloader-remover"
 import { Toaster } from "@/components/ui/sonner"
 
@@ -63,10 +64,11 @@ export default function RootLayout({
             even mounts, giving the fastest possible preloader dismissal. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{if(document.getElementById("sozu-preloader"))return;var d=document.createElement("div");d.id="sozu-preloader";d.style.cssText="position:fixed;inset:0;z-index:9999;background:#000;display:flex;align-items:center;justify-content:center";var i=document.createElement("img");i.src="/icons/sozu_icon_192.png";i.alt="";i.width=64;i.height=64;i.style.cssText="border-radius:22%;opacity:0.92";d.appendChild(i);document.body.insertBefore(d,document.body.firstChild)}catch(e){}})();(function(){function fade(){try{var el=document.getElementById("sozu-preloader");if(!el)return;el.style.transition="opacity 180ms ease";el.style.opacity="0";el.style.pointerEvents="none";setTimeout(function(){if(el.parentNode)el.parentNode.removeChild(el)},180)}catch(e){}}window.addEventListener("sozu:shell-ready",fade,{once:true})})();`,
+            __html: `(function(){function sync(){try{var h=window.visualViewport?window.visualViewport.height:window.innerHeight;document.documentElement.style.setProperty("--sozu-app-height",Math.round(h)+"px")}catch(e){}}sync();if(window.visualViewport)window.visualViewport.addEventListener("resize",sync);window.addEventListener("resize",sync);window.addEventListener("orientationchange",sync)})();(function(){try{if(document.getElementById("sozu-preloader"))return;var d=document.createElement("div");d.id="sozu-preloader";d.style.cssText="position:fixed;inset:0;z-index:9999;background:#000;display:flex;align-items:center;justify-content:center";var i=document.createElement("img");i.src="/icons/sozu_icon_192.png";i.alt="";i.width=64;i.height=64;i.style.cssText="border-radius:22%;opacity:0.92";d.appendChild(i);document.body.insertBefore(d,document.body.firstChild)}catch(e){}})();(function(){function fade(){try{var el=document.getElementById("sozu-preloader");if(!el)return;el.style.transition="opacity 180ms ease";el.style.opacity="0";el.style.pointerEvents="none";setTimeout(function(){if(el.parentNode)el.parentNode.removeChild(el)},180)}catch(e){}}window.addEventListener("sozu:shell-ready",fade,{once:true})})();`,
           }}
         />
         <Preloader />
+        <ViewportHeightSync />
         <PaperShaderBackgroundShell>{children}</PaperShaderBackgroundShell>
         <AppReadyFallback />
         <DeferredAnalytics />

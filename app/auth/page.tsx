@@ -626,7 +626,7 @@ function AuthPageContent() {
   }
 
   return (
-    <div className="relative h-[100dvh] max-h-[100dvh] w-full overflow-hidden">
+    <div className="relative h-[var(--sozu-app-height,100dvh)] min-h-[100dvh] min-h-[-webkit-fill-available] w-full overflow-hidden">
 
       {/* ── PWA install banner — fixed top toast, visible on mobile before install ── */}
       <AnimatePresence>

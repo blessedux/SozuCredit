@@ -661,7 +661,7 @@ export function WalletScreen({
                 </div>
               </div>
 
-              <div className="shrink-0 pb-[max(2.5rem,env(safe-area-inset-bottom))] pt-2">
+              <div className="shrink-0 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] pt-2">
                 <div className="mx-auto w-full max-w-[17rem] rounded-[2rem] border border-white/10 bg-black/20 p-3 shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur-md">
                   <div className="mb-2 text-center text-[8px] font-light uppercase tracking-[0.28em] text-white/40">
                     {t.commandTitle}

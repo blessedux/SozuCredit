@@ -185,23 +185,30 @@
   html {
     @apply bg-black;
     background-color: #000000;
+    height: -webkit-fill-available;
+  }
+  :root {
+    /* Updated at runtime by ViewportHeightSync — see lib/sync-app-viewport-height.ts */
+    --sozu-app-height: 100dvh;
   }
   html.app-no-scroll,
   html.app-no-scroll body {
     overflow: hidden;
     overscroll-behavior: none;
-    /* Use dvh so Android PWA bottom bar is correctly excluded */
-    height: 100dvh;
-    max-height: 100dvh;
     width: 100%;
     position: fixed;
-    top: 0;
-    left: 0;
+    inset: 0;
+    /* Do NOT cap with max-height: 100dvh — iOS standalone PWAs can render taller,
+       leaving a black strip below fixed content when dvh under-counts. */
+    height: var(--sozu-app-height, 100dvh);
+    min-height: -webkit-fill-available;
     touch-action: pan-x pinch-zoom;
   }
   body {
     @apply bg-black text-foreground;
     background-color: #000000;
+    min-height: -webkit-fill-available;
+    min-height: var(--sozu-app-height, 100dvh);
   }
   .no-scrollbar {
     -ms-overflow-style: none;

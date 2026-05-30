@@ -112,7 +112,7 @@ export function MobileAppShell() {
           className={`overflow-hidden select-none touch-pan-x ${
             isSendModalOpen ? "cursor-default" : "cursor-grab active:cursor-grabbing"
           }`}
-          style={{ position: "fixed", inset: 0 }}
+          style={{ position: "fixed", inset: 0, height: "var(--sozu-app-height, 100dvh)" }}
       onTouchStart={swipeHandlers.onTouchStart}
       onTouchMove={swipeHandlers.onTouchMove}
       onTouchEnd={swipeHandlers.onTouchEnd}
@@ -163,7 +163,7 @@ export function MobileAppShell() {
         </div>
       </div>
 
-      <div className="pointer-events-none absolute bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-1/2 z-50 flex -translate-x-1/2 gap-1.5">
+      <div className="pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom)+0.5rem)] left-1/2 z-50 flex -translate-x-1/2 gap-1.5">
         {[0, 1, 2].map(i => (
           <span
             key={i}

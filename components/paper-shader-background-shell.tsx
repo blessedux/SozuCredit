@@ -61,7 +61,7 @@ export function PaperShaderBackgroundShell({
     <>
       {shaderActive ? (
         <AuthOrangeOrbShader
-          className="pointer-events-none fixed inset-0 z-0"
+          className="pointer-events-none fixed inset-x-0 top-0 z-0 w-full h-[var(--sozu-app-height,100dvh)] min-h-[100dvh] min-h-[-webkit-fill-available]"
           variant={variant}
           tier={tier}
         />

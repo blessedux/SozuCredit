@@ -48,7 +48,7 @@ function WalletLandingSkeleton() {
           </div>
         </div>
 
-        <div className="shrink-0 pb-[max(2.5rem,env(safe-area-inset-bottom))] pt-2">
+        <div className="shrink-0 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] pt-2">
           <CommandBarSkeleton />
         </div>
       </div>
