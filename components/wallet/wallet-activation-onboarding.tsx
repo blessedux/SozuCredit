@@ -285,28 +285,23 @@ export function WalletActivationOnboarding({
             />
           </div>
 
-          {/* Last-slide CTA — only visible on slide 4; tap/click opens wallet */}
+          {/* Last-slide CTA — fully transparent tap target overlaying the button in the slide image */}
           {slideIndex === WALLET_ACTIVATION_SLIDE_COUNT - 1 && (
-            <div
-              className="absolute left-0 right-0 z-10 flex items-center justify-center px-6"
-              style={{ bottom: "max(2rem, env(safe-area-inset-bottom))" }}
-            >
-              <button
-                onClick={e => {
-                  e.stopPropagation()
-                  goToSlide(WALLET_ACTIVATION_SLIDE_COUNT)
-                }}
-                className={cn(
-                  "w-full max-w-xs rounded-2xl py-4 text-[15px] font-semibold text-white transition-all duration-200",
-                  waitingForActivation
-                    ? "animate-pulse bg-white/20"
-                    : "bg-white/20 hover:bg-white/30 active:scale-[0.97]",
-                )}
-                style={{ backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}
-              >
-                {waitingForActivation ? "Activando…" : "Abrir mi billetera"}
-              </button>
-            </div>
+            <button
+              onClick={e => {
+                e.stopPropagation()
+                goToSlide(WALLET_ACTIVATION_SLIDE_COUNT)
+              }}
+              aria-label="Abrir mi billetera"
+              className={cn(
+                "absolute left-0 right-0 z-10 bg-transparent border-0 outline-none cursor-pointer",
+                waitingForActivation && "animate-pulse",
+              )}
+              style={{
+                bottom: "max(1.5rem, env(safe-area-inset-bottom))",
+                height: "15%",
+              }}
+            />
           )}
         </div>
       </div>

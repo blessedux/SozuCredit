@@ -108,8 +108,8 @@ export function MobileAppShell() {
     <WalletLanguageProvider>
       <WalletDataProvider>
         <div
-          className="relative w-full overflow-hidden cursor-grab active:cursor-grabbing select-none touch-pan-x"
-          style={{ height: "100dvh" }}
+          className="overflow-hidden cursor-grab active:cursor-grabbing select-none touch-pan-x"
+          style={{ position: "fixed", inset: 0 }}
       onTouchStart={swipeHandlers.onTouchStart}
       onTouchMove={swipeHandlers.onTouchMove}
       onTouchEnd={swipeHandlers.onTouchEnd}

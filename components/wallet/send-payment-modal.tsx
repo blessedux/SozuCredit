@@ -8,7 +8,6 @@
 import { memo, useState, useEffect, useRef, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Send, ScanQrCode, Check, X, Loader2 } from "lucide-react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useSendPayment } from "@/hooks/use-send-payment"
@@ -215,31 +214,78 @@ export const SendPaymentModal = memo(function SendPaymentModal({
     setPendingAutoResolve(true) // useEffect will call handleResolveRecipient after state settles
   }
 
-  const handleClose = (open: boolean) => {
-    if (!open) {
-      resetSendPayment()
-      onClose()
-    }
+  const handleClose = () => {
+    resetSendPayment()
+    onClose()
   }
+
+  const availableBalance = defindexBalance?.totalBalance ?? 0
 
   return (
     <>
-    <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent
-        className="border-white/[0.12] text-white max-w-md"
-        overlayClassName="bg-black/30 backdrop-blur-sm"
-        style={{
-          background: "rgba(8,8,10,0.72)",
-          backdropFilter: "blur(28px) saturate(160%)",
-          WebkitBackdropFilter: "blur(28px) saturate(160%)",
-        }}
-      >
-        <DialogHeader className="sr-only">
-          <DialogTitle>{t.sendPayment}</DialogTitle>
-          <DialogDescription>{t.sendPaymentDesc}</DialogDescription>
-        </DialogHeader>
+    <AnimatePresence>
+    {isOpen && (
+      <>
+        {/* Light backdrop — balance card above stays clearly visible */}
+        <motion.div
+          key="send-backdrop"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18 }}
+          className="fixed inset-0 z-40 bg-black/25 backdrop-blur-[2px]"
+          onClick={handleClose}
+        />
+
+        {/* Bottom sheet — top edge aligns with balance card */}
+        <motion.div
+          key="send-sheet"
+          initial={{ y: "100%" }}
+          animate={{ y: 0 }}
+          exit={{ y: "100%" }}
+          drag="y"
+          dragConstraints={{ top: 0 }}
+          dragElastic={{ top: 0.04, bottom: 0.28 }}
+          dragMomentum={false}
+          onDragEnd={(_, info) => {
+            if (info.offset.y > 80 || info.velocity.y > 450) handleClose()
+          }}
+          transition={{ type: "spring", damping: 32, stiffness: 300 }}
+          className="fixed inset-x-4 z-50 mx-auto flex max-w-md flex-col rounded-[28px] text-white"
+          style={{
+            bottom: "max(1rem, env(safe-area-inset-bottom))",
+            top: "clamp(100px, 18dvh, 160px)",
+            background: "rgba(8,8,10,0.88)",
+            backdropFilter: "blur(32px) saturate(160%)",
+            WebkitBackdropFilter: "blur(32px) saturate(160%)",
+          }}
+        >
+          {/* Drag handle */}
+          <div className="mx-auto mt-3 mb-0 h-[3px] w-8 shrink-0 rounded-full bg-white/[0.10]" />
+
+          {/* Balance reference — left-aligned to match balance card's number position */}
+          <div className="flex flex-col items-start px-5 pt-4 pb-2 shrink-0">
+            <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-white/30 mb-1">
+              Disponible
+            </p>
+            <p
+              className="font-bold leading-none tracking-tight tabular-nums text-white"
+              style={{ fontSize: "clamp(1.875rem, 8vw, 3rem)" }}
+            >
+              {availableBalance.toFixed(2)}
+              <span className="ml-2 text-[0.45em] font-semibold text-white/40 tracking-widest align-baseline">
+                USDC
+              </span>
+            </p>
+          </div>
+
+          {/* Divider */}
+          <div className="mx-5 mb-1 h-px bg-white/[0.07] shrink-0" />
+
+          {/* Scrollable form content */}
+          <div className="flex-1 overflow-y-auto px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         {sendStep === "recipient" ? (
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 pt-3 pb-2">
             {!isManualMode ? (
               <>
                 <motion.div
@@ -413,7 +459,7 @@ export const SendPaymentModal = memo(function SendPaymentModal({
             )}
           </div>
         ) : (
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 pt-3 pb-2">
               {/* Recipient confirmation row */}
               <div className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2">
                 <span className="text-white/40 text-xs uppercase tracking-widest">To</span>
@@ -478,8 +524,11 @@ export const SendPaymentModal = memo(function SendPaymentModal({
             </Button>
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+          </div>{/* end scrollable form */}
+        </motion.div>{/* end sheet */}
+      </>
+    )}
+    </AnimatePresence>
 
     <QrScannerModal
       isOpen={isScannerOpen}
