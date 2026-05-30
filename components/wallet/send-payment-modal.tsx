@@ -5,9 +5,9 @@
 
 "use client"
 
-import { memo, useState, useEffect } from "react"
-import { motion } from "framer-motion"
-import { Send, ScanQrCode } from "lucide-react"
+import { memo, useState, useEffect, useRef, useCallback } from "react"
+import { motion, AnimatePresence } from "framer-motion"
+import { Send, ScanQrCode, Check, X, Loader2 } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -77,6 +77,81 @@ export const SendPaymentModal = memo(function SendPaymentModal({
   const { t } = useWalletLanguage()
   const [isScannerOpen, setIsScannerOpen] = useState(false)
   const [pendingAutoResolve, setPendingAutoResolve] = useState(false)
+
+  // Real-time recipient validation
+  type ValidationState = "idle" | "checking" | "valid" | "invalid"
+  const [validationState, setValidationState] = useState<ValidationState>("idle")
+  const [validationLabel, setValidationLabel] = useState<string>("")
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const validateRecipient = useCallback(async (value: string) => {
+    const trimmed = value.trim()
+    if (!trimmed || trimmed.length < 2) {
+      setValidationState("idle")
+      return
+    }
+
+    // Stellar address — validate format locally, no API needed
+    if (/^G[A-Z0-9]{55}$/.test(trimmed)) {
+      setValidationState("valid")
+      setValidationLabel("Dirección válida")
+      return
+    }
+
+    // Partial Stellar address being typed — stay idle
+    if (trimmed.startsWith("G") && trimmed.length < 56) {
+      setValidationState("idle")
+      return
+    }
+
+    // SozuTag — call the API
+    const tag = trimmed.startsWith("$") ? trimmed : `$${trimmed}`
+    setValidationState("checking")
+    try {
+      const userId = typeof window !== "undefined"
+        ? (localStorage.getItem("dev_username") ?? sessionStorage.getItem("dev_username"))
+        : null
+      if (!userId) { setValidationState("idle"); return }
+      const res = await fetch("/api/wallet/resolve-recipient", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-user-id": userId },
+        body: JSON.stringify({ recipient: tag }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data?.walletAddress) {
+          setValidationState("valid")
+          setValidationLabel(tag)
+        } else {
+          setValidationState("invalid")
+          setValidationLabel("Tag no encontrado")
+        }
+      } else {
+        setValidationState("invalid")
+        setValidationLabel("Tag no encontrado")
+      }
+    } catch {
+      setValidationState("idle")
+    }
+  }, [])
+
+  // Debounce validation on input change
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (!sendRecipient.trim() || isManualMode) {
+      setValidationState("idle")
+      return
+    }
+    debounceRef.current = setTimeout(() => {
+      void validateRecipient(sendRecipient)
+    }, 550)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [sendRecipient, isManualMode, validateRecipient])
+
+  // Reset validation when modal closes
+  useEffect(() => {
+    if (!isOpen) setValidationState("idle")
+  }, [isOpen])
 
   const parsedAmount = parseFloat(sendAmount)
   const hasValidAmount = sendAmount.length > 0 && !Number.isNaN(parsedAmount) && parsedAmount > 0
@@ -150,7 +225,15 @@ export const SendPaymentModal = memo(function SendPaymentModal({
   return (
     <>
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="bg-black/80 backdrop-blur-md border-white/20 text-white max-w-md">
+      <DialogContent
+        className="border-white/[0.12] text-white max-w-md"
+        overlayClassName="bg-black/30 backdrop-blur-sm"
+        style={{
+          background: "rgba(8,8,10,0.72)",
+          backdropFilter: "blur(28px) saturate(160%)",
+          WebkitBackdropFilter: "blur(28px) saturate(160%)",
+        }}
+      >
         <DialogHeader className="sr-only">
           <DialogTitle>{t.sendPayment}</DialogTitle>
           <DialogDescription>{t.sendPaymentDesc}</DialogDescription>
@@ -180,9 +263,45 @@ export const SendPaymentModal = memo(function SendPaymentModal({
                         }
                       }}
                       placeholder="$Sozutag"
-                      className={`bg-white/5 border-white/20 text-white placeholder:text-white/40 text-lg h-14 pr-14 ${recipientError ? 'border-red-500/50' : ''}`}
+                      className={`bg-white/5 text-white placeholder:text-white/40 text-lg h-14 pr-[4.5rem] transition-colors ${
+                        recipientError
+                          ? "border-red-500/60"
+                          : validationState === "valid"
+                          ? "border-emerald-500/60"
+                          : validationState === "invalid"
+                          ? "border-red-500/40"
+                          : "border-white/20"
+                      }`}
                       autoFocus
                     />
+
+                    {/* Validation indicator */}
+                    <div className="absolute right-12 flex items-center">
+                      <AnimatePresence mode="wait">
+                        {validationState === "checking" && (
+                          <motion.span key="checking"
+                            initial={{ opacity: 0, scale: 0.6 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.6 }}
+                          >
+                            <Loader2 className="w-4 h-4 text-white/35 animate-spin" />
+                          </motion.span>
+                        )}
+                        {validationState === "valid" && (
+                          <motion.span key="valid"
+                            initial={{ opacity: 0, scale: 0.6 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.6 }}
+                          >
+                            <Check className="w-4 h-4 text-emerald-400" />
+                          </motion.span>
+                        )}
+                        {validationState === "invalid" && (
+                          <motion.span key="invalid"
+                            initial={{ opacity: 0, scale: 0.6 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.6 }}
+                          >
+                            <X className="w-4 h-4 text-red-400" />
+                          </motion.span>
+                        )}
+                      </AnimatePresence>
+                    </div>
+
                     <button
                       type="button"
                       onClick={() => setIsScannerOpen(true)}
@@ -192,15 +311,26 @@ export const SendPaymentModal = memo(function SendPaymentModal({
                       <ScanQrCode className="w-5 h-5" />
                     </button>
                   </div>
-                  {recipientError && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="text-red-400 text-sm text-center"
-                    >
-                      {recipientError}
-                    </motion.div>
-                  )}
+
+                  {/* Validation / error label below input */}
+                  <AnimatePresence>
+                    {(recipientError || validationState === "invalid" || validationState === "valid") && (
+                      <motion.p
+                        key={recipientError || validationState}
+                        initial={{ opacity: 0, y: -6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        transition={{ duration: 0.15 }}
+                        className={`text-[12px] px-1 ${
+                          recipientError || validationState === "invalid"
+                            ? "text-red-400"
+                            : "text-emerald-400"
+                        }`}
+                      >
+                        {recipientError || (validationState === "invalid" ? "Tag no encontrado" : validationLabel)}
+                      </motion.p>
+                    )}
+                  </AnimatePresence>
                 </motion.div>
 
                 <Button
