@@ -1,6 +1,16 @@
 // Service Worker for SozuCredit PWA
-const CACHE_NAME = 'sozucredit-v3';
-const RUNTIME_CACHE = 'sozucredit-runtime-v3';
+const CACHE_NAME = 'sozucredit-v4';
+const RUNTIME_CACHE = 'sozucredit-runtime-v4';
+
+function isDevTunnelHost(hostname) {
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname.endsWith('.ngrok-free.app') ||
+    hostname.endsWith('.ngrok.app') ||
+    hostname.endsWith('.ngrok.io')
+  );
+}
 
 // Precache: icon used by the inline preloader + manifest so the splash paints offline
 const PRECACHE_ASSETS = [
@@ -34,6 +44,9 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
+
+  // Dev tunnels: never intercept — ngrok interstitials break SW fetch and surface "Offline"
+  if (isDevTunnelHost(self.location.hostname)) return;
 
   if (request.method !== 'GET') return;
   if (!url.protocol.startsWith('http')) return;

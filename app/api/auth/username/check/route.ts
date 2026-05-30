@@ -1,10 +1,14 @@
-import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
+import { getWalletTexts, type WalletLanguage } from "@/lib/wallet-texts"
 
 export async function OPTIONS(request: NextRequest) {
   return handleOPTIONS(request)
+}
+
+function resolveLang(raw: unknown): WalletLanguage {
+  return raw === "en" ? "en" : "es"
 }
 
 /**
@@ -13,24 +17,28 @@ export async function OPTIONS(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { username } = await request.json()
+    const body = await request.json()
+    const { username, lang: rawLang } = body
+    const lang = resolveLang(rawLang)
+    const t = getWalletTexts(lang)
 
     if (!username || typeof username !== "string") {
       return NextResponse.json(
         { 
           available: false,
-          error: "Username is required" 
+          error: lang === "es" ? "Se requiere un nombre de usuario" : "Username is required",
         },
         { status: 400, headers: corsHeaders(request) }
       )
     }
 
-    // Basic format validation (should match client-side validation)
     if (username.length < 3 || username.length > 30) {
       return NextResponse.json(
         { 
           available: false,
-          error: "Username must be between 3 and 30 characters" 
+          error: lang === "es"
+            ? "El nombre debe tener entre 3 y 30 caracteres"
+            : "Username must be between 3 and 30 characters",
         },
         { status: 400, headers: corsHeaders(request) }
       )
@@ -40,15 +48,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { 
           available: false,
-          error: "Username can only contain letters, numbers, and underscores" 
+          error: lang === "es"
+            ? "Solo letras, números y guion bajo"
+            : "Username can only contain letters, numbers, and underscores",
         },
         { status: 400, headers: corsHeaders(request) }
       )
     }
 
-    // Check if username exists in database
-    // Use service role client to bypass RLS for username availability checks
-    // This is a legitimate use case - we're only checking existence, not exposing sensitive data
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
     
@@ -57,8 +64,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { 
           available: false,
-          error: "Service not available",
-          message: "Unable to check username availability. Please try again."
+          error: lang === "es" ? "Servicio no disponible" : "Service not available",
+          message: t.authCouldNotCheck,
         },
         { status: 500, headers: corsHeaders(request) }
       )
@@ -80,13 +87,12 @@ export async function POST(request: NextRequest) {
     }
     
     if (checkError && checkError.code !== "PGRST116") {
-      // PGRST116 = no rows returned (expected when username is available)
       console.error("[Username Check] Error checking for existing username:", checkError)
       return NextResponse.json(
         { 
           available: false,
-          error: "Error checking username availability",
-          message: "Unable to verify username availability. Please try again."
+          error: lang === "es" ? "Error al verificar disponibilidad" : "Error checking username availability",
+          message: t.authCouldNotCheck,
         },
         { status: 500, headers: corsHeaders(request) }
       )
@@ -99,21 +105,18 @@ export async function POST(request: NextRequest) {
           available: false,
           exists: true,
           pinEnabled,
-          message: pinEnabled
-            ? "This name is taken. Sign in with your passkey or PIN."
-            : "This name is taken. Sign in with your passkey.",
+          message: pinEnabled ? t.authUsernameTakenPasskeyPin : t.authUsernameTakenPasskey,
         },
         { status: 200, headers: corsHeaders(request) }
       )
     }
 
-    // Username is available
     return NextResponse.json(
       {
         available: true,
         exists: false,
         pinEnabled: false,
-        message: "This name is free.",
+        message: t.authUsernameFree,
       },
       { status: 200, headers: corsHeaders(request) }
     )
@@ -123,7 +126,7 @@ export async function POST(request: NextRequest) {
       { 
         available: false,
         error: "Internal server error",
-        message: "Unable to check username availability. Please try again."
+        message: getWalletTexts("es").authCouldNotCheck,
       },
       { status: 500, headers: corsHeaders(request) }
     )

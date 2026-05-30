@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Check, Loader2, Fingerprint, Hash } from "lucide-react"
+import { useWalletLanguage } from "@/lib/wallet-language"
 
 export interface TagInputModalProps {
   isOpen: boolean
@@ -35,6 +36,7 @@ export function TagInputModal({
   resumeWithTag,
   prefillTag,
 }: TagInputModalProps) {
+  const { t, language } = useWalletLanguage()
   const [step, setStep] = useState<Step>("tag")
   const [tag, setTag] = useState("")
   const [pin, setPin] = useState("")
@@ -49,12 +51,12 @@ export function TagInputModal({
 
   const validateTag = (value: string): boolean => {
     if (value.length < 3 || value.length > 30) {
-      setError("3–30 characters")
+      setError(t.authTagLengthError)
       setAvailabilityStatus("idle")
       return false
     }
     if (!/^[a-zA-Z0-9_]+$/.test(value)) {
-      setError("Letters, numbers, underscore only")
+      setError(t.authTagCharsError)
       setAvailabilityStatus("idle")
       return false
     }
@@ -77,13 +79,13 @@ export function TagInputModal({
       const response = await fetch("/api/auth/username/check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username }),
+        body: JSON.stringify({ username, lang: language }),
       })
       const data = await response.json()
 
       if (data.available) {
         setAvailabilityStatus("available")
-        setAvailabilityMessage(typeof data.message === "string" ? data.message : "")
+        setAvailabilityMessage(typeof data.message === "string" ? data.message : t.authUsernameFree)
         setPinEnabled(false)
       } else {
         setAvailabilityStatus("taken")
@@ -92,10 +94,10 @@ export function TagInputModal({
       }
     } catch {
       setAvailabilityStatus("error")
-      setAvailabilityMessage("Could not check. Try again.")
+      setAvailabilityMessage(t.authCouldNotCheck)
       setPinEnabled(false)
     }
-  }, [])
+  }, [language, t.authCouldNotCheck, t.authUsernameFree])
 
   useEffect(() => {
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
@@ -141,19 +143,19 @@ export function TagInputModal({
       return
     }
     if (resumeWithTag) {
-      const t = resumeWithTag.replace(/^\$/, "").trim()
-      setTag(t)
+      const resumeTag = resumeWithTag.replace(/^\$/, "").trim()
+      setTag(resumeTag)
       setStep("signin")
       setPin("")
       setError("")
-      void checkUsernameAvailability(t)
+      void checkUsernameAvailability(resumeTag)
     } else if (prefillTag) {
-      const t = prefillTag.replace(/^\$/, "").trim()
-      setTag(t)
+      const prefill = prefillTag.replace(/^\$/, "").trim()
+      setTag(prefill)
       setStep("tag")
       setPin("")
       setError("")
-      void checkUsernameAvailability(t)
+      void checkUsernameAvailability(prefill)
     }
   }, [isOpen, resumeWithTag, prefillTag, checkUsernameAvailability])
 
@@ -191,7 +193,7 @@ export function TagInputModal({
           setError("")
           setStep("signin")
         } else {
-          setError(result.error || "Could not sign in")
+          setError(result.error || t.authCouldNotSignIn)
         }
       }
     } finally {
@@ -202,7 +204,7 @@ export function TagInputModal({
   const handlePinSubmit = async () => {
     if (!validateTag(trimmed)) return
     if (!/^\d{6,12}$/.test(pin)) {
-      setError("PIN: 6–12 digits")
+      setError(t.authPinLengthError)
       return
     }
     setPinBusy(true)
@@ -210,7 +212,7 @@ export function TagInputModal({
     try {
       const result = await onLoginPin(trimmed, pin)
       if (!result.ok) {
-        setError(result.error || "Could not sign in")
+        setError(result.error || t.authCouldNotSignIn)
       }
     } finally {
       setPinBusy(false)
@@ -237,19 +239,18 @@ export function TagInputModal({
         {step === "tag" ? (
           <div className="space-y-8 pt-1 pb-2">
             <div className="space-y-1 text-center">
-              <p className="text-[15px] font-light tracking-wide text-white/90">Choose your name.</p>
-              <p className="text-[13px] font-extralight tracking-wide text-white/55">Register on the internet.</p>
+              <p className="text-[15px] font-light tracking-wide text-white/90">{t.authChooseName}</p>
+              <p className="text-[13px] font-extralight tracking-wide text-white/55">{t.authRegisterOnInternet}</p>
               <button
                 type="button"
                 onClick={() => setLearnOpen((v) => !v)}
                 className="mt-2 text-[10px] tracking-[0.2em] uppercase text-white/35 hover:text-white/50 transition-colors"
               >
-                Learn more
+                {t.authLearnMore}
               </button>
               {learnOpen && (
                 <p className="text-left text-[11px] leading-relaxed text-white/45 pt-2 px-1 border-t border-white/5 mt-3">
-                  Your name (Sozu tag) is your handle. A passkey on this device protects access; you may add a backup
-                  PIN in Settings. Nothing here is financial advice.
+                  {t.authLearnMoreBody}
                 </p>
               )}
             </div>
@@ -260,7 +261,7 @@ export function TagInputModal({
                 value={tag}
                 onChange={handleChange}
                 onKeyDown={handleKeyDownTag}
-                placeholder="name"
+                placeholder={t.authTagPlaceholder}
                 className={`h-11 bg-transparent border-0 border-b rounded-none text-center text-lg font-light tracking-[0.15em] text-white placeholder:text-white/25 focus-visible:ring-0 focus-visible:border-b-white/40 px-0 ${
                   availabilityStatus === "available"
                     ? "border-b-emerald-500/40"
@@ -304,13 +305,13 @@ export function TagInputModal({
               disabled={!canProceedTag}
               className="w-full h-11 rounded-full bg-white/95 text-black text-sm font-normal tracking-widest hover:bg-white disabled:opacity-30"
             >
-              {availabilityStatus === "taken" ? "Sign in" : "Register"}
+              {availabilityStatus === "taken" ? t.authSignIn : t.authRegister}
             </Button>
           </div>
         ) : (
           <div className="space-y-6 pt-1 pb-2">
             <div className="text-center space-y-1">
-              <p className="text-[11px] tracking-[0.25em] uppercase text-white/35">Sign in</p>
+              <p className="text-[11px] tracking-[0.25em] uppercase text-white/35">{t.authSignIn}</p>
               <p className="text-base font-light text-white/90 tracking-wide">{trimmed}</p>
             </div>
 
@@ -327,7 +328,7 @@ export function TagInputModal({
               ) : (
                 <>
                   <Fingerprint className="w-4 h-4 opacity-70" />
-                  Passkey
+                  {t.authPasskey}
                 </>
               )}
             </Button>
@@ -336,7 +337,7 @@ export function TagInputModal({
               <div className="space-y-3 pt-2 border-t border-white/10">
                 <Label className="text-[10px] tracking-[0.2em] uppercase text-white/30 flex items-center gap-1.5">
                   <Hash className="w-3 h-3" />
-                  Backup PIN
+                  {t.authBackupPin}
                 </Label>
                 <Input
                   type="password"
@@ -344,7 +345,7 @@ export function TagInputModal({
                   autoComplete="one-time-code"
                   value={pin}
                   onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 12))}
-                  placeholder="6–12 digits"
+                  placeholder={t.authPinPlaceholder}
                   className="h-10 bg-white/5 border-white/10 text-center text-sm tracking-widest"
                 />
                 <Button
@@ -354,12 +355,12 @@ export function TagInputModal({
                   disabled={pinBusy || pin.length < 6}
                   className="w-full text-white/60 hover:text-white hover:bg-white/5 text-xs"
                 >
-                  {pinBusy ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Continue with PIN"}
+                  {pinBusy ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : t.authContinueWithPin}
                 </Button>
               </div>
             ) : (
               <p className="text-[10px] text-center text-white/30 leading-relaxed">
-                No backup PIN on this account yet. Use your passkey, or set a PIN in Settings after you sign in.
+                {t.authNoBackupPin}
               </p>
             )}
 
@@ -372,7 +373,7 @@ export function TagInputModal({
               }}
               className="w-full text-[10px] tracking-[0.2em] uppercase text-white/30 hover:text-white/45 pt-2"
             >
-              Back
+              {t.authBack}
             </button>
           </div>
         )}

@@ -103,10 +103,9 @@ export function MobileAppShell() {
     <WalletLanguageProvider>
       <WalletDataProvider>
         <div
-          className={`overflow-hidden select-none touch-pan-x ${
+          className={`sozu-app-shell sozu-app-viewport overscroll-none select-none touch-pan-x ${
             isSendModalOpen ? "cursor-default" : "cursor-grab active:cursor-grabbing"
           }`}
-          style={{ position: "fixed", inset: 0 }}
       onTouchStart={swipeHandlers.onTouchStart}
       onTouchMove={swipeHandlers.onTouchMove}
       onTouchEnd={swipeHandlers.onTouchEnd}
@@ -116,7 +115,7 @@ export function MobileAppShell() {
       onMouseLeave={swipeHandlers.onMouseLeave}
     >
       <div
-        className="flex h-full"
+        className="flex h-full overflow-hidden"
         style={{
           width: `${PANEL_COUNT * 100}%`,
           transform: `translateX(${translateX}%)`,

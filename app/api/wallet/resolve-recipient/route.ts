@@ -4,6 +4,10 @@ import {
   isValidSozuTag,
   normalizeSozuTag,
 } from "@/lib/payment/sozu-tag-lookup"
+import {
+  isValidStellarReceiveAddress,
+  normalizeStellarAddressInput,
+} from "@/lib/payment/stellar-address"
 
 const corsHeaders = (request: NextRequest) => ({
   "Access-Control-Allow-Origin": "*",
@@ -26,20 +30,26 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const sozuTagLookup = normalizeSozuTag(rawRecipient)
+    const trimmed = rawRecipient.trim()
+    const stellarDirect = normalizeStellarAddressInput(trimmed)
+
+    // Stellar address (classic G or Soroban C) — return as-is
+    if (isValidStellarReceiveAddress(stellarDirect)) {
+      return NextResponse.json(
+        {
+          walletAddress: stellarDirect,
+          addressType: stellarDirect.startsWith("C") ? "contract" : "classic",
+        },
+        { headers: corsHeaders(request) }
+      )
+    }
+
+    const sozuTagLookup = normalizeSozuTag(trimmed)
 
     if (!sozuTagLookup) {
       return NextResponse.json(
         { error: "Recipient is required" },
         { status: 400, headers: corsHeaders(request) }
-      )
-    }
-
-    // Stellar address — return as-is
-    if (/^G[A-Z0-9]{55}$/.test(sozuTagLookup)) {
-      return NextResponse.json(
-        { walletAddress: sozuTagLookup },
-        { headers: corsHeaders(request) }
       )
     }
 
@@ -124,12 +134,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (
-      wallet.public_key.length !== 56 ||
-      !wallet.public_key.startsWith("G")
-    ) {
+    const pk = wallet.public_key.trim().toUpperCase()
+    if (!isValidStellarReceiveAddress(pk)) {
       console.error("[Resolve Recipient] Invalid wallet public_key format:", {
         length: wallet.public_key?.length,
+        prefix: wallet.public_key?.[0],
       })
       return NextResponse.json(
         { error: "Invalid wallet address format. Please contact support." },
@@ -141,9 +150,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       {
-        walletAddress: wallet.public_key,
+        walletAddress: pk,
         tag: profile.username,
         network: wallet.network,
+        addressType: pk.startsWith("C") ? "contract" : "classic",
       },
       { headers: corsHeaders(request) }
     )

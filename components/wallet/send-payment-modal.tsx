@@ -25,6 +25,7 @@ import {
   isValidSozuTag,
   normalizeSozuTag,
 } from "@/lib/payment/sozu-tag-lookup"
+import { isValidStellarReceiveAddress } from "@/lib/payment/stellar-address"
 import { formatBalance, getUserId } from "@/lib/wallet-utils"
 import type { ReferenceFiat } from "@/lib/treasury/types"
 
@@ -156,15 +157,16 @@ export const SendPaymentModal = memo(function SendPaymentModal({
       return
     }
 
-    // Stellar address — validate format locally, no API needed
-    if (/^G[A-Z0-9]{55}$/.test(trimmed)) {
+    const addr = trimmed.toUpperCase()
+    // Stellar address (G or C) — validate format locally, no API needed
+    if (isValidStellarReceiveAddress(addr)) {
       setValidationState("valid")
-      setValidationLabel("Dirección válida")
+      setValidationLabel(addr.startsWith("C") ? "Contrato válido" : "Dirección válida")
       return
     }
 
     // Partial Stellar address being typed — stay idle
-    if (trimmed.startsWith("G") && trimmed.length < 56) {
+    if ((trimmed.startsWith("G") || trimmed.startsWith("C")) && trimmed.length < 56) {
       setValidationState("idle")
       return
     }

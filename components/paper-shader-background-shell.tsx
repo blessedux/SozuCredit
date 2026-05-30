@@ -59,13 +59,17 @@ export function PaperShaderBackgroundShell({
 
   return (
     <>
-      <div aria-hidden className="pointer-events-none fixed inset-0 z-0 bg-black" />
+      <div aria-hidden className="sozu-app-viewport sozu-app-viewport-bg pointer-events-none z-0">
+        <div className="sozu-app-viewport-inner bg-black" />
+      </div>
       {shaderActive ? (
-        <AuthOrangeOrbShader
-          className="pointer-events-none fixed inset-0 z-0"
-          variant={variant}
-          tier={tier}
-        />
+        <div className="sozu-app-viewport pointer-events-none z-0">
+          <AuthOrangeOrbShader
+            className="sozu-app-viewport-inner"
+            variant={variant}
+            tier={tier}
+          />
+        </div>
       ) : null}
       {children}
     </>

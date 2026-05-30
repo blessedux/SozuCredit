@@ -17,6 +17,7 @@ import {
   type SendAmountCurrency,
 } from "@/lib/payment/send-amount-currency"
 import { normalizeSozuTag } from "@/lib/payment/sozu-tag-lookup"
+import { isValidStellarReceiveAddress } from "@/lib/payment/stellar-address"
 import type { ReferenceFiat } from "@/lib/treasury/types"
 
 export function useSendPayment(
@@ -87,14 +88,14 @@ export function useSendPayment(
 
       // If in manual mode and recipient is already a Stellar address, use it directly
       if (isManualMode) {
-        const isStellarAddress = /^G[A-Z0-9]{55}$/.test(sendRecipient.trim())
-        if (isStellarAddress) {
+        const addr = sendRecipient.trim().toUpperCase()
+        if (isValidStellarReceiveAddress(addr)) {
           console.log("[Resolve Recipient] ✅ Manual mode: Using Stellar address directly")
-          setResolvedRecipientAddress(sendRecipient.trim())
+          setResolvedRecipientAddress(addr)
           setSendStep("amount")
           return
         } else {
-          throw new Error("Invalid Stellar wallet address format")
+          throw new Error("Invalid Stellar wallet address (use G… or C…)")
         }
       }
 

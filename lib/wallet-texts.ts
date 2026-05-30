@@ -308,6 +308,36 @@ export type WalletTexts = {
   mathVsLocalFiat: string;
   mathVsLocalFiatDetail: string;
   mathPerYear: string;
+  // Auth
+  authEnter: string;
+  authPasskeyCaption: string;
+  authLoading: string;
+  authPwaBannerIos: string;
+  authPwaBannerAndroid: string;
+  authPwaInstallIos: string;
+  authPwaInstallAndroid: string;
+  authClose: string;
+  authChooseName: string;
+  authRegisterOnInternet: string;
+  authLearnMore: string;
+  authLearnMoreBody: string;
+  authTagPlaceholder: string;
+  authSignIn: string;
+  authRegister: string;
+  authTagLengthError: string;
+  authTagCharsError: string;
+  authCouldNotCheck: string;
+  authCouldNotSignIn: string;
+  authPinLengthError: string;
+  authPasskey: string;
+  authBackupPin: string;
+  authPinPlaceholder: string;
+  authContinueWithPin: string;
+  authNoBackupPin: string;
+  authBack: string;
+  authUsernameFree: string;
+  authUsernameTakenPasskey: string;
+  authUsernameTakenPasskeyPin: string;
 };
 
 export type WalletLanguage = "en" | "es";
@@ -654,6 +684,38 @@ export const walletTexts = {
     mathVsLocalFiat: "vs mantener {fiat}",
     mathVsLocalFiatDetail: "Pérdida estimada en moneda local (inflación + FX)",
     mathPerYear: "/ yr",
+    // Auth
+    authEnter: "Entrar",
+    authPasskeyCaption: "Passkey en este dispositivo",
+    authLoading: "Cargando…",
+    authPwaBannerIos: "Instálala desde Safari → Compartir → Agregar a inicio",
+    authPwaBannerAndroid: "Guárdala en tu pantalla de inicio para acceso instantáneo",
+    authPwaInstallIos: "Cómo instalar",
+    authPwaInstallAndroid: "Agregar a inicio",
+    authClose: "Cerrar",
+    authChooseName: "Elige tu nombre.",
+    authRegisterOnInternet: "Regístrate en internet.",
+    authLearnMore: "Saber más",
+    authLearnMoreBody:
+      "Tu nombre (Sozu tag) es tu identificador. Un passkey en este dispositivo protege el acceso; puedes agregar un PIN de respaldo en Configuración. Nada aquí es asesoría financiera.",
+    authTagPlaceholder: "nombre",
+    authSignIn: "Iniciar sesión",
+    authRegister: "Registrarse",
+    authTagLengthError: "3–30 caracteres",
+    authTagCharsError: "Solo letras, números y guion bajo",
+    authCouldNotCheck: "No se pudo verificar. Intenta de nuevo.",
+    authCouldNotSignIn: "No se pudo iniciar sesión",
+    authPinLengthError: "PIN: 6–12 dígitos",
+    authPasskey: "Passkey",
+    authBackupPin: "PIN de respaldo",
+    authPinPlaceholder: "6–12 dígitos",
+    authContinueWithPin: "Continuar con PIN",
+    authNoBackupPin:
+      "Aún no hay PIN de respaldo en esta cuenta. Usa tu passkey o configura un PIN en Ajustes después de iniciar sesión.",
+    authBack: "Volver",
+    authUsernameFree: "Este nombre está disponible.",
+    authUsernameTakenPasskey: "Este nombre ya existe. Inicia sesión con tu passkey.",
+    authUsernameTakenPasskeyPin: "Este nombre ya existe. Inicia sesión con passkey o PIN.",
   },
   en: {
     // Profile
@@ -962,6 +1024,38 @@ export const walletTexts = {
     mathVsLocalFiat: "vs holding {fiat}",
     mathVsLocalFiatDetail: "Estimated loss in local currency (inflation + FX)",
     mathPerYear: "/ yr",
+    // Auth
+    authEnter: "Enter",
+    authPasskeyCaption: "Passkey on this device",
+    authLoading: "Loading…",
+    authPwaBannerIos: "Install from Safari → Share → Add to Home Screen",
+    authPwaBannerAndroid: "Save to your home screen for instant access",
+    authPwaInstallIos: "How to install",
+    authPwaInstallAndroid: "Add to home screen",
+    authClose: "Close",
+    authChooseName: "Choose your name.",
+    authRegisterOnInternet: "Register on the internet.",
+    authLearnMore: "Learn more",
+    authLearnMoreBody:
+      "Your name (Sozu tag) is your handle. A passkey on this device protects access; you may add a backup PIN in Settings. Nothing here is financial advice.",
+    authTagPlaceholder: "name",
+    authSignIn: "Sign in",
+    authRegister: "Register",
+    authTagLengthError: "3–30 characters",
+    authTagCharsError: "Letters, numbers, underscore only",
+    authCouldNotCheck: "Could not check. Try again.",
+    authCouldNotSignIn: "Could not sign in",
+    authPinLengthError: "PIN: 6–12 digits",
+    authPasskey: "Passkey",
+    authBackupPin: "Backup PIN",
+    authPinPlaceholder: "6–12 digits",
+    authContinueWithPin: "Continue with PIN",
+    authNoBackupPin:
+      "No backup PIN on this account yet. Use your passkey, or set a PIN in Settings after you sign in.",
+    authBack: "Back",
+    authUsernameFree: "This name is free.",
+    authUsernameTakenPasskey: "This name is taken. Sign in with your passkey.",
+    authUsernameTakenPasskeyPin: "This name is taken. Sign in with your passkey or PIN.",
   },
 } as const;
 

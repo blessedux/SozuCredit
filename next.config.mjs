@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  allowedDevOrigins: ['*.ngrok-free.app', '*.ngrok.app', '*.ngrok.io'],
   typescript: {
     ignoreBuildErrors: false, // Fixed: Enable type checking for better type safety
   },

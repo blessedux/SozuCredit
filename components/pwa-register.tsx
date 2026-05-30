@@ -1,12 +1,23 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { shouldRegisterServiceWorker } from '@/lib/pwa-host'
 
 export function PWARegister() {
   const updateIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
+
+    // ngrok / localhost: skip SW so failed tunnel fetches don't show plain "Offline"
+    if (!shouldRegisterServiceWorker()) {
+      void navigator.serviceWorker?.getRegistrations().then((registrations) => {
+        registrations.forEach((registration) => {
+          void registration.unregister()
+        })
+      })
+      return
+    }
 
     // Register service worker
     if ('serviceWorker' in navigator) {

@@ -194,7 +194,7 @@ export function WelcomeModal() {
               {/* Version */}
               <div className="text-center">
                 <p className="text-xs text-white/50">
-                  v 0.0.1
+                  v 0.2
                 </p>
               </div>
               

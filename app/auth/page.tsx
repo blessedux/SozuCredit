@@ -19,6 +19,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useState, useRef, useEffect, useCallback, Suspense } from "react"
 import { usePwaInstall } from "@/hooks/use-pwa-install"
 import { useAppViewportLock } from "@/hooks/use-app-viewport-lock"
+import { WalletLanguageProvider, useWalletLanguage } from "@/lib/wallet-language"
 
 function AuthPageContent() {
   const [isAuthenticating, setIsAuthenticating] = useState(false)
@@ -34,6 +35,7 @@ function AuthPageContent() {
   const searchParams = useSearchParams()
   const redirectingRef = useRef(false)
   const { canInstall, triggerInstall, isIos, isInstalled } = usePwaInstall()
+  const { t } = useWalletLanguage()
   // Stores a passkey credential captured during discovery-mode auth that failed
   // (credential not in DB). Passed to proceedWithRegistration so the user isn't
   // prompted for a second biometric after entering their SozuTag.
@@ -662,9 +664,7 @@ function AuthPageContent() {
                   Sozu
                 </p>
                 <p className="text-[11px] text-white/45 leading-tight mt-0.5">
-                  {isIos
-                    ? "Instálala desde Safari → Compartir → Agregar a inicio"
-                    : "Guárdala en tu pantalla de inicio para acceso instantáneo"}
+                  {isIos ? t.authPwaBannerIos : t.authPwaBannerAndroid}
                 </p>
               </div>
 
@@ -677,7 +677,7 @@ function AuthPageContent() {
                 }}
                 className="shrink-0 rounded-full bg-white px-3.5 py-1.5 text-[12px] font-semibold text-black hover:bg-white/90 active:scale-95 transition-transform"
               >
-                {isIos ? "Cómo instalar" : "Agregar a inicio"}
+                {isIos ? t.authPwaInstallIos : t.authPwaInstallAndroid}
               </button>
 
               {/* Dismiss */}
@@ -685,7 +685,7 @@ function AuthPageContent() {
                 type="button"
                 onClick={() => setPwaBannerDismissed(true)}
                 className="shrink-0 flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.08] text-white/35 hover:text-white/60 transition-colors"
-                aria-label="Cerrar"
+                aria-label={t.authClose}
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -711,7 +711,7 @@ function AuthPageContent() {
             className="w-32 h-32 md:w-40 md:h-40 object-contain"
           />
           <div className="text-white/60 text-sm font-medium">
-            v 0.1
+            v0.2
           </div>
         </div>
       </div>
@@ -759,13 +759,13 @@ function AuthPageContent() {
                 transition={{ duration: 0.15 }}
                 className="flex items-center"
               >
-                Enter
+                {t.authEnter}
               </motion.span>
             )}
           </AnimatePresence>
         </Button>
         <p className="max-w-sm px-2 text-center text-[10px] font-extralight tracking-[0.12em] text-white">
-          Passkey on this device
+          {t.authPasskeyCaption}
         </p>
 
         {/* PWA banner placeholder — actual banner is fixed at top, rendered below */}
@@ -826,7 +826,7 @@ function AuthPageContent() {
                 <button
                   onClick={() => setShowIosInstallModal(false)}
                   className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center shrink-0 ml-4"
-                  aria-label="Cerrar"
+                  aria-label={t.authClose}
                 >
                   <X className="w-3.5 h-3.5 text-white/60" />
                 </button>
@@ -899,12 +899,14 @@ function AuthPageContent() {
 
 export default function AuthPage() {
   return (
-    <Suspense fallback={
-      <div className="flex min-h-[var(--sozu-app-height,100lvh)] items-center justify-center bg-black text-white">
-        <div className="text-white">Loading...</div>
-      </div>
-    }>
-      <AuthPageContent />
-    </Suspense>
+    <WalletLanguageProvider>
+      <Suspense fallback={
+        <div className="flex min-h-[var(--sozu-app-height,100lvh)] items-center justify-center bg-black text-white">
+          <div className="text-white">Cargando…</div>
+        </div>
+      }>
+        <AuthPageContent />
+      </Suspense>
+    </WalletLanguageProvider>
   )
 }

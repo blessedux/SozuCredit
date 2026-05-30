@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { Horizon, Asset, TransactionBuilder, Networks, Operation, BASE_FEE, Account, Memo, Transaction, FeeBumpTransaction } from "@stellar/stellar-sdk"
 import { getStellarConfig } from "@/lib/turnkey/config"
 import { getStellarWallet } from "@/lib/turnkey/stellar-wallet"
+import { isValidStellarReceiveAddress } from "@/lib/payment/stellar-address"
 
 // Helper function to get transaction source (handles both Transaction and FeeBumpTransaction)
 function getTransactionSource(tx: Transaction | FeeBumpTransaction): string {
@@ -623,8 +624,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate destination address format
-    const isValidDestination = /^G[A-Z0-9]{55}$/.test(destination)
+    // Validate destination address format (classic G or Soroban contract C)
+    const destinationNorm =
+      typeof destination === "string" ? destination.trim().toUpperCase() : ""
+    const isValidDestination = isValidStellarReceiveAddress(destinationNorm)
     if (!isValidDestination) {
       console.error("[Payment API] ❌ Invalid destination address format:", destination)
       return NextResponse.json(
@@ -646,7 +649,7 @@ export async function POST(request: NextRequest) {
     })
     
     try {
-      const destAccount = await server.loadAccount(destination)
+      const destAccount = await server.loadAccount(destinationNorm)
       console.log("[Payment API] ✅ Destination account exists on network:", {
         sequence: destAccount.sequenceNumber(),
         balances: destAccount.balances.length,
@@ -709,7 +712,7 @@ export async function POST(request: NextRequest) {
     })
       .addOperation(
         Operation.payment({
-          destination,
+          destination: destinationNorm,
           asset: usdcAsset,
           amount: amountDecimal, // Use decimal format, not stroops
         })

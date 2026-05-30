@@ -49,6 +49,8 @@
   --sidebar-ring: oklch(0.708 0 0);
   /* Updated at runtime by ViewportHeightSync — see lib/sync-app-viewport-height.ts */
   --sozu-app-height: 100lvh;
+  --sozu-layout-height: 100lvh;
+  --sozu-viewport-gap: 0px;
   --sozu-visual-viewport-height: 100lvh;
 }
 
@@ -189,13 +191,12 @@
   html {
     @apply bg-black;
     background-color: #000000;
-    height: -webkit-fill-available;
     min-height: var(--sozu-app-height, 100lvh);
   }
   html.sozu-standalone,
   html.sozu-standalone body {
+    height: var(--sozu-app-height, 100lvh);
     min-height: var(--sozu-app-height, 100lvh);
-    min-height: -webkit-fill-available;
   }
   html.app-no-scroll,
   html.app-no-scroll body {
@@ -203,24 +204,46 @@
     overscroll-behavior: none;
     width: 100%;
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    right: 0;
     height: var(--sozu-app-height, 100lvh);
-    min-height: -webkit-fill-available;
+    min-height: var(--sozu-app-height, 100lvh);
     touch-action: pan-x pinch-zoom;
+  }
+  /* iOS standalone: layout viewport is shorter than screen — overflow:hidden on html
+     clips fixed layers in the home-indicator band (htmlClientHeight stays at innerHeight). */
+  html.sozu-standalone.app-no-scroll,
+  html.sozu-standalone.app-no-scroll body {
+    overflow: visible;
+    height: var(--sozu-layout-height, var(--sozu-app-height, 100lvh));
+    min-height: var(--sozu-layout-height, var(--sozu-app-height, 100lvh));
   }
   body {
     @apply bg-black text-foreground;
     background-color: #000000;
-    min-height: -webkit-fill-available;
     min-height: var(--sozu-app-height, 100lvh);
+  }
+  .sozu-app-viewport {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--sozu-app-height, 100lvh);
+    overflow: visible;
+  }
+  .sozu-app-viewport-bg {
+    background-color: #000000;
+  }
+  .sozu-app-viewport-inner {
+    position: absolute;
+    inset: 0;
   }
   .min-h-screen {
     min-height: var(--sozu-app-height, 100lvh);
-    min-height: -webkit-fill-available;
   }
   .h-screen {
     height: var(--sozu-app-height, 100lvh);
-    height: -webkit-fill-available;
   }
   .no-scrollbar {
     -ms-overflow-style: none;
