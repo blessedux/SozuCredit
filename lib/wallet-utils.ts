@@ -87,7 +87,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  */
 export function getUserId(): string | null {
   if (typeof window === "undefined") return null
-  const raw = sessionStorage.getItem("dev_username")
+  const raw = localStorage.getItem("dev_username") ?? sessionStorage.getItem("dev_username")
   if (!raw) return null
   if (!UUID_RE.test(raw)) {
     console.warn(

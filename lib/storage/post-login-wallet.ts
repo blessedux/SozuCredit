@@ -46,7 +46,7 @@ export async function alignWalletMaterialAfterLogin(
   }
 
   if (typeof window !== "undefined") {
-    sessionStorage.setItem("stellar_public_key", serverPk)
+    localStorage.setItem("stellar_public_key", serverPk)
     sessionStorage.setItem("wallet_sync_pending", "1")
   }
 

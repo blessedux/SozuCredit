@@ -572,7 +572,9 @@ export function useWalletData() {
 
     // Prefer client-derived public key (passkey-derived) to avoid showing
     // wallet-creation CTAs while we sync with the server/DB.
-    const sessionPublicKey = sessionStorage.getItem("stellar_public_key")
+    // Read from localStorage (persistent) falling back to sessionStorage (legacy).
+    const sessionPublicKey =
+      localStorage.getItem("stellar_public_key") ?? sessionStorage.getItem("stellar_public_key")
     if (sessionPublicKey && !walletAddress) {
       setWalletAddress(sessionPublicKey)
       void fetchWalletUSDCBalance(sessionPublicKey)
@@ -582,9 +584,15 @@ export function useWalletData() {
     }
 
     const checkAuth = () => {
-      const isAuthenticated = sessionStorage.getItem("dev_authenticated") === "true"
-      const rawUserId = sessionStorage.getItem("dev_username")
-      const hasStellar = !!sessionStorage.getItem("stellar_public_key")
+      // Read from localStorage (persistent session) falling back to sessionStorage (legacy tabs)
+      const isAuthenticated =
+        localStorage.getItem("dev_authenticated") === "true" ||
+        sessionStorage.getItem("dev_authenticated") === "true"
+      const rawUserId =
+        localStorage.getItem("dev_username") ?? sessionStorage.getItem("dev_username")
+      const hasStellar = !!(
+        localStorage.getItem("stellar_public_key") ?? sessionStorage.getItem("stellar_public_key")
+      )
 
       // Legacy dev shortcut created dev-user-* IDs with no passkey / no Stellar key — clear and send to auth.
       if (
@@ -592,6 +600,8 @@ export function useWalletData() {
         rawUserId.startsWith("dev-user-") &&
         !hasStellar
       ) {
+        localStorage.removeItem("dev_username")
+        localStorage.removeItem("dev_authenticated")
         sessionStorage.removeItem("dev_username")
         sessionStorage.removeItem("dev_authenticated")
         window.location.replace("/auth")
@@ -600,7 +610,9 @@ export function useWalletData() {
 
       if (!isAuthenticated) {
         setTimeout(() => {
-          const retryCheck = sessionStorage.getItem("dev_authenticated") === "true"
+          const retryCheck =
+            localStorage.getItem("dev_authenticated") === "true" ||
+            sessionStorage.getItem("dev_authenticated") === "true"
           if (!retryCheck) {
             window.location.replace("/auth")
           } else {

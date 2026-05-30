@@ -45,12 +45,12 @@ function AuthPageContent() {
       if (username && username !== "" && username !== "user") {
         localStorage.setItem("sozu_username", username)
       }
-      sessionStorage.setItem("dev_username", userId)
-      sessionStorage.setItem("dev_authenticated", "true")
+      localStorage.setItem("dev_username", userId)
+      localStorage.setItem("dev_authenticated", "true")
       try {
         const { alignWalletMaterialAfterLogin } = await import("@/lib/storage/post-login-wallet")
         const { publicKey, needsWalletSync } = await alignWalletMaterialAfterLogin(userId, credential.id)
-        sessionStorage.setItem("stellar_public_key", publicKey)
+        localStorage.setItem("stellar_public_key", publicKey)
         if (needsWalletSync) {
           console.warn("[Auth] Wallet sync may be required for this passkey on this device.")
         }
@@ -72,14 +72,14 @@ function AuthPageContent() {
   const finalizePinLoginSuccess = useCallback(
     async (userId: string, username: string) => {
       localStorage.setItem("sozu_username", username)
-      sessionStorage.setItem("dev_username", userId)
-      sessionStorage.setItem("dev_authenticated", "true")
+      localStorage.setItem("dev_username", userId)
+      localStorage.setItem("dev_authenticated", "true")
       sessionStorage.removeItem("credential_id")
       try {
         const res = await fetch("/api/wallet/stellar/address", { headers: { "x-user-id": userId } })
         const data = (await res.json()) as { publicKey?: string | null }
         if (data.publicKey && typeof data.publicKey === "string" && data.publicKey.startsWith("G")) {
-          sessionStorage.setItem("stellar_public_key", data.publicKey)
+          localStorage.setItem("stellar_public_key", data.publicKey)
           const { getKeypairByPublicKey } = await import("@/lib/storage/browser-keys")
           const kp = await getKeypairByPublicKey(data.publicKey)
           if (kp) sessionStorage.removeItem("wallet_sync_pending")
@@ -463,8 +463,8 @@ function AuthPageContent() {
               userId: finalUserId,
             })
 
-            // Store public key and credential ID in sessionStorage for quick access
-            sessionStorage.setItem("stellar_public_key", publicKey)
+            // Store public key persistently; credential_id stays in sessionStorage (ephemeral)
+            localStorage.setItem("stellar_public_key", publicKey)
             storeCredentialIdInSession(credential.id)
 
             console.log("[Auth] ✅ Credential ID stored in sessionStorage for client-side signing")
@@ -492,18 +492,13 @@ function AuthPageContent() {
           })
         }
 
-        // Store in session storage FIRST (client-side auth check)
-        // Use userId (UUID) not username - this is critical for wallet consistency
-        sessionStorage.setItem("dev_username", finalUserId)
-        sessionStorage.setItem("dev_authenticated", "true")
+        // Persist session so the user never needs to re-auth on next open
+        localStorage.setItem("dev_username", finalUserId)
+        localStorage.setItem("dev_authenticated", "true")
         sessionStorage.setItem("passkey_registered", "true")
-        sessionStorage.setItem("dev_username_display", registeredUsername) // Store for display
+        sessionStorage.setItem("dev_username_display", registeredUsername)
 
-        console.log("[Auth] Stored userId in sessionStorage after registration:", finalUserId, "Username:", registeredUsername)
-
-        // Verify sessionStorage was set
-        const verifyAuth = sessionStorage.getItem("dev_authenticated")
-        console.log("[Auth] SessionStorage verified after registration:", verifyAuth === "true")
+        console.log("[Auth] Persisted session after registration:", finalUserId, "Username:", registeredUsername)
 
         // Check if Supabase session exists
         try {

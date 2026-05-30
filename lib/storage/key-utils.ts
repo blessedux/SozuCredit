@@ -70,9 +70,10 @@ export async function getCurrentCredentialId(
     }
   }
 
-  // Try to get public key from sessionStorage and lookup
+  // Try to get public key from localStorage/sessionStorage and lookup
   if (typeof window !== "undefined") {
-    const storedPublicKey = sessionStorage.getItem("stellar_public_key")
+    const storedPublicKey =
+      localStorage.getItem("stellar_public_key") ?? sessionStorage.getItem("stellar_public_key")
     if (storedPublicKey) {
       const credentialId = await getCredentialIdByPublicKey(storedPublicKey)
       if (credentialId) {
@@ -107,5 +108,5 @@ export function getPublicKeyFromSession(): string | null {
 
   // Try to get from sessionStorage
   // We store it during authentication
-  return sessionStorage.getItem("stellar_public_key") || null
+  return localStorage.getItem("stellar_public_key") ?? sessionStorage.getItem("stellar_public_key") ?? null
 }

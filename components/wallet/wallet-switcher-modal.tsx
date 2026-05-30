@@ -73,8 +73,8 @@ export function WalletSwitcherModal({
       const supabase = createSupabaseClient()
       await supabase.auth.signOut()
     } catch { /* continue regardless */ } finally {
-      sessionStorage.clear()
-      localStorage.removeItem("sozu_username")
+      const { clearClientSession } = await import("@/lib/storage/clear-session")
+      clearClientSession()
       window.location.replace("/auth")
     }
   }, [signingOut])

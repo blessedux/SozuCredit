@@ -495,8 +495,8 @@ export default function SettingsPage() {
       } catch {
         // Non-fatal: proceed even if signOut fails (e.g. no session existed)
       }
-      sessionStorage.clear()
-      localStorage.removeItem("sozu_username")
+      const { clearClientSession } = await import("@/lib/storage/clear-session")
+      clearClientSession()
       window.location.replace("/auth")
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Failed to delete account"

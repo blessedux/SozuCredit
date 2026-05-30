@@ -453,14 +453,14 @@ export const ProfileSheet = memo(function ProfileSheet({
       // causing the same /home ↔ /wallet infinite loop as account deletion.
       try {
         const supabase = createSupabaseClient()
+        const { clearClientSession } = await import("@/lib/storage/clear-session")
         supabase.auth.signOut().finally(() => {
-          sessionStorage.clear()
-          localStorage.removeItem("sozu_username")
+          clearClientSession()
           window.location.replace("/auth")
         })
       } catch {
-        sessionStorage.clear()
-        localStorage.removeItem("sozu_username")
+        const { clearClientSession } = await import("@/lib/storage/clear-session")
+        clearClientSession()
         window.location.replace("/auth")
       }
     }
