@@ -1,10 +1,22 @@
 "use client"
 
 import { useEffect } from "react"
-import { installAppViewportHeightSync } from "@/lib/sync-app-viewport-height"
+import {
+  installAppViewportHeightSync,
+  isStandalonePwa,
+} from "@/lib/sync-app-viewport-height"
 
-/** Keeps --sozu-app-height aligned with the visible viewport on mobile PWAs. */
+/** Keeps --sozu-app-height synced to innerHeight on all routes. */
 export function ViewportHeightSync() {
-  useEffect(() => installAppViewportHeightSync(), [])
+  useEffect(() => {
+    const cleanup = installAppViewportHeightSync()
+    if (isStandalonePwa()) {
+      document.documentElement.classList.add("sozu-standalone")
+    }
+    return () => {
+      cleanup()
+      document.documentElement.classList.remove("sozu-standalone")
+    }
+  }, [])
   return null
 }

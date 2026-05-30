@@ -4,6 +4,7 @@ import dynamic from "next/dynamic"
 import { Suspense, useState, useCallback, useEffect, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import { useHorizontalPanelSwipe } from "@/hooks/use-horizontal-panel-swipe"
+import { useAppViewportLock } from "@/hooks/use-app-viewport-lock"
 import { WalletDataProvider } from "@/components/wallet/wallet-data-provider"
 import { WalletLanguageProvider } from "@/lib/wallet-language"
 import { signalShellReady } from "@/lib/app-ready"
@@ -48,14 +49,7 @@ export function MobileAppShell() {
     if (activePanel === 2) setHistoryMounted(true)
   }, [activePanel])
 
-  useEffect(() => {
-    document.documentElement.classList.add("app-no-scroll")
-    document.body.classList.add("app-no-scroll")
-    return () => {
-      document.documentElement.classList.remove("app-no-scroll")
-      document.body.classList.remove("app-no-scroll")
-    }
-  }, [])
+  useAppViewportLock()
 
   useEffect(() => {
     if (panelParamConsumedRef.current) return
@@ -112,7 +106,7 @@ export function MobileAppShell() {
           className={`overflow-hidden select-none touch-pan-x ${
             isSendModalOpen ? "cursor-default" : "cursor-grab active:cursor-grabbing"
           }`}
-          style={{ position: "fixed", inset: 0, height: "var(--sozu-app-height, 100dvh)" }}
+          style={{ position: "fixed", inset: 0 }}
       onTouchStart={swipeHandlers.onTouchStart}
       onTouchMove={swipeHandlers.onTouchMove}
       onTouchEnd={swipeHandlers.onTouchEnd}

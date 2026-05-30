@@ -18,6 +18,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useState, useRef, useEffect, useCallback, Suspense } from "react"
 import { usePwaInstall } from "@/hooks/use-pwa-install"
+import { useAppViewportLock } from "@/hooks/use-app-viewport-lock"
 
 function AuthPageContent() {
   const [isAuthenticating, setIsAuthenticating] = useState(false)
@@ -37,6 +38,8 @@ function AuthPageContent() {
   // (credential not in DB). Passed to proceedWithRegistration so the user isn't
   // prompted for a second biometric after entering their SozuTag.
   const pendingCredentialRef = useRef<Awaited<ReturnType<typeof getPasskey>>>(null)
+
+  useAppViewportLock()
 
   /** SDP onboarding: middleware sends unauthenticated users to /auth?sdpInvite=1 */
   const postAuthPath = searchParams.get("sdpInvite") === "1" ? "/sdp/register" : "/home"
@@ -626,7 +629,7 @@ function AuthPageContent() {
   }
 
   return (
-    <div className="relative h-[var(--sozu-app-height,100dvh)] min-h-[100dvh] min-h-[-webkit-fill-available] w-full overflow-hidden">
+    <div className="relative h-full min-h-[var(--sozu-app-height,100lvh)] w-full overflow-hidden">
 
       {/* ── PWA install banner — fixed top toast, visible on mobile before install ── */}
       <AnimatePresence>
@@ -897,7 +900,7 @@ function AuthPageContent() {
 export default function AuthPage() {
   return (
     <Suspense fallback={
-      <div className="flex min-h-[100dvh] items-center justify-center bg-black text-white">
+      <div className="flex min-h-[var(--sozu-app-height,100lvh)] items-center justify-center bg-black text-white">
         <div className="text-white">Loading...</div>
       </div>
     }>

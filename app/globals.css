@@ -47,6 +47,9 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  /* Updated at runtime by ViewportHeightSync — see lib/sync-app-viewport-height.ts */
+  --sozu-app-height: 100lvh;
+  --sozu-visual-viewport-height: 100lvh;
 }
 
 .dark {
@@ -130,6 +133,7 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --height-screen: var(--sozu-app-height, 100lvh);
 }
 
 
@@ -186,10 +190,12 @@
     @apply bg-black;
     background-color: #000000;
     height: -webkit-fill-available;
+    min-height: var(--sozu-app-height, 100lvh);
   }
-  :root {
-    /* Updated at runtime by ViewportHeightSync — see lib/sync-app-viewport-height.ts */
-    --sozu-app-height: 100dvh;
+  html.sozu-standalone,
+  html.sozu-standalone body {
+    min-height: var(--sozu-app-height, 100lvh);
+    min-height: -webkit-fill-available;
   }
   html.app-no-scroll,
   html.app-no-scroll body {
@@ -198,9 +204,7 @@
     width: 100%;
     position: fixed;
     inset: 0;
-    /* Do NOT cap with max-height: 100dvh — iOS standalone PWAs can render taller,
-       leaving a black strip below fixed content when dvh under-counts. */
-    height: var(--sozu-app-height, 100dvh);
+    height: var(--sozu-app-height, 100lvh);
     min-height: -webkit-fill-available;
     touch-action: pan-x pinch-zoom;
   }
@@ -208,7 +212,15 @@
     @apply bg-black text-foreground;
     background-color: #000000;
     min-height: -webkit-fill-available;
-    min-height: var(--sozu-app-height, 100dvh);
+    min-height: var(--sozu-app-height, 100lvh);
+  }
+  .min-h-screen {
+    min-height: var(--sozu-app-height, 100lvh);
+    min-height: -webkit-fill-available;
+  }
+  .h-screen {
+    height: var(--sozu-app-height, 100lvh);
+    height: -webkit-fill-available;
   }
   .no-scrollbar {
     -ms-overflow-style: none;

@@ -59,9 +59,10 @@ export function PaperShaderBackgroundShell({
 
   return (
     <>
+      <div aria-hidden className="pointer-events-none fixed inset-0 z-0 bg-black" />
       {shaderActive ? (
         <AuthOrangeOrbShader
-          className="pointer-events-none fixed inset-x-0 top-0 z-0 w-full h-[var(--sozu-app-height,100dvh)] min-h-[100dvh] min-h-[-webkit-fill-available]"
+          className="pointer-events-none fixed inset-0 z-0"
           variant={variant}
           tier={tier}
         />

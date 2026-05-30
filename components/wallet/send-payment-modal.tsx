@@ -373,7 +373,7 @@ export const SendPaymentModal = memo(function SendPaymentModal({
           style={{
             bottom: keyboardInset > 0 ? `${keyboardInset + 8}px` : "max(1rem, env(safe-area-inset-bottom))",
             top: keyboardInset > 0 ? "auto" : "clamp(100px, 18dvh, 160px)",
-            maxHeight: keyboardInset > 0 ? `calc(var(--sozu-app-height, 100dvh) - ${keyboardInset + 16}px)` : undefined,
+            maxHeight: keyboardInset > 0 ? `calc(var(--sozu-visual-viewport-height, var(--sozu-app-height, 100lvh)) - ${keyboardInset + 16}px)` : undefined,
             maxWidth: "min(28rem, calc(100vw - max(2rem, env(safe-area-inset-left) + env(safe-area-inset-right))))",
             background: "rgba(8,8,10,0.88)",
             backdropFilter: "blur(32px) saturate(160%)",
