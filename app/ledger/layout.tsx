@@ -21,7 +21,24 @@ export default function LedgerLayout({ children }: { children: React.ReactNode }
   const { play: hapticNav } = useAppHaptics()
 
   return (
-    <div className="relative z-10 min-h-screen bg-transparent text-white pb-28">
+    <div
+      className="dark relative z-10 min-h-screen bg-transparent text-white pb-28"
+      style={{
+        // Override shadcn CSS variables so cards/tables are glassmorphic
+        // instead of opaque white, letting the shader show through
+        "--background": "transparent",
+        "--card": "rgba(255,255,255,0.04)",
+        "--card-foreground": "rgba(255,255,255,0.92)",
+        "--popover": "rgba(14,14,16,0.85)",
+        "--popover-foreground": "rgba(255,255,255,0.92)",
+        "--muted": "rgba(255,255,255,0.06)",
+        "--muted-foreground": "rgba(255,255,255,0.45)",
+        "--border": "rgba(255,255,255,0.09)",
+        "--input": "rgba(255,255,255,0.08)",
+        "--accent": "rgba(255,255,255,0.07)",
+        "--accent-foreground": "rgba(255,255,255,0.92)",
+      } as React.CSSProperties}
+    >
       <header className="sticky top-0 z-20 border-b border-white/10 bg-black/40 backdrop-blur-md">
         <div className={`${ledgerMainWidth} flex items-center gap-3 pb-3 pt-4`}>
           <Link

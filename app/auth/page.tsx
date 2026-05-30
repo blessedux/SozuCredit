@@ -659,7 +659,9 @@ function AuthPageContent() {
                   Sozu
                 </p>
                 <p className="text-[11px] text-white/45 leading-tight mt-0.5">
-                  {isIos ? "Abre Sozu como app nativa en Safari" : "Instala la app en tu dispositivo"}
+                  {isIos
+                    ? "Instálala desde Safari → Compartir → Agregar a inicio"
+                    : "Guárdala en tu pantalla de inicio para acceso instantáneo"}
                 </p>
               </div>
 
@@ -672,7 +674,7 @@ function AuthPageContent() {
                 }}
                 className="shrink-0 rounded-full bg-white px-3.5 py-1.5 text-[12px] font-semibold text-black hover:bg-white/90 active:scale-95 transition-transform"
               >
-                {isIos ? "Ver cómo" : "Instalar"}
+                {isIos ? "Cómo instalar" : "Agregar a inicio"}
               </button>
 
               {/* Dismiss */}
@@ -811,8 +813,8 @@ function AuthPageContent() {
               {/* Header */}
               <div className="flex items-start justify-between mb-6">
                 <div>
-                  <p className="text-white font-semibold text-base">Agregar a pantalla de inicio</p>
-                  <p className="text-white/45 text-xs mt-0.5">Abre Sozu como una app nativa</p>
+                  <p className="text-white font-semibold text-base">Instala Sozu en tu iPhone</p>
+                  <p className="text-white/45 text-xs mt-0.5">3 pasos rápidos desde Safari — sin App Store</p>
                 </div>
                 <button
                   onClick={() => setShowIosInstallModal(false)}
@@ -824,32 +826,50 @@ function AuthPageContent() {
               </div>
 
               {/* Steps */}
-              <ol className="space-y-4">
+              <ol className="space-y-3">
                 <li className="flex items-start gap-3">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/8 text-[11px] font-semibold text-white/60">1</span>
-                  <div className="pt-0.5">
-                    <p className="text-white/85 text-sm leading-snug">
-                      Toca el botón <span className="inline-flex items-center gap-0.5 align-middle">
-                        <Share className="w-3.5 h-3.5 text-[#0a84ff]" />
-                      </span> <span className="text-white/50">Compartir</span> en la barra inferior de Safari
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/[0.08] text-[11px] font-semibold text-white/60">1</span>
+                  <div className="pt-0.5 min-w-0">
+                    <p className="text-white text-[13px] font-medium leading-snug">Abre esta página en Safari</p>
+                    <p className="text-white/45 text-[11px] mt-0.5 leading-snug">
+                      La instalación solo funciona desde el navegador Safari de Apple
                     </p>
                   </div>
                 </li>
 
                 <li className="flex items-start gap-3">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/8 text-[11px] font-semibold text-white/60">2</span>
-                  <div className="pt-0.5">
-                    <p className="text-white/85 text-sm leading-snug">
-                      Desplázate y toca <span className="font-medium text-white">"Agregar a inicio"</span>
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/[0.08] text-[11px] font-semibold text-white/60">2</span>
+                  <div className="pt-0.5 min-w-0">
+                    <p className="text-white text-[13px] font-medium leading-snug">
+                      Toca{" "}
+                      <Share className="inline w-3.5 h-3.5 text-[#0a84ff] align-text-bottom" />
+                      {" "}<span className="text-[#0a84ff]">Compartir</span>{" "}en la barra inferior
+                    </p>
+                    <p className="text-white/45 text-[11px] mt-0.5 leading-snug">
+                      Es el ícono de cuadrado con flecha hacia arriba
                     </p>
                   </div>
                 </li>
 
                 <li className="flex items-start gap-3">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/8 text-[11px] font-semibold text-white/60">3</span>
-                  <div className="pt-0.5">
-                    <p className="text-white/85 text-sm leading-snug">
-                      Toca <span className="font-medium text-white">"Agregar"</span> en la esquina superior derecha
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/[0.08] text-[11px] font-semibold text-white/60">3</span>
+                  <div className="pt-0.5 min-w-0">
+                    <p className="text-white text-[13px] font-medium leading-snug">
+                      Selecciona{" "}<span className="text-white font-semibold">"Agregar a pantalla de inicio"</span>
+                    </p>
+                    <p className="text-white/45 text-[11px] mt-0.5 leading-snug">
+                      Desplázate en el menú hasta encontrarlo, luego toca{" "}
+                      <span className="text-white/70">"Agregar"</span> arriba a la derecha
+                    </p>
+                  </div>
+                </li>
+
+                <li className="flex items-start gap-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-[11px] font-semibold text-emerald-400">✓</span>
+                  <div className="pt-0.5 min-w-0">
+                    <p className="text-white text-[13px] font-medium leading-snug">Sozu aparece en tu inicio</p>
+                    <p className="text-white/45 text-[11px] mt-0.5 leading-snug">
+                      Ábrela como cualquier app — sin App Store, sin contraseñas
                     </p>
                   </div>
                 </li>
@@ -858,7 +878,7 @@ function AuthPageContent() {
               {/* Dismiss button */}
               <button
                 onClick={() => setShowIosInstallModal(false)}
-                className="mt-6 w-full py-3.5 rounded-2xl bg-white/8 text-white/60 text-sm font-medium hover:bg-white/12 transition-colors"
+                className="mt-5 w-full py-3.5 rounded-2xl bg-white text-black text-[13px] font-semibold hover:bg-white/90 active:scale-[0.98] transition-all"
               >
                 Entendido
               </button>

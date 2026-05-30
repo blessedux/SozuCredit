@@ -657,17 +657,6 @@ export function WalletScreen({
                       <p className="mt-4 text-center text-xs text-red-300/90">{activationMessage}</p>
                     ) : null}
 
-                    {!walletAddress && !isBalanceLoading && (
-                      <div className="mt-3">
-                        <Button
-                          onClick={() => setIsProfileSheetOpen(true)}
-                          className="h-12 w-full text-base font-semibold bg-white text-black hover:bg-white/90 rounded-lg"
-                        >
-                          <Wallet className="mr-2 h-5 w-5" />
-                          {t.createNewWallet}
-                        </Button>
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
@@ -786,17 +775,6 @@ export function WalletScreen({
                       <p className="mt-4 text-center text-xs text-red-300/90 lg:text-left">{activationMessage}</p>
                     ) : null}
 
-                    {!walletAddress && (
-                      <div className="mt-2 lg:mt-4">
-                        <Button
-                          onClick={() => setIsProfileSheetOpen(true)}
-                          className="h-14 min-h-[48px] w-full text-lg font-semibold bg-white text-black hover:bg-white/90 transition-all duration-200 rounded-lg shadow-lg hover:shadow-xl"
-                        >
-                          <Wallet className="mr-2 h-5 w-5" />
-                          {t.createNewWallet}
-                        </Button>
-                      </div>
-                    )}
                   </div>
 
                   <div className="min-w-0 lg:col-span-7 xl:col-span-8">
