@@ -106,8 +106,9 @@ export default function SettingsPage() {
   const [sozuTag, setSozuTag] = useState<string>("")
 
   useEffect(() => {
-    // Get username from session storage
-    const storedUsername = sessionStorage.getItem("dev_username")
+    // Read from localStorage (persistent) with sessionStorage fallback
+    const storedUsername =
+      localStorage.getItem("dev_username") ?? sessionStorage.getItem("dev_username")
     if (storedUsername) {
       setUsername(storedUsername)
     } else {

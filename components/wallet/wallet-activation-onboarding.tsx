@@ -161,8 +161,8 @@ export function WalletActivationOnboarding({
 
       if (e.clientX < window.innerWidth * 0.35) {
         goToSlide(slideIndex - 1) // left 35 % → back
-      } else {
-        goToSlide(slideIndex + 1) // right 65 % (incl. bottom after scroll) → next
+      } else if (slideIndex < WALLET_ACTIVATION_SLIDE_COUNT - 1) {
+        goToSlide(slideIndex + 1) // right 65 % → next (disabled on last slide — use CTA button)
       }
     },
     [phase, slideIndex, goToSlide],
@@ -246,6 +246,10 @@ export function WalletActivationOnboarding({
         onPointerCancel={onPointerCancel}
         onKeyDown={onKeyDown}
         tabIndex={0}
+        /* Stop touch events from bubbling to the shell's swipe-panel handlers */
+        onTouchStart={e => e.stopPropagation()}
+        onTouchMove={e => e.stopPropagation()}
+        onTouchEnd={e => e.stopPropagation()}
       >
         {/*
           Portrait container — natural 430 × 932 aspect ratio.
@@ -281,25 +285,29 @@ export function WalletActivationOnboarding({
             />
           </div>
 
-          {/* Slide dot indicators — pulse when waiting for activation */}
-          <div
-            className="pointer-events-none absolute left-0 right-0 z-10 flex items-center justify-center gap-2"
-            style={{ bottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
-          >
-            {Array.from({ length: WALLET_ACTIVATION_SLIDE_COUNT }).map((_, i) => (
-              <div
-                key={i}
+          {/* Last-slide CTA — only visible on slide 4; tap/click opens wallet */}
+          {slideIndex === WALLET_ACTIVATION_SLIDE_COUNT - 1 && (
+            <div
+              className="absolute left-0 right-0 z-10 flex items-center justify-center px-6"
+              style={{ bottom: "max(2rem, env(safe-area-inset-bottom))" }}
+            >
+              <button
+                onClick={e => {
+                  e.stopPropagation()
+                  goToSlide(WALLET_ACTIVATION_SLIDE_COUNT)
+                }}
                 className={cn(
-                  "rounded-full transition-all duration-300 ease-out",
-                  i === slideIndex
-                    ? waitingForActivation
-                      ? "w-5 h-[5px] bg-white animate-pulse"
-                      : "w-5 h-[5px] bg-white"
-                    : "w-[5px] h-[5px] bg-white/35",
+                  "w-full max-w-xs rounded-2xl py-4 text-[15px] font-semibold text-white transition-all duration-200",
+                  waitingForActivation
+                    ? "animate-pulse bg-white/20"
+                    : "bg-white/20 hover:bg-white/30 active:scale-[0.97]",
                 )}
-              />
-            ))}
-          </div>
+                style={{ backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}
+              >
+                {waitingForActivation ? "Activando…" : "Abrir mi billetera"}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </>

@@ -108,7 +108,8 @@ export function MobileAppShell() {
     <WalletLanguageProvider>
       <WalletDataProvider>
         <div
-          className="relative h-svh w-full overflow-hidden cursor-grab active:cursor-grabbing select-none touch-pan-x"
+          className="relative w-full overflow-hidden cursor-grab active:cursor-grabbing select-none touch-pan-x"
+          style={{ height: "100dvh" }}
       onTouchStart={swipeHandlers.onTouchStart}
       onTouchMove={swipeHandlers.onTouchMove}
       onTouchEnd={swipeHandlers.onTouchEnd}
@@ -128,11 +129,11 @@ export function MobileAppShell() {
       >
         {/* Panel 0 — Settings (lazy: only mount when visited) */}
         <div
-          className="h-full overflow-y-auto overscroll-none no-scrollbar"
+          className="h-full overflow-y-auto overscroll-none no-scrollbar bg-[#0a0a0b]"
           style={{ width: `${100 / PANEL_COUNT}%` }}
         >
           {activePanel === 0 ? (
-            <Suspense fallback={null}>
+            <Suspense fallback={<div className="h-full w-full bg-[#0a0a0b]" />}>
               <SettingsPanel />
             </Suspense>
           ) : null}
