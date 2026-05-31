@@ -3,6 +3,10 @@ import type { NextRequest } from "next/server"
 import { createClient as createServiceClient } from "@supabase/supabase-js"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
 import { resolveOnChainPasskeyPublicKey } from "@/lib/stellar/smartAccounts/resolveOnChainPublicKey"
+import {
+  parsePasskeyPublicKey65,
+  publicKeyToBase64Url,
+} from "@/lib/stellar/smartAccounts/passkeyPublicKey"
 import { normalizeCredentialId } from "@/lib/webauthn/normalize-credential-id"
 
 export async function OPTIONS(request: NextRequest) {
@@ -40,7 +44,11 @@ export async function GET(request: NextRequest) {
       const match =
         rows?.find((p) => normalizeCredentialId(p.credential_id) === normalized) ?? rows?.[0]
       if (match?.public_key && typeof match.public_key === "string") {
-        publicKey65b = match.public_key
+        try {
+          publicKey65b = publicKeyToBase64Url(parsePasskeyPublicKey65(match.public_key))
+        } catch {
+          publicKey65b = match.public_key
+        }
       }
     }
   }

@@ -54,7 +54,12 @@ async function resolveLoginPasskeyPublicKey(credentialId: string): Promise<Uint8
   ) {
     return null
   }
-  return new Uint8Array(base64URLToBuffer(data.publicKey65b))
+  const { parsePasskeyPublicKey65 } = await import("@/lib/stellar/smartAccounts/passkeyPublicKey")
+  try {
+    return parsePasskeyPublicKey65(data.publicKey65b)
+  } catch {
+    return new Uint8Array(base64URLToBuffer(data.publicKey65b))
+  }
 }
 
 async function finishLink(

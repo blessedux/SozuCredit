@@ -1,7 +1,14 @@
 "use client"
 
+import type { SmartAccountKit } from "smart-account-kit"
 import { Address, hash, rpc, xdr } from "@stellar/stellar-sdk"
-import { credentialIdToBuffer } from "@/lib/stellar/smartAccounts/passkeyPublicKey"
+import {
+  credentialIdToBuffer,
+  parsePasskeyPublicKey65,
+  publicKeyToBase64Url,
+} from "@/lib/stellar/smartAccounts/passkeyPublicKey"
+import { resolvePublicKeyFromServer } from "@/lib/stellar/smartAccounts/registerWalletClient"
+import { normalizeCredentialId } from "@/lib/webauthn/normalize-credential-id"
 import { base64URLToBuffer, bufferToBase64URL } from "@/lib/webauthn/utils"
 import { getUserId } from "@/lib/wallet-utils"
 
@@ -62,7 +69,51 @@ function buildSignatureMapEntry(
   })
 }
 
-async function loadPasskeyKeyData(credentialId: string): Promise<Buffer> {
+async function publicKeyFromKitStorage(
+  kit: SmartAccountKit | undefined,
+  credentialId: string,
+): Promise<Uint8Array | null> {
+  if (!kit) return null
+  try {
+    const all = await kit.credentials.getAll()
+    const norm = normalizeCredentialId(credentialId)
+    const match = all.find((c) => normalizeCredentialId(c.credentialId) === norm)
+    if (match?.publicKey && match.publicKey.length === SECP256R1_PUBLIC_KEY_SIZE) {
+      return match.publicKey
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+async function loadPasskeyKeyData(params: {
+  credentialId: string
+  contractId?: string
+  kit?: SmartAccountKit
+}): Promise<Buffer> {
+  const fromKit = await publicKeyFromKitStorage(params.kit, params.credentialId)
+  if (fromKit) {
+    return Buffer.concat([Buffer.from(fromKit), credentialIdToBuffer(params.credentialId)])
+  }
+
+  if (params.contractId?.startsWith("C")) {
+    try {
+      const resolved = await resolvePublicKeyFromServer({
+        contractId: params.contractId,
+        credentialId: params.credentialId,
+      })
+      if (resolved.length === SECP256R1_PUBLIC_KEY_SIZE) {
+        return Buffer.concat([
+          Buffer.from(resolved),
+          credentialIdToBuffer(params.credentialId),
+        ])
+      }
+    } catch {
+      // fall through to primary passkey row
+    }
+  }
+
   const userId = getUserId()
   if (!userId) {
     throw new Error("Not signed in. Please log in again.")
@@ -77,12 +128,9 @@ async function loadPasskeyKeyData(credentialId: string): Promise<Buffer> {
   if (!res.ok || !data.publicKey65b) {
     throw new Error(data.error ?? "Passkey public key missing. Sign in again.")
   }
-  const pub = new Uint8Array(base64URLToBuffer(data.publicKey65b))
-  if (pub.length !== SECP256R1_PUBLIC_KEY_SIZE) {
-    throw new Error("Invalid passkey public key length.")
-  }
-  const cred = credentialIdToBuffer(credentialId)
-  return Buffer.concat([Buffer.from(pub), cred])
+
+  const pub = parsePasskeyPublicKey65(data.publicKey65b)
+  return Buffer.concat([Buffer.from(pub), credentialIdToBuffer(params.credentialId)])
 }
 
 async function webAuthnSignSorobanPreimage(challengeB64Url: string, credentialId: string) {
@@ -121,14 +169,15 @@ function hashToChallenge(payload: Buffer): string {
 }
 
 /**
- * Sign a Soroban auth entry with WebAuthn using passkey key material from our DB
- * (no on-chain get_context_rules lookup).
+ * Sign a Soroban auth entry with one WebAuthn prompt (no smart-account-kit double sign).
  */
 export async function signAuthEntryWithStoredPasskey(params: {
   entry: xdr.SorobanAuthorizationEntry
   credentialId: string
   networkPassphrase: string
   webauthnVerifierAddress: string
+  smartAccountContractId?: string
+  kit?: SmartAccountKit
   expiration?: number
 }): Promise<xdr.SorobanAuthorizationEntry> {
   const entryXdrBytes = params.entry.toXDR()
@@ -156,8 +205,13 @@ export async function signAuthEntryWithStoredPasskey(params: {
   )
   const challenge = hashToChallenge(hash(preimage.toXDR()))
 
+  const keyData = await loadPasskeyKeyData({
+    credentialId: params.credentialId,
+    contractId: params.smartAccountContractId,
+    kit: params.kit,
+  })
+
   const authResponse = await webAuthnSignSorobanPreimage(challenge, params.credentialId)
-  const keyData = await loadPasskeyKeyData(params.credentialId)
   const scMapEntry = buildSignatureMapEntry(params.webauthnVerifierAddress, keyData, authResponse)
 
   const currentSig = credentials.signature()
