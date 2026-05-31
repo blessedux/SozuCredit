@@ -97,6 +97,29 @@ export function credentialIdToBuffer(credentialId: string): Buffer {
   return Buffer.from(padded + pad, "base64")
 }
 
+/** OZ External signer key blob: 65-byte uncompressed pubkey + raw WebAuthn credential id. */
+export function buildExternalSignerKeyData(
+  publicKey65: Uint8Array,
+  credentialIdBytes: Buffer,
+): Buffer {
+  if (publicKey65.length !== SECP256R1_PUBLIC_KEY_SIZE) {
+    throw new Error("Passkey public key must be 65 bytes.")
+  }
+  if (publicKey65[0] !== UNCOMPRESSED_PUBKEY_PREFIX) {
+    throw new Error("Passkey public key must start with 0x04.")
+  }
+  return Buffer.concat([Buffer.from(publicKey65), credentialIdBytes])
+}
+
+/** Prefer rawId bytes from the assertion (matches smart-account-kit). */
+export function credentialIdBytesFromAssertion(assertion: PublicKeyCredential): Buffer {
+  const raw = new Uint8Array(assertion.rawId)
+  if (raw.length > 0) {
+    return Buffer.from(raw)
+  }
+  return credentialIdToBuffer(assertion.id)
+}
+
 export function extractCredentialIdFromKeyData(keyData: Uint8Array): Uint8Array {
   return keyData.slice(SECP256R1_PUBLIC_KEY_SIZE)
 }

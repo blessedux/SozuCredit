@@ -352,10 +352,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Store passkey credential
-    // Extract public key from attestation object (we'll store the full attestation object for now)
-    // In production, you'd parse the CBOR attestation object to extract just the public key
-    const publicKey = credential.response.publicKey || credential.response.attestationObject || credential.id
+    // Store 65-byte secp256r1 public key (not raw attestation blob)
+    let publicKey: string
+    try {
+      const { extractPasskeyPublicKey65ForStorage } = await import(
+        "@/lib/webauthn/extract-attestation-pubkey"
+      )
+      publicKey = extractPasskeyPublicKey65ForStorage(credential)
+    } catch {
+      publicKey =
+        credential.response.publicKey ||
+        credential.response.attestationObject ||
+        credential.id
+    }
     
     // Use service client to bypass RLS since we don't have an authenticated session yet
     // The user was just created but we don't have auth.uid() available

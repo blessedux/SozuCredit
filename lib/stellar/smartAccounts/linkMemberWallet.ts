@@ -109,7 +109,8 @@ async function deployMemberContract(kit: SmartAccountKit, credentialId: string):
   if (!res.ok || !primary.publicKey65b) {
     throw new Error("PASSKEY_PUBLIC_KEY_MISSING")
   }
-  const publicKey = new Uint8Array(base64URLToBuffer(primary.publicKey65b))
+  const { parsePasskeyPublicKey65 } = await import("@/lib/stellar/smartAccounts/passkeyPublicKey")
+  const publicKey = parsePasskeyPublicKey65(primary.publicKey65b)
   await kit.credentials.save({ credentialId, publicKey })
   await kit.credentials.deploy(credentialId, { autoSubmit: true })
 }

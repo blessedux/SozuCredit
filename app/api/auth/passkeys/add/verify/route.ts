@@ -112,7 +112,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "This passkey is already registered" }, { status: 409, headers: corsHeaders(request) })
     }
 
-    const publicKey = credential.response?.publicKey || credential.response?.attestationObject || credential.id
+    let publicKey: string
+    try {
+      const { extractPasskeyPublicKey65ForStorage } = await import(
+        "@/lib/webauthn/extract-attestation-pubkey"
+      )
+      publicKey = extractPasskeyPublicKey65ForStorage(credential)
+    } catch {
+      publicKey =
+        credential.response?.publicKey || credential.response?.attestationObject || credential.id
+    }
 
     const { error: insertError } = await serviceClient.from("passkeys").insert({
       user_id: userId,

@@ -420,6 +420,14 @@ export function useSendPayment(
         errorMessage =
           "Your wallet is not active on the network yet. Fund your smart account or classic wallet with XLM/USDC."
       }
+      if (
+        errorMessage.includes("InvalidAction") ||
+        errorMessage.includes("__check_auth") ||
+        errorMessage.includes("failed account authentication")
+      ) {
+        errorMessage =
+          "Your passkey does not match this smart account (C…). Sign out, sign in again, and complete wallet setup when prompted. If you still cannot send, your account may need a new smart wallet — contact support."
+      }
       alert(`❌ ${errorMessage}`)
     } finally {
       setIsSending(false)
