@@ -258,17 +258,15 @@ export function useWalletData() {
             : Number(defindexData.apy) || 15.5
           
           setDefindexBalance((prev) => {
+            if (!prev) {
+              // Wait for refreshUnifiedBalance — do not seed displayBalance: 0
+              return prev
+            }
             const strategyBalance = defindexData.strategyBalance || 0
-            const walletBalance = prev?.walletBalance ?? 0
-            const classicOnSigner = prev?.classicOnSigner ?? 0
-            const displayBalance = prev?.displayBalance ?? prev?.totalBalance ?? 0
             return {
-              walletBalance,
-              sorobanSacBalance: prev?.sorobanSacBalance ?? 0,
+              ...prev,
               strategyBalance,
-              totalBalance: displayBalance,
-              displayBalance,
-              classicOnSigner,
+              totalBalance: prev.displayBalance,
               strategyShares: defindexData.strategyShares || 0,
               apy: apyNumber,
             }
@@ -374,13 +372,17 @@ export function useWalletData() {
   }, [])
 
   const bootstrapWalletFetches = useCallback(
-    (publicKey: string, userId: string) => {
+    async (publicKey: string, userId: string) => {
+      const pk = publicKey.trim().toUpperCase()
+      if (!pk.startsWith("C") && !pk.startsWith("G")) return
+
       setIsBalanceLoading(true)
-      void refreshUnifiedBalance(userId, publicKey)
+      // Unified USDC must finish before DeFindex — otherwise defindex sets displayBalance: 0 and the card sticks at $0.
+      await refreshUnifiedBalance(userId, pk)
       deferNonCritical(() => {
-        void fetchDefindexBalance(userId, publicKey)
-        void fetchTransactionHistory(publicKey)
-        void fetchXLMBalance(publicKey, userId)
+        void fetchDefindexBalance(userId, pk)
+        void fetchTransactionHistory(pk)
+        void fetchXLMBalance(pk, userId)
         void fetchAutoDepositStatus(userId)
         void fetchAPY(userId)
       })
@@ -410,7 +412,7 @@ export function useWalletData() {
         }
         console.log("[Wallet] ✅ Canonical wallet:", publicKey.substring(0, 10) + "…", walletType)
         setWalletAddress(publicKey)
-        bootstrapWalletFetches(publicKey, userId)
+        void bootstrapWalletFetches(publicKey, userId)
         return
       } catch (syncErr) {
         console.warn("[Wallet] syncCanonicalWallet failed, falling back to address API:", syncErr)
@@ -448,7 +450,7 @@ export function useWalletData() {
             localStorage.setItem("stellar_public_key", publicKeyToUse)
             sessionStorage.setItem("stellar_public_key", publicKeyToUse)
           }
-          bootstrapWalletFetches(publicKeyToUse, userId)
+          void bootstrapWalletFetches(publicKeyToUse, userId)
           return
         } else {
           console.warn("[Wallet] No public key in wallet response:", walletData)
@@ -496,7 +498,7 @@ export function useWalletData() {
                 if (createData.network === "testnet") {
                   sessionStorage.setItem("sozu_auto_activate", "1")
                 }
-                bootstrapWalletFetches(createData.publicKey, userId)
+                void bootstrapWalletFetches(createData.publicKey, userId)
                 return
               }
             } catch (createError) {
@@ -510,7 +512,7 @@ export function useWalletData() {
             if (sessionPublicKey?.startsWith("C")) {
               console.log("[Wallet] Using session C while DB catches up.")
               setWalletAddress(sessionPublicKey)
-              bootstrapWalletFetches(sessionPublicKey, userId)
+              void bootstrapWalletFetches(sessionPublicKey, userId)
               return
             }
             if (sessionPublicKey?.startsWith("G") && retryCount < 2) {
@@ -554,7 +556,7 @@ export function useWalletData() {
                 if (createData.network === "testnet") {
                   sessionStorage.setItem("sozu_auto_activate", "1")
                 }
-                bootstrapWalletFetches(createData.publicKey, userId)
+                void bootstrapWalletFetches(createData.publicKey, userId)
                 return
               }
             }
@@ -700,7 +702,12 @@ export function useWalletData() {
           setUsername(userId.substring(0, 8))
         }
 
-        // Fetch wallet address
+        const sessionPk =
+          localStorage.getItem("stellar_public_key") ?? sessionStorage.getItem("stellar_public_key")
+        if (sessionPk?.startsWith("C") && sessionPk.length === 56) {
+          void bootstrapWalletFetches(sessionPk, userId)
+        }
+
         fetchWalletAddress(userId)
       } catch (err) {
         console.error("[Wallet] Error fetching data:", err)
@@ -711,9 +718,18 @@ export function useWalletData() {
     }
     
     checkAuth()
-    // Intentionally mount-only: including walletAddress / fetch* caused repeat vault+address loads (felt like an infinite loop).
     // eslint-disable-next-line react-hooks/exhaustive-deps -- bootstrap once; refresh flows use explicit handlers
   }, [])
+
+  /** Re-fetch USDC when canonical C address changes (e.g. after sync from DB). */
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const pk = walletAddress.trim().toUpperCase()
+    if (!pk.startsWith("C") || pk.length !== 56) return
+    const userId = getUserId()
+    if (!userId) return
+    void refreshUnifiedBalance(userId, pk)
+  }, [walletAddress, refreshUnifiedBalance])
 
   // Fetch XLM price — deferred; not needed for landing balance card
   useEffect(() => {

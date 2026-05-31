@@ -174,7 +174,15 @@ export function WalletScreen({
   // Get base balance
   const baseBalance = useMemo(() => {
     if (defindexBalance) {
-      return defindexBalance.displayBalance ?? defindexBalance.totalBalance
+      const display =
+        defindexBalance.displayBalance ?? defindexBalance.totalBalance ?? 0
+      if (display > 0) return display
+      const parts =
+        (defindexBalance.walletBalance ?? 0) +
+        (defindexBalance.sorobanSacBalance ?? 0) +
+        (defindexBalance.classicOnSigner ?? 0) +
+        (defindexBalance.strategyBalance ?? 0)
+      return parts > 0 ? parts : display
     }
     return Number(vault?.balance || 0)
   }, [defindexBalance, vault?.balance])
@@ -279,7 +287,7 @@ export function WalletScreen({
   // Refresh handler
   const handleRefresh = useCallback(() => {
     if (walletAddress) {
-      const uid = typeof window !== "undefined" ? sessionStorage.getItem("dev_username") : null
+      const uid = getUserId()
       if (uid) fetchXLMBalance(walletAddress, uid, { gateBalance: true })
       fetchWalletUSDCBalance(walletAddress)
       fetchTransactionHistory(walletAddress)
@@ -288,19 +296,19 @@ export function WalletScreen({
 
   const handleBalanceRefresh = useCallback(async () => {
     if (!walletAddress) return
-    const uid = typeof window !== "undefined" ? sessionStorage.getItem("dev_username") : null
+    const uid = getUserId()
     if (uid) fetchXLMBalance(walletAddress, uid, { gateBalance: true })
     await fetchWalletUSDCBalance(walletAddress)
     if (uid) fetchAPY(uid)
   }, [walletAddress, fetchXLMBalance, fetchWalletUSDCBalance, fetchAPY])
 
   // Refresh after earn deposit/withdraw: reload USDC + defindex balance + APY
-  const handleEarnRefresh = useCallback(() => {
+  const handleEarnRefresh = useCallback(async () => {
     if (!walletAddress) return
-    const uid = typeof window !== "undefined" ? sessionStorage.getItem("dev_username") : null
-    fetchWalletUSDCBalance(walletAddress)
+    const uid = getUserId()
+    await fetchWalletUSDCBalance(walletAddress)
     if (uid) {
-      fetchDefindexBalance(uid)
+      void fetchDefindexBalance(uid, walletAddress)
       fetchAPY(uid)
     }
   }, [walletAddress, fetchWalletUSDCBalance, fetchDefindexBalance, fetchAPY])
