@@ -56,6 +56,8 @@ export function PaperShaderBackgroundShell({
     pathname.startsWith("/credit/")
 
   const variant = isLedger ? "blobs" : "orb"
+  const isAuthRoute =
+    pathname === "/auth" || pathname.startsWith("/auth/")
 
   return (
     <>
@@ -68,6 +70,7 @@ export function PaperShaderBackgroundShell({
             className="sozu-app-viewport-inner"
             variant={variant}
             tier={tier}
+            orbCompact={isAuthRoute}
           />
         </div>
       ) : null}

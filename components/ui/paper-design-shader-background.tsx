@@ -23,13 +23,20 @@ type AuthOrangeOrbShaderProps = {
   variant?: "orb" | "blobs"
   /** Performance tier — passed down from PaperShaderBackgroundShell */
   tier?: ShaderTier
+  /** On /auth: smaller orb anchored at bottom on tablet and desktop (phone unchanged) */
+  orbCompact?: boolean
 }
 
 export function AuthOrangeOrbShader({
   className,
   variant = "orb",
   tier = "lite",
+  orbCompact = false,
 }: AuthOrangeOrbShaderProps) {
+  const orbWrapClass = cn(
+    "sozu-orb-wrap",
+    orbCompact && "sozu-orb-wrap--auth-compact",
+  )
   // ── Ledger / credit: animated corner blobs ───────────────────────────────
   if (variant === "blobs") {
     return (
@@ -79,14 +86,8 @@ export function AuthOrangeOrbShader({
         />
         {/* Static orb circle */}
         <div
+          className={cn("sozu-orb-breathe rounded-full", orbWrapClass)}
           style={{
-            position: "absolute",
-            bottom: "-28vw",
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: "110vw",
-            height: "110vw",
-            borderRadius: "50%",
             background:
               "radial-gradient(circle, hsl(30,100%,50%) 0%, hsl(20,100%,40%) 30%, hsl(12,90%,28%) 58%, rgba(0,0,0,0.5) 76%, rgba(0,0,0,1) 92%)",
           }}
@@ -153,18 +154,7 @@ export function AuthOrangeOrbShader({
         `will-change: transform` promotes it to its own compositor layer,
         keeping the CSS animation entirely on the GPU without JS involvement.
       */}
-      <div
-        className="sozu-orb-breathe"
-        style={{
-          position: "absolute",
-          bottom: "-28vw",
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: "110vw",
-          height: "110vw",
-          willChange: "transform",
-        }}
-      >
+      <div className={cn("sozu-orb-breathe", orbWrapClass)}>
         <div
           style={{
             position: "relative",

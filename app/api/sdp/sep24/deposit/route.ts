@@ -43,6 +43,7 @@ export async function POST() {
     assetCode: code,
     assetIssuer: issuer,
     tenantName,
+    lang: "es",
     extra: Object.keys(extra).length ? extra : undefined,
   });
 

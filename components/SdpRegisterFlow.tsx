@@ -28,6 +28,9 @@ export function SdpRegisterFlow() {
     userId: null,
   });
   const [orgName, setOrgName] = useState<string>("");
+  const [expectedEmailHint, setExpectedEmailHint] = useState<string | null>(null);
+  const [expectedDobHint, setExpectedDobHint] = useState<string | null>(null);
+  const [isTestnet, setIsTestnet] = useState(false);
   const [requiresIdentity, setRequiresIdentity] = useState(false);
   const [step, setStep] = useState<Step>("identity");
   const [fullName, setFullName] = useState("");
@@ -56,8 +59,14 @@ export function SdpRegisterFlow() {
         const d = (await res.json().catch(() => ({}))) as {
           organizationName?: string;
           requiresIdentityVerification?: boolean;
+          expectedEmailHint?: string | null;
+          expectedDateOfBirthHint?: string | null;
+          isTestnet?: boolean;
         };
         if (d.organizationName) setOrgName(d.organizationName);
+        setExpectedEmailHint(d.expectedEmailHint ?? null);
+        setExpectedDobHint(d.expectedDateOfBirthHint ?? null);
+        setIsTestnet(Boolean(d.isTestnet));
         const needsIdentity = Boolean(d.requiresIdentityVerification);
         setRequiresIdentity(needsIdentity);
         setStep(needsIdentity ? "identity" : "funds");
@@ -334,9 +343,29 @@ export function SdpRegisterFlow() {
       )}
 
       {(status === "idle" || status === "error") && (
-        <p className="text-xs text-white/40 text-center">
-          Firmá con passkey para autorizar la recepción del pago en tu billetera.
-        </p>
+        <div className="space-y-2 text-xs text-white/45 text-center">
+          <p>Firmá con passkey para autorizar la recepción del pago en tu billetera.</p>
+          <p className="text-white/35">
+            En la pantalla del operador (SDP), usá el mismo correo y fecha de nacimiento que
+            registró la organización para este beneficiario.
+          </p>
+          {expectedEmailHint && (
+            <p>
+              Correo esperado: <span className="text-white/70">{expectedEmailHint}</span>
+            </p>
+          )}
+          {expectedDobHint && (
+            <p>
+              Fecha de nacimiento: <span className="text-white/70">{expectedDobHint}</span>
+            </p>
+          )}
+          {isTestnet && (
+            <p className="text-orange-200/70">
+              Testnet: si no recibís el OTP por correo, probá el código{" "}
+              <span className="font-mono text-white/80">000000</span> (válido en SDP testnet).
+            </p>
+          )}
+        </div>
       )}
 
       {error && (

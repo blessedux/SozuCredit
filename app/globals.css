@@ -282,6 +282,36 @@
   animation: orb-breathe 10s ease-in-out infinite;
 }
 
+/* Orb placement: phone = large bottom arc; auth on tablet/desktop = compact footer orb */
+.sozu-orb-wrap {
+  position: absolute;
+  left: 50%;
+  bottom: -28vw;
+  width: 110vw;
+  height: 110vw;
+  will-change: transform;
+}
+
+@media (min-width: 768px) {
+  .sozu-orb-wrap--auth-compact {
+    bottom: -5rem;
+    width: min(26rem, 50vw);
+    height: min(26rem, 50vw);
+    max-width: 26rem;
+    max-height: 26rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .sozu-orb-wrap--auth-compact {
+    bottom: -4rem;
+    width: min(22rem, 34vw);
+    height: min(22rem, 34vw);
+    max-width: 22rem;
+    max-height: 22rem;
+  }
+}
+
 .sozu-ambient-drift {
   animation: ambient-drift 14s ease-in-out infinite;
 }

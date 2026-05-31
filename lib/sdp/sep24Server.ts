@@ -68,6 +68,7 @@ export async function postSep24DepositInteractive(params: {
   assetCode: string;
   assetIssuer: string | null;
   tenantName?: string;
+  lang?: string;
   /** Extra fields some anchors expect */
   extra?: Record<string, string>;
 }): Promise<Sep24InteractiveResult> {
@@ -87,6 +88,9 @@ export async function postSep24DepositInteractive(params: {
     if (params.assetIssuer) {
       form.set("asset_issuer", params.assetIssuer);
     }
+  }
+  if (params.lang) {
+    form.set("lang", params.lang);
   }
   if (params.extra) {
     for (const [k, v] of Object.entries(params.extra)) {

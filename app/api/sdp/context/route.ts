@@ -22,10 +22,23 @@ export async function GET() {
     payload.expectedFullName || payload.expectedDateOfBirth
   );
 
+  const maskEmail = (email: string) => {
+    const at = email.indexOf("@");
+    if (at < 2) return email;
+    return `${email.slice(0, 2)}***${email.slice(at)}`;
+  };
+
   return NextResponse.json({
     organizationName: payload.organizationName,
     asset: payload.asset,
     sdpHost: payload.sdpHost,
     requiresIdentityVerification,
+    expectedEmailHint: payload.expectedBeneficiaryEmail
+      ? maskEmail(payload.expectedBeneficiaryEmail.trim())
+      : null,
+    expectedDateOfBirthHint: payload.expectedDateOfBirth?.trim() || null,
+    isTestnet:
+      process.env.STELLAR_NETWORK !== "public" &&
+      process.env.NEXT_PUBLIC_STELLAR_NETWORK !== "public",
   });
 }

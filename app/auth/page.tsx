@@ -731,8 +731,8 @@ function AuthPageContent() {
         SOZU
       </p>
 
-      {/* Logo and Version - Always centered, above everything (only visible when locked) */}
-      <div className={`absolute inset-0 z-[2] flex flex-col items-center justify-center pointer-events-none transition-opacity duration-700 ${isAuthenticated
+      {/* Logo and Version — centered on phone; upper area on tablet/desktop so orb stays at bottom */}
+      <div className={`absolute inset-0 z-[2] flex flex-col items-center justify-center pointer-events-none transition-opacity duration-700 md:justify-start md:pt-[clamp(5rem,18vh,10rem)] ${isAuthenticated
         ? "opacity-0"
         : "opacity-100"
         }`}>
@@ -740,7 +740,7 @@ function AuthPageContent() {
           <img
             src="/sozucapital_logo_tb.png"
             alt="Sozu Wallet Logo"
-            className="w-32 h-32 md:w-40 md:h-40 object-contain"
+            className="w-32 h-32 md:w-36 md:h-36 object-contain"
           />
           <div className="text-white/60 text-sm font-medium">
             v0.2

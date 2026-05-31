@@ -8,6 +8,7 @@ import {
   SDP_INVITE_COOKIE_NAME,
   type SdpInvitePayload,
 } from "./invitePayload";
+import { resolveSep10StellarAccount } from "./resolveSep10Account";
 
 export type SdpApiContext =
   | {
@@ -76,22 +77,28 @@ export async function getSdpApiContext(): Promise<SdpApiContext> {
   let stellarAccount: string | null = null;
 
   const wallet = await getStellarWallet(userId, true);
-  stellarAccount = wallet?.publicKey?.trim() ?? null;
+  if (wallet) {
+    stellarAccount = resolveSep10StellarAccount(wallet);
+  }
 
   if (!stellarAccount) {
     const { headers } = await import("next/headers");
     const hdrs = await headers();
     const headerKey = hdrs.get("x-stellar-public-key")?.trim() ?? null;
-    if (headerKey && headerKey.startsWith("G") && headerKey.length === 56) {
+    if (headerKey?.startsWith("G") && headerKey.length === 56) {
       stellarAccount = headerKey;
     }
   }
 
   if (!stellarAccount) {
+    const hasSmartC =
+      wallet?.publicKey?.startsWith("C") && wallet.publicKey.length === 56;
     return {
       ok: false,
       status: 400,
-      error: "No Stellar wallet found. Please sign in with your passkey again.",
+      error: hasSmartC
+        ? "Tu billetera inteligente (C) aún no tiene una cuenta clásica (G) vinculada para el desembolso. Contactá soporte o volvé a provisionar la billetera."
+        : "No encontramos tu billetera Stellar. Iniciá sesión con passkey de nuevo.",
     };
   }
 
