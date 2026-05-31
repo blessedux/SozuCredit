@@ -110,6 +110,9 @@ dependencies:
   '@scure/bip39':
     specifier: ^2.0.1
     version: 2.0.1
+  '@simplewebauthn/browser':
+    specifier: ^13.2.2
+    version: 13.3.0
   '@stellar/stellar-sdk':
     specifier: ^14.3.0
     version: 14.3.0
@@ -131,6 +134,9 @@ dependencies:
   autoprefixer:
     specifier: ^10.4.20
     version: 10.4.21(postcss@8.5.6)
+  base64url:
+    specifier: ^3.0.1
+    version: 3.0.1
   class-variance-authority:
     specifier: ^0.7.1
     version: 0.7.1

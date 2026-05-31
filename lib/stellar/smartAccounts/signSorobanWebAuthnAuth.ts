@@ -1,6 +1,8 @@
 "use client"
 
+import { startAuthentication } from "@simplewebauthn/browser"
 import type { SmartAccountKit } from "smart-account-kit"
+import base64url from "base64url"
 import { Address, hash, rpc, xdr } from "@stellar/stellar-sdk"
 import {
   buildExternalSignerKeyData,
@@ -8,12 +10,7 @@ import {
   parsePasskeyPublicKey65,
 } from "@/lib/stellar/smartAccounts/passkeyPublicKey"
 import { normalizeCredentialId } from "@/lib/webauthn/normalize-credential-id"
-import { base64URLToBuffer, bufferToBase64URL } from "@/lib/webauthn/utils"
 import { getUserId } from "@/lib/wallet-utils"
-
-function sorobanAuthChallenge(payload: Buffer): string {
-  return bufferToBase64URL(new Uint8Array(payload).buffer)
-}
 
 const WEBAUTHN_TIMEOUT_MS = 60_000
 const SECP256R1_PUBLIC_KEY_SIZE = 65
@@ -136,7 +133,7 @@ async function loadPasskeyPublicKey65(params: {
 }
 
 /**
- * WebAuthn assertion for Soroban auth — challenge encoding matches smart-account-kit.
+ * WebAuthn assertion for Soroban auth — matches smart-account-kit (simplewebauthn + base64url).
  */
 async function webAuthnSignSorobanPreimage(
   challengeB64Url: string,
@@ -145,32 +142,27 @@ async function webAuthnSignSorobanPreimage(
   authenticator_data: Buffer
   client_data: Buffer
   signature: Uint8Array
-  assertion: PublicKeyCredential
 }> {
-  const rpId = typeof window !== "undefined" ? window.location.hostname : "localhost"
-  const cred = await navigator.credentials.get({
-    publicKey: {
-      challenge: base64URLToBuffer(challengeB64Url),
+  const rpId =
+    process.env.NEXT_PUBLIC_RP_ID?.trim() ||
+    (typeof window !== "undefined" ? window.location.hostname : "localhost")
+  const normId = normalizeCredentialId(credentialId)
+
+  const authResponse = await startAuthentication({
+    optionsJSON: {
+      challenge: challengeB64Url,
       rpId,
-      allowCredentials: [
-        { id: base64URLToBuffer(normalizeCredentialId(credentialId)), type: "public-key" },
-      ],
-      userVerification: "preferred",
+      allowCredentials: [{ id: normId, type: "public-key" }],
+      userVerification: "required",
       timeout: WEBAUTHN_TIMEOUT_MS,
     },
   })
-  if (!cred || cred.type !== "public-key") {
-    throw new Error(
-      "Payment cancelled. Approve the transfer with your passkey to continue.",
-    )
-  }
-  const assertion = cred as PublicKeyCredential
-  const response = assertion.response as AuthenticatorAssertionResponse
+
+  const rawSignature = base64url.toBuffer(authResponse.response.signature)
   return {
-    authenticator_data: Buffer.from(response.authenticatorData),
-    client_data: Buffer.from(response.clientDataJSON),
-    signature: compactSignature(Buffer.from(response.signature)),
-    assertion,
+    authenticator_data: base64url.toBuffer(authResponse.response.authenticatorData),
+    client_data: base64url.toBuffer(authResponse.response.clientDataJSON),
+    signature: compactSignature(rawSignature),
   }
 }
 
@@ -210,7 +202,7 @@ export async function signAuthEntryWithStoredPasskey(params: {
       invocation: normalizedEntry.rootInvocation(),
     }),
   )
-  const challenge = sorobanAuthChallenge(hash(preimage.toXDR()))
+  const challenge = base64url.encode(hash(preimage.toXDR()))
 
   const authResponse = await webAuthnSignSorobanPreimage(challenge, params.credentialId)
 
@@ -242,6 +234,15 @@ export async function signAuthEntryWithStoredPasskey(params: {
     credentials.signature(xdr.ScVal.scvVec([xdr.ScVal.scvMap([scMapEntry])]))
   } else {
     currentSig.vec()?.[0].map()?.push(scMapEntry)
+  }
+
+  const sigMap = credentials.signature().vec()?.[0].map()
+  if (sigMap && sigMap.length > 1) {
+    sigMap.sort((a, b) => {
+      const aKeyXdr = a.key().toXDR("hex")
+      const bKeyXdr = b.key().toXDR("hex")
+      return aKeyXdr.localeCompare(bKeyXdr)
+    })
   }
 
   return normalizedEntry
