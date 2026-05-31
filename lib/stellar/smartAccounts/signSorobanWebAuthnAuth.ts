@@ -5,15 +5,27 @@ import { Address, hash, rpc, xdr } from "@stellar/stellar-sdk"
 import {
   credentialIdToBuffer,
   parsePasskeyPublicKey65,
-  publicKeyToBase64Url,
 } from "@/lib/stellar/smartAccounts/passkeyPublicKey"
-import { resolvePublicKeyFromServer } from "@/lib/stellar/smartAccounts/registerWalletClient"
 import { normalizeCredentialId } from "@/lib/webauthn/normalize-credential-id"
 import { base64URLToBuffer, bufferToBase64URL } from "@/lib/webauthn/utils"
 import { getUserId } from "@/lib/wallet-utils"
 
+function sorobanAuthChallenge(payload: Buffer): string {
+  return bufferToBase64URL(new Uint8Array(payload).buffer)
+}
+
 const WEBAUTHN_TIMEOUT_MS = 60_000
 const SECP256R1_PUBLIC_KEY_SIZE = 65
+
+export function shouldFallbackPasskeySign(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err)
+  return (
+    msg.includes("get_context_rules") ||
+    msg.includes("No signer found") ||
+    msg.includes("non-existent contract function") ||
+    msg.includes("Signer keyData not found")
+  )
+}
 
 /** DER secp256r1 → 64-byte compact (low-S), same as smart-account-kit. */
 function compactSignature(derSignature: Buffer): Uint8Array {
@@ -69,6 +81,22 @@ function buildSignatureMapEntry(
   })
 }
 
+export async function resolveKeyDataFromChain(params: {
+  contractId: string
+  credentialId: string
+  authEntry: xdr.SorobanAuthorizationEntry
+}): Promise<Buffer | null> {
+  const q = new URLSearchParams({
+    contractId: params.contractId,
+    credentialId: params.credentialId,
+    authEntryXdr: params.authEntry.toXDR("base64"),
+  })
+  const res = await fetch(`/api/smart-accounts/resolve-key-data?${q}`)
+  const data = (await res.json().catch(() => ({}))) as { keyDataBase64?: string }
+  if (!res.ok || !data.keyDataBase64) return null
+  return Buffer.from(data.keyDataBase64, "base64")
+}
+
 async function publicKeyFromKitStorage(
   kit: SmartAccountKit | undefined,
   credentialId: string,
@@ -90,28 +118,23 @@ async function publicKeyFromKitStorage(
 async function loadPasskeyKeyData(params: {
   credentialId: string
   contractId?: string
+  authEntry: xdr.SorobanAuthorizationEntry
   kit?: SmartAccountKit
 }): Promise<Buffer> {
+  if (params.contractId?.startsWith("C")) {
+    const onChain = await resolveKeyDataFromChain({
+      contractId: params.contractId,
+      credentialId: params.credentialId,
+      authEntry: params.authEntry,
+    })
+    if (onChain && onChain.length > 65) {
+      return onChain
+    }
+  }
+
   const fromKit = await publicKeyFromKitStorage(params.kit, params.credentialId)
   if (fromKit) {
     return Buffer.concat([Buffer.from(fromKit), credentialIdToBuffer(params.credentialId)])
-  }
-
-  if (params.contractId?.startsWith("C")) {
-    try {
-      const resolved = await resolvePublicKeyFromServer({
-        contractId: params.contractId,
-        credentialId: params.credentialId,
-      })
-      if (resolved.length === SECP256R1_PUBLIC_KEY_SIZE) {
-        return Buffer.concat([
-          Buffer.from(resolved),
-          credentialIdToBuffer(params.credentialId),
-        ])
-      }
-    } catch {
-      // fall through to primary passkey row
-    }
   }
 
   const userId = getUserId()
@@ -126,13 +149,19 @@ async function loadPasskeyKeyData(params: {
     error?: string
   }
   if (!res.ok || !data.publicKey65b) {
-    throw new Error(data.error ?? "Passkey public key missing. Sign in again.")
+    throw new Error(
+      data.error ??
+        "Passkey signer not found on your smart account. Sign out, sign in, and complete wallet setup.",
+    )
   }
 
   const pub = parsePasskeyPublicKey65(data.publicKey65b)
   return Buffer.concat([Buffer.from(pub), credentialIdToBuffer(params.credentialId)])
 }
 
+/**
+ * WebAuthn assertion for Soroban auth — challenge encoding matches smart-account-kit.
+ */
 async function webAuthnSignSorobanPreimage(challengeB64Url: string, credentialId: string) {
   const rpId = typeof window !== "undefined" ? window.location.hostname : "localhost"
   const cred = await navigator.credentials.get({
@@ -140,10 +169,7 @@ async function webAuthnSignSorobanPreimage(challengeB64Url: string, credentialId
       challenge: base64URLToBuffer(challengeB64Url),
       rpId,
       allowCredentials: [
-        {
-          id: base64URLToBuffer(credentialId),
-          type: "public-key",
-        },
+        { id: base64URLToBuffer(normalizeCredentialId(credentialId)), type: "public-key" },
       ],
       userVerification: "preferred",
       timeout: WEBAUTHN_TIMEOUT_MS,
@@ -160,16 +186,12 @@ async function webAuthnSignSorobanPreimage(challengeB64Url: string, credentialId
     authenticator_data: Buffer.from(response.authenticatorData),
     client_data: Buffer.from(response.clientDataJSON),
     signature: compactSignature(Buffer.from(response.signature)),
+    credentialId: assertion.id,
   }
 }
 
-function hashToChallenge(payload: Buffer): string {
-  const bytes = new Uint8Array(payload)
-  return bufferToBase64URL(bytes.buffer)
-}
-
 /**
- * Sign a Soroban auth entry with one WebAuthn prompt (no smart-account-kit double sign).
+ * Sign a Soroban auth entry (fallback when kit.signAuthEntry cannot load context rules).
  */
 export async function signAuthEntryWithStoredPasskey(params: {
   entry: xdr.SorobanAuthorizationEntry
@@ -203,11 +225,12 @@ export async function signAuthEntryWithStoredPasskey(params: {
       invocation: normalizedEntry.rootInvocation(),
     }),
   )
-  const challenge = hashToChallenge(hash(preimage.toXDR()))
+  const challenge = sorobanAuthChallenge(hash(preimage.toXDR()))
 
   const keyData = await loadPasskeyKeyData({
     credentialId: params.credentialId,
     contractId: params.smartAccountContractId,
+    authEntry: normalizedEntry,
     kit: params.kit,
   })
 

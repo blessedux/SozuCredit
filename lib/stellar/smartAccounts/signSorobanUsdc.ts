@@ -2,13 +2,13 @@
 
 import type { SmartAccountKit } from "smart-account-kit"
 import type { xdr } from "@stellar/stellar-sdk"
-import { signAuthEntryWithStoredPasskey } from "@/lib/stellar/smartAccounts/signSorobanWebAuthnAuth"
+import {
+  resolveKeyDataFromChain,
+  signAuthEntryWithStoredPasskey,
+} from "@/lib/stellar/smartAccounts/signSorobanWebAuthnAuth"
 
 /**
  * Sign Soroban USDC transfer auth entries for a passkey smart account (C).
- *
- * The prepared transaction must use a classic G address as `source` (fee payer).
- * The C smart account only appears in the token transfer args + auth entries.
  */
 export async function signSorobanPreparedTxWithPasskey(params: {
   kit: SmartAccountKit
@@ -30,22 +30,15 @@ export async function signSorobanPreparedTxWithPasskey(params: {
   }
   const tx = parsed
 
-  if (tx.operations.length !== 1) {
-    throw new Error("Expected a single Soroban operation.")
-  }
-
-  const op = tx.operations[0]
-  if (op.type !== "invokeHostFunction") {
-    throw new Error("Expected invokeHostFunction operation.")
+  if (tx.operations.length !== 1 || tx.operations[0].type !== "invokeHostFunction") {
+    throw new Error("Expected a single Soroban USDC transfer.")
   }
 
   if (!tx.source.startsWith("G")) {
-    throw new Error(
-      "Invalid prepared transaction: fee payer must be a classic G address, not a C smart account.",
-    )
+    throw new Error("Fee payer must be a classic G address.")
   }
 
-  const invokeOp = op as {
+  const invokeOp = tx.operations[0] as {
     type: "invokeHostFunction"
     func: xdr.HostFunction
     auth?: xdr.SorobanAuthorizationEntry[]
@@ -71,17 +64,41 @@ export async function signSorobanPreparedTxWithPasskey(params: {
 
   const authEntries = invokeOp.auth ?? []
   const signedAuth = []
+  const contractId = params.smartAccountContractId?.trim().toUpperCase()
+
   for (const entry of authEntries) {
-    signedAuth.push(
-      await signAuthEntryWithStoredPasskey({
+    let signed: xdr.SorobanAuthorizationEntry
+    const onChainKeyData =
+      contractId?.startsWith("C") && params.credentialId
+        ? await resolveKeyDataFromChain({
+            contractId,
+            credentialId: params.credentialId,
+            authEntry: entry,
+          })
+        : null
+
+    if (onChainKeyData) {
+      signed = await signAuthEntryWithStoredPasskey({
         entry,
         credentialId: params.credentialId,
         networkPassphrase: params.networkPassphrase,
         webauthnVerifierAddress: webauthnVerifier,
-        smartAccountContractId: params.smartAccountContractId ?? undefined,
+        smartAccountContractId: contractId,
         kit: params.kit,
-      }),
-    )
+      })
+    } else {
+      try {
+        signed = await params.kit.signAuthEntry(entry, {
+          credentialId: params.credentialId,
+        })
+      } catch (kitErr) {
+        const msg = kitErr instanceof Error ? kitErr.message : String(kitErr)
+        throw new Error(
+          `${msg} Re-link your passkey wallet from Settings or sign out and sign in again.`,
+        )
+      }
+    }
+    signedAuth.push(signed)
   }
 
   const sourceAccount = await params.kit.rpc.getAccount(tx.source)
@@ -102,7 +119,7 @@ export async function signSorobanPreparedTxWithPasskey(params: {
   return prepared.toEnvelope().toXDR("base64")
 }
 
-/** @deprecated Use signSorobanPreparedTxWithPasskey with unsignedXdr from buildSorobanUsdcTransferXdr */
+/** @deprecated Use signSorobanPreparedTxWithPasskey */
 export async function signSorobanEnvelopeWithPasskey(params: {
   kit: SmartAccountKit
   envelopeXdr: string
