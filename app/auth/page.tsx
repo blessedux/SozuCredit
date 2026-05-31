@@ -22,6 +22,7 @@ import { useAppViewportLock } from "@/hooks/use-app-viewport-lock"
 import { WalletLanguageProvider, useWalletLanguage } from "@/lib/wallet-language"
 import {
   loadClientWalletSession,
+  persistAuthIdentitySession,
   persistClientWalletSession,
 } from "@/lib/client-wallet-session"
 
@@ -51,37 +52,55 @@ function AuthPageContent() {
   const postAuthPath = searchParams.get("sdpInvite") === "1" ? "/sdp/register" : "/home"
 
   useEffect(() => {
-    if (searchParams.get("sdpInvite") !== "1" || redirectingRef.current) return
+    if (redirectingRef.current || isAuthenticating || isAuthenticated) return
 
     let cancelled = false
     void (async () => {
       const session = await loadClientWalletSession()
-      if (cancelled || !session.isAuthenticated || !session.publicKey || !session.userId) return
+      if (cancelled || !session.isAuthenticated || !session.userId) return
       redirectingRef.current = true
-      router.replace("/sdp/register")
+      const target =
+        searchParams.get("sdpInvite") === "1" ? "/sdp/register" : postAuthPath
+      router.replace(target)
     })()
 
     return () => {
       cancelled = true
     }
-  }, [searchParams, router])
+  }, [searchParams, router, postAuthPath, isAuthenticating, isAuthenticated])
 
   const finalizePasskeyLoginSuccess = useCallback(
     async (userId: string, username: string | undefined, credential: { id: string }) => {
+      const displayUsername =
+        username && username !== "" && username !== "user" ? username : undefined
+
+      persistAuthIdentitySession({
+        userId,
+        credentialId: credential.id,
+        username: displayUsername,
+      })
+
       try {
         const { alignWalletMaterialAfterLogin } = await import("@/lib/storage/post-login-wallet")
-        const { publicKey, needsWalletSync } = await alignWalletMaterialAfterLogin(userId, credential.id)
+        const { publicKey, needsWalletSync } = await alignWalletMaterialAfterLogin(
+          userId,
+          credential.id,
+        )
         if (needsWalletSync) {
           console.warn("[Auth] Wallet sync may be required for this passkey on this device.")
+        } else {
+          persistClientWalletSession({
+            userId,
+            publicKey,
+            credentialId: credential.id,
+            username: displayUsername,
+          })
         }
-        persistClientWalletSession({
-          userId,
-          publicKey,
-          credentialId: credential.id,
-          username: username && username !== "" && username !== "user" ? username : undefined,
-        })
       } catch (keyError) {
         console.error("[Auth] Failed to align wallet after login:", keyError)
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem("wallet_sync_pending", "1")
+        }
       }
       setShowTagModal(false)
       setResumeLoginTag(null)
@@ -98,28 +117,26 @@ function AuthPageContent() {
   const finalizePinLoginSuccess = useCallback(
     async (userId: string, username: string) => {
       sessionStorage.removeItem("credential_id")
+      persistAuthIdentitySession({ userId, credentialId: "", username })
       try {
         const res = await fetch("/api/wallet/stellar/address", { headers: { "x-user-id": userId } })
         const data = (await res.json()) as { publicKey?: string | null }
-        if (data.publicKey && typeof data.publicKey === "string" && data.publicKey.startsWith("G")) {
+        const pk = data.publicKey?.trim().toUpperCase()
+        if (pk && (pk.startsWith("C") || pk.startsWith("G")) && pk.length === 56) {
           const { getCurrentCredentialId } = await import("@/lib/storage/key-utils")
-          const credentialId = (await getCurrentCredentialId(data.publicKey)) ?? ""
+          const credentialId = (await getCurrentCredentialId(pk)) ?? ""
           persistClientWalletSession({
             userId,
-            publicKey: data.publicKey,
+            publicKey: pk,
             credentialId,
             username,
           })
-          const { getKeypairByPublicKey } = await import("@/lib/storage/browser-keys")
-          const kp = await getKeypairByPublicKey(data.publicKey)
-          if (kp) sessionStorage.removeItem("wallet_sync_pending")
-          else sessionStorage.setItem("wallet_sync_pending", "1")
-        } else {
-          localStorage.setItem("sozu_username", username)
-          localStorage.setItem("dev_username", userId)
-          localStorage.setItem("dev_authenticated", "true")
-          sessionStorage.setItem("dev_username", userId)
-          sessionStorage.setItem("dev_authenticated", "true")
+          if (pk.startsWith("G")) {
+            const { getKeypairByPublicKey } = await import("@/lib/storage/browser-keys")
+            const kp = await getKeypairByPublicKey(pk)
+            if (kp) sessionStorage.removeItem("wallet_sync_pending")
+            else sessionStorage.setItem("wallet_sync_pending", "1")
+          }
         }
       } catch (e) {
         console.warn("[Auth] PIN login: could not load wallet address", e)
@@ -472,26 +489,33 @@ function AuthPageContent() {
           throw new Error("No userId available. Cannot continue.")
         }
 
-        // Provision passkey smart account (C…) — same path as login (never persist G as primary)
         if (typeof window !== "undefined" && credential?.id) {
+          persistAuthIdentitySession({
+            userId: finalUserId,
+            credentialId: credential.id,
+            username: registeredUsername,
+          })
+
           try {
             console.log("[Auth] Reg Step 6.5: Provisioning smart wallet (C…) for userId:", finalUserId)
             const { alignWalletMaterialAfterLogin } = await import("@/lib/storage/post-login-wallet")
-            const { publicKey } = await alignWalletMaterialAfterLogin(finalUserId, credential.id)
-            console.log("[Auth] ✅ Smart wallet ready:", publicKey.substring(0, 10) + "…")
+            const { publicKey, needsWalletSync } = await alignWalletMaterialAfterLogin(
+              finalUserId,
+              credential.id,
+            )
+            console.log("[Auth] ✅ Wallet ready:", publicKey.substring(0, 10) + "…", needsWalletSync)
 
-            persistClientWalletSession({
-              userId: finalUserId,
-              publicKey,
-              credentialId: credential.id,
-              username: registeredUsername,
-            })
+            if (!needsWalletSync) {
+              persistClientWalletSession({
+                userId: finalUserId,
+                publicKey,
+                credentialId: credential.id,
+                username: registeredUsername,
+              })
+            }
           } catch (walletError) {
             console.error("[Auth] ❌ Smart wallet provisioning failed:", walletError)
             sessionStorage.setItem("wallet_sync_pending", "1")
-            alert(
-              "Tu cuenta se creó, pero la billetera inteligente (C…) no se pudo activar. Cierra sesión, vuelve a entrar con passkey o contacta soporte.",
-            )
           }
         } else {
           console.warn("[Auth] ⚠️ Skipping smart wallet setup — no credential id")

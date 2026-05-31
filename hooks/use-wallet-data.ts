@@ -609,16 +609,9 @@ export function useWalletData() {
         sessionStorage.getItem("dev_authenticated") === "true"
       const rawUserId =
         localStorage.getItem("dev_username") ?? sessionStorage.getItem("dev_username")
-      const hasStellar = !!(
-        localStorage.getItem("stellar_public_key") ?? sessionStorage.getItem("stellar_public_key")
-      )
 
-      // Legacy dev shortcut created dev-user-* IDs with no passkey / no Stellar key — clear and send to auth.
-      if (
-        typeof rawUserId === "string" &&
-        rawUserId.startsWith("dev-user-") &&
-        !hasStellar
-      ) {
+      // Legacy dev shortcut created dev-user-* IDs with no passkey — clear and send to auth.
+      if (typeof rawUserId === "string" && rawUserId.startsWith("dev-user-")) {
         localStorage.removeItem("dev_username")
         localStorage.removeItem("dev_authenticated")
         sessionStorage.removeItem("dev_username")
@@ -627,7 +620,7 @@ export function useWalletData() {
         return
       }
 
-      if (!isAuthenticated) {
+      if (!isAuthenticated || !rawUserId) {
         setTimeout(() => {
           const retryCheck =
             localStorage.getItem("dev_authenticated") === "true" ||

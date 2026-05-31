@@ -42,32 +42,23 @@ export async function loadClientWalletSession(): Promise<ClientWalletSession> {
     credentialId = await getCurrentCredentialId(publicKey);
   }
 
-  const isAuthenticated =
-    isAuthenticatedClient() &&
-    !!userId &&
-    !!publicKey &&
-    (publicKey.startsWith("C") || publicKey.startsWith("G")) &&
-    publicKey.length === 56;
+  const isAuthenticated = isAuthenticatedClient() && !!userId;
 
   return { userId, publicKey, credentialId, isAuthenticated };
 }
 
-/** Keep local + session storage aligned so /sdp/register sees auth immediately after /auth. */
-export function persistClientWalletSession(params: {
+/** Passkey login succeeded — persist before wallet provisioning so /home never bounces to /auth. */
+export function persistAuthIdentitySession(params: {
   userId: string;
-  publicKey: string;
   credentialId: string;
   username?: string;
 }): void {
-  const { userId, publicKey, credentialId, username } = params;
+  const { userId, credentialId, username } = params;
 
   localStorage.setItem("dev_username", userId);
   localStorage.setItem("dev_authenticated", "true");
-  localStorage.setItem("stellar_public_key", publicKey);
-
   sessionStorage.setItem("dev_username", userId);
   sessionStorage.setItem("dev_authenticated", "true");
-  sessionStorage.setItem("stellar_public_key", publicKey);
 
   if (credentialId) {
     storeCredentialIdInSession(credentialId);
@@ -79,4 +70,23 @@ export function persistClientWalletSession(params: {
   }
 
   sessionStorage.setItem("passkey_registered", "true");
+}
+
+export function persistWalletPublicKey(publicKey: string): void {
+  const pk = publicKey.trim().toUpperCase();
+  localStorage.setItem("stellar_public_key", pk);
+  sessionStorage.setItem("stellar_public_key", pk);
+}
+
+/** Keep local + session storage aligned so /sdp/register sees auth immediately after /auth. */
+export function persistClientWalletSession(params: {
+  userId: string;
+  publicKey: string;
+  credentialId: string;
+  username?: string;
+}): void {
+  const { userId, publicKey, credentialId, username } = params;
+
+  persistAuthIdentitySession({ userId, credentialId, username });
+  persistWalletPublicKey(publicKey);
 }

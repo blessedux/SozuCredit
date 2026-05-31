@@ -190,7 +190,7 @@ export async function updateSession(request: NextRequest) {
         return supabaseResponse
       }
       const url = request.nextUrl.clone()
-      url.pathname = "/wallet"
+      url.pathname = "/home"
       return NextResponse.redirect(url)
     } else {
       // No Supabase session cookie - likely using sessionStorage auth
