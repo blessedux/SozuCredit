@@ -27,8 +27,8 @@ Run in Supabase:
 
 | Sender `wallet_type` | Sign path |
 |----------------------|-----------|
-| `oz` (OZ kit contract only) | `kit.signAuthEntry` when `get_context_rules` exists on C |
-| `factory` / most C wallets | G fee payer + `authorizeEntry` with passkey-derived G (one passkey prompt) |
+| `oz` | WebAuthn `signAuthEntry` on C (falls back to stored passkey key if `get_context_rules` is missing) |
+| `factory` | G fee payer + `authorizeEntry` with passkey-derived ed25519 G |
 | `legacy` | Classic `Operation.payment` |
 
 **Important:** A **C** address cannot be the Soroban transaction `source` (Stellar SDK decodes it as ed25519 and throws `invalid version byte. expected 48, got 16`). Your **G signer** pays fees; your **C** account authorizes the token transfer.

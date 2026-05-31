@@ -2,6 +2,40 @@
 
 import type { SmartAccountKit } from "smart-account-kit"
 import type { xdr } from "@stellar/stellar-sdk"
+import { signAuthEntryWithStoredPasskey } from "@/lib/stellar/smartAccounts/signSorobanWebAuthnAuth"
+
+function shouldFallbackPasskeySign(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err)
+  return (
+    msg.includes("get_context_rules") ||
+    msg.includes("No signer found") ||
+    msg.includes("non-existent contract function")
+  )
+}
+
+async function signAuthEntryForSmartWallet(params: {
+  kit: SmartAccountKit
+  entry: xdr.SorobanAuthorizationEntry
+  credentialId?: string | null
+  networkPassphrase: string
+  webauthnVerifierAddress: string
+}): Promise<xdr.SorobanAuthorizationEntry> {
+  try {
+    return await params.kit.signAuthEntry(params.entry, {
+      credentialId: params.credentialId ?? undefined,
+    })
+  } catch (err) {
+    if (!shouldFallbackPasskeySign(err) || !params.credentialId) {
+      throw err
+    }
+    return signAuthEntryWithStoredPasskey({
+      entry: params.entry,
+      credentialId: params.credentialId,
+      networkPassphrase: params.networkPassphrase,
+      webauthnVerifierAddress: params.webauthnVerifierAddress,
+    })
+  }
+}
 
 /**
  * Sign Soroban USDC transfer auth entries for a passkey smart account (C).
@@ -14,6 +48,8 @@ export async function signSorobanPreparedTxWithPasskey(params: {
   unsignedXdr: string
   networkPassphrase: string
   credentialId?: string | null
+  smartAccountContractId?: string | null
+  webauthnVerifierAddress?: string | null
 }): Promise<string> {
   const { TransactionBuilder, Operation, Transaction } = await import("@stellar/stellar-sdk")
 
@@ -43,12 +79,34 @@ export async function signSorobanPreparedTxWithPasskey(params: {
     func: xdr.HostFunction
     auth?: xdr.SorobanAuthorizationEntry[]
   }
+  if (params.smartAccountContractId && params.credentialId) {
+    await params.kit.connectWallet({
+      prompt: false,
+      credentialId: params.credentialId,
+      contractId: params.smartAccountContractId,
+    })
+  }
+
+  let webauthnVerifier = params.webauthnVerifierAddress?.trim() ?? ""
+  if (!webauthnVerifier) {
+    const cfgRes = await fetch("/api/smart-accounts/config")
+    const cfg = (await cfgRes.json().catch(() => ({}))) as { webauthnVerifierAddress?: string }
+    webauthnVerifier = cfg.webauthnVerifierAddress?.trim() ?? ""
+  }
+  if (!webauthnVerifier) {
+    throw new Error("Smart account verifier not configured.")
+  }
+
   const authEntries = invokeOp.auth ?? []
   const signedAuth = []
   for (const entry of authEntries) {
     signedAuth.push(
-      await params.kit.signAuthEntry(entry, {
-        credentialId: params.credentialId ?? undefined,
+      await signAuthEntryForSmartWallet({
+        kit: params.kit,
+        entry,
+        credentialId: params.credentialId,
+        networkPassphrase: params.networkPassphrase,
+        webauthnVerifierAddress: webauthnVerifier,
       }),
     )
   }

@@ -330,11 +330,19 @@ export function useSendPayment(
           "@/lib/stellar/smartAccounts/signSorobanUsdc"
         )
         const { kit, config } = await getSmartAccountKit()
+        const walletContractId =
+          typeof build.walletAddress === "string" && build.walletAddress.startsWith("C")
+            ? build.walletAddress
+            : walletAddress.startsWith("C")
+              ? walletAddress
+              : null
         const signedEnvelopeXdr = await signSorobanPreparedTxWithPasskey({
           kit,
           unsignedXdr,
           networkPassphrase: config.networkPassphrase,
           credentialId,
+          smartAccountContractId: walletContractId,
+          webauthnVerifierAddress: config.webauthnVerifierAddress,
         })
         submitBody = { signedEnvelopeXdr }
       } else {
