@@ -16,6 +16,11 @@ import {
   usdcFromInputAmount,
   type SendAmountCurrency,
 } from "@/lib/payment/send-amount-currency"
+import {
+  LEGACY_CLASSIC_PAYMENT_NOTICE,
+  paymentRailForAddress,
+  recipientResolveErrorMessage,
+} from "@/lib/payment/payment-rail"
 import { normalizeSozuTag } from "@/lib/payment/sozu-tag-lookup"
 import { isValidStellarReceiveAddress } from "@/lib/payment/stellar-address"
 import type { ReferenceFiat } from "@/lib/treasury/types"
@@ -36,6 +41,8 @@ export function useSendPayment(
   const [isSending, setIsSending] = useState(false)
   const [sendStep, setSendStep] = useState<"recipient" | "amount">("recipient")
   const [resolvedRecipientAddress, setResolvedRecipientAddress] = useState<string | null>(null)
+  const [resolvedPaymentRail, setResolvedPaymentRail] = useState<"smart" | "legacy" | null>(null)
+  const [legacyPaymentNotice, setLegacyPaymentNotice] = useState<string | null>(null)
   const [isResolvingRecipient, setIsResolvingRecipient] = useState(false)
   const [isManualMode, setIsManualMode] = useState(false)
   const [sendMemo, setSendMemo] = useState("")
@@ -59,20 +66,32 @@ export function useSendPayment(
     setAmountInputCurrency(nextCurrency)
   }, [amountInputCurrency, referenceFiat, sendAmount])
 
-  // Reset send payment state
   const resetSendPayment = useCallback(() => {
     setSendStep("recipient")
     setSendRecipient("")
     setSendAmount("")
     setAmountInputCurrency(defaultSendAmountCurrency(referenceFiat))
     setResolvedRecipientAddress(null)
+    setResolvedPaymentRail(null)
+    setLegacyPaymentNotice(null)
     setIsManualMode(false)
     setSendMemo("")
     setRecipientError(null)
     setIsVibrating(false)
   }, [referenceFiat])
 
-  // Resolve recipient (Sozu tag or Stellar address)
+  const applyResolvedRecipient = useCallback(
+    (address: string, rail?: "smart" | "legacy", notice?: string | null) => {
+      const normalized = address.trim().toUpperCase()
+      setResolvedRecipientAddress(normalized)
+      setResolvedPaymentRail(rail ?? paymentRailForAddress(normalized))
+      setLegacyPaymentNotice(notice ?? (rail === "legacy" ? LEGACY_CLASSIC_PAYMENT_NOTICE : null))
+      setSendStep("amount")
+      setRecipientError(null)
+    },
+    []
+  )
+
   const handleResolveRecipient = useCallback(async () => {
     if (!sendRecipient.trim()) {
       return
@@ -86,20 +105,26 @@ export function useSendPayment(
         throw new Error("User not authenticated")
       }
 
-      // If in manual mode and recipient is already a Stellar address, use it directly
-      if (isManualMode) {
-        const addr = sendRecipient.trim().toUpperCase()
-        if (isValidStellarReceiveAddress(addr)) {
-          console.log("[Resolve Recipient] ✅ Manual mode: Using Stellar address directly")
-          setResolvedRecipientAddress(addr)
-          setSendStep("amount")
-          return
-        } else {
-          throw new Error("Invalid Stellar wallet address (use G… or C…)")
-        }
+      const trimmed = sendRecipient.trim()
+      const stellarAddr = trimmed.toUpperCase()
+
+      if (isValidStellarReceiveAddress(stellarAddr)) {
+        const rail = paymentRailForAddress(stellarAddr)!
+        applyResolvedRecipient(
+          stellarAddr,
+          rail,
+          rail === "legacy" ? LEGACY_CLASSIC_PAYMENT_NOTICE : null,
+        )
+        return
       }
 
-      // Resolve recipient (Sozu tag or wallet address)
+      if (isManualMode) {
+        setRecipientError("Enter a Sozu tag or a Stellar address (C… smart account or G… legacy).")
+        setIsVibrating(true)
+        setTimeout(() => setIsVibrating(false), 500)
+        return
+      }
+
       const resolveResponse = await fetch("/api/wallet/resolve-recipient", {
         method: "POST",
         headers: {
@@ -107,46 +132,44 @@ export function useSendPayment(
           "x-user-id": userId,
         },
         body: JSON.stringify({
-          recipient: normalizeSozuTag(sendRecipient.trim()) || sendRecipient.trim(),
+          recipient: normalizeSozuTag(trimmed) || trimmed,
         }),
       })
 
       if (!resolveResponse.ok) {
-        const error = await resolveResponse.json()
-        if (error.error && (error.error.includes("not found") || error.error.includes("Recipient not found"))) {
-          setRecipientError("Sozu tag not found")
-          setIsVibrating(true)
-          setTimeout(() => setIsVibrating(false), 500)
-          return
-        }
-        throw new Error(error.error || "Failed to resolve recipient")
-      }
-
-      const { walletAddress: recipientAddress } = await resolveResponse.json()
-      if (!recipientAddress) {
-        setRecipientError("Sozu tag not found")
+        const error = await resolveResponse.json().catch(() => ({}))
+        setRecipientError(recipientResolveErrorMessage(error.error))
         setIsVibrating(true)
         setTimeout(() => setIsVibrating(false), 500)
         return
       }
 
-      console.log("[Resolve Recipient] ✅ Recipient resolved:", recipientAddress.substring(0, 10) + "...")
-      setResolvedRecipientAddress(recipientAddress)
-      setSendStep("amount")
-      setRecipientError(null)
-    } catch (error: any) {
-      console.error("[Resolve Recipient] Error:", error)
-      if (!recipientError) {
-        setRecipientError("Sozu tag not found")
+      const data = await resolveResponse.json()
+      const recipientAddress = data?.walletAddress as string | undefined
+      if (!recipientAddress) {
+        setRecipientError("Sozu tag not found. Check spelling or paste a C… or G… address.")
         setIsVibrating(true)
         setTimeout(() => setIsVibrating(false), 500)
+        return
       }
+
+      applyResolvedRecipient(
+        recipientAddress,
+        data.paymentRail === "legacy" ? "legacy" : "smart",
+        typeof data.legacyNotice === "string" ? data.legacyNotice : null,
+      )
+    } catch (error: unknown) {
+      console.error("[Resolve Recipient] Error:", error)
+      setRecipientError(
+        error instanceof Error ? error.message : "Could not resolve recipient",
+      )
+      setIsVibrating(true)
+      setTimeout(() => setIsVibrating(false), 500)
     } finally {
       setIsResolvingRecipient(false)
     }
-  }, [sendRecipient, isManualMode, recipientError])
+  }, [sendRecipient, isManualMode, applyResolvedRecipient])
 
-  // Send payment
   const handleSendPayment = useCallback(async () => {
     if (!sendAmount || parseFloat(sendAmount) <= 0 || !resolvedRecipientAddress) {
       return
@@ -162,17 +185,15 @@ export function useSendPayment(
       return
     }
 
-    // Check balance before proceeding
     const userId = getUserId()
     if (!userId) {
       alert("User not authenticated. Please log in again.")
       return
     }
-    
+
     console.log("[Send Payment] Fetching real-time USDC balance for verification...")
     let currentBalance = defindexBalance?.walletBalance || 0
-    
-    // Fetch real-time balance from Stellar network
+
     if (walletAddress) {
       try {
         const balanceResponse = await fetch(`/api/wallet/stellar/balance?publicKey=${walletAddress}`, {
@@ -180,7 +201,7 @@ export function useSendPayment(
             "x-user-id": userId,
           },
         })
-        
+
         if (balanceResponse.ok) {
           const balanceData = await balanceResponse.json()
           if (balanceData.usdcBalance !== undefined) {
@@ -192,30 +213,22 @@ export function useSendPayment(
         console.warn("[Send Payment] Could not fetch real-time balance, using cached:", balanceError)
       }
     }
-    
+
     const bufferAmount = 0.01
     const requiredBalance = amount + bufferAmount
 
     if (currentBalance < requiredBalance) {
-      const shortfall = requiredBalance - currentBalance
       const strategyBalance = defindexBalance?.strategyBalance || 0
-      
       let errorMessage = `Insufficient balance. You need ${requiredBalance.toFixed(2)} USDC (including ${bufferAmount.toFixed(2)} USDC buffer) but only have ${currentBalance.toFixed(2)} USDC available in your wallet.`
-      
       if (strategyBalance > 0) {
-        errorMessage += `\n\nYou have ${strategyBalance.toFixed(2)} USDC locked in DeFindex strategy. You need to withdraw from DeFindex first to make it available for sending.`
+        errorMessage += `\n\nYou have ${strategyBalance.toFixed(2)} USDC locked in DeFindex strategy. Withdraw from DeFindex first.`
       }
-      
       alert(errorMessage)
-      setIsSending(false)
       return
     }
 
     setIsSending(true)
     try {
-      // Step 1: Get unsigned transaction from server
-      console.log("[Send Payment] Building transaction")
-      
       const buildResponse = await fetch("/api/wallet/stellar/payment", {
         method: "POST",
         headers: {
@@ -235,102 +248,115 @@ export function useSendPayment(
         throw new Error(error.error || "Failed to build payment transaction")
       }
 
-      const { unsignedXdr } = await buildResponse.json()
-      if (!unsignedXdr) {
-        throw new Error("No unsigned transaction returned")
-      }
+      const build = await buildResponse.json()
+      const signMethod = build.signMethod as string | undefined
 
-      // Step 2: Sign transaction with biometric
-      const stellarSdk = await import("@stellar/stellar-sdk")
-      const { getStellarConfig } = await import("@/lib/turnkey/config")
-      const stellarConfig = getStellarConfig()
-      const networkPassphrase = stellarConfig.network === "mainnet" ? stellarSdk.Networks.PUBLIC : stellarSdk.Networks.TESTNET
-      const transactionXdr = stellarSdk.TransactionBuilder.fromXDR(unsignedXdr, networkPassphrase)
-      if (transactionXdr instanceof stellarSdk.FeeBumpTransaction) {
-        throw new Error("Fee bump transactions are not supported")
-      }
-      const transaction = transactionXdr
+      let submitBody: { signedTransactionXdr?: string; signedEnvelopeXdr?: string }
 
-      // Verify transaction source matches our wallet address
-      if (transaction.source !== walletAddress) {
-        console.error("[Send Payment] ❌ Transaction source doesn't match wallet address!")
-        throw new Error(`Transaction source mismatch. Expected: ${walletAddress?.substring(0, 10)}..., Got: ${transaction.source.substring(0, 10)}...`)
-      }
-
-      // Get credential ID and sign with passkey approval
-      const { getCurrentCredentialId } = await import("@/lib/storage/key-utils")
-      const { signTransactionWithPasskeyApproval } = await import("@/lib/stellar/client-signing")
-      
-      const credentialId = await getCurrentCredentialId(walletAddress)
-      if (!credentialId) {
-        throw new Error("Credential ID not found. Please log in again.")
-      }
-
-      console.log("[Send Payment] Signing transaction with passkey approval")
-      
-      let signedResult
-      try {
-        signedResult = await signTransactionWithPasskeyApproval(transaction, credentialId, walletAddress, userId)
-      } catch (signError: any) {
-        console.error("[Send Payment] ❌ Transaction signing failed:", signError)
-        if (signError.message?.includes("not found") || signError.message?.includes("Keypair not found")) {
-          throw new Error("Unable to sign transaction. Please ensure you're logged in and have created a wallet.")
-        } else if (signError.message?.includes("cancelled") || signError.message?.includes("Cancelled") || signError.name === "NotAllowedError" || signError.name === "AbortError") {
-          throw new Error("Transaction cancelled. You must approve the transaction with your passkey to send payment.")
-        } else if (signError.message?.includes("verification failed") || signError.message?.includes("Challenge")) {
-          throw new Error("Passkey verification failed. Please try again.")
-        } else {
-          throw new Error(`Transaction signing failed: ${signError.message || "Please try again."}`)
+      if (signMethod === "oz_passkey" && typeof build.envelopeXdr === "string") {
+        const { getSmartAccountKit } = await import("@/lib/stellar/smartAccounts/client")
+        const { signSorobanEnvelopeWithPasskey } = await import("@/lib/stellar/smartAccounts/signSorobanUsdc")
+        const { getCurrentCredentialId } = await import("@/lib/storage/key-utils")
+        const { kit, config } = await getSmartAccountKit()
+        const credentialId =
+          (typeof build.ozCredentialId === "string" ? build.ozCredentialId : null) ||
+          (await getCurrentCredentialId(walletAddress))
+        if (!credentialId) {
+          throw new Error("Credential ID not found. Please log in again.")
         }
-      }
-      
-      if (!signedResult || !signedResult.transaction) {
-        throw new Error("Transaction signing failed - no signed transaction returned. Please try again.")
-      }
-      
-      if (signedResult.transaction.signatures.length === 0) {
-        throw new Error("Transaction signing failed - no signatures found. Please try again.")
-      }
-      
-      console.log("[Send Payment] ✅ Transaction signed successfully")
-      const signedXdr = signedResult.transaction.toXDR()
+        const signedEnvelopeXdr = await signSorobanEnvelopeWithPasskey({
+          kit,
+          envelopeXdr: build.envelopeXdr,
+          networkPassphrase: config.networkPassphrase,
+          credentialId,
+        })
+        submitBody = { signedEnvelopeXdr }
+      } else {
+        const unsignedXdr = build.unsignedXdr
+        if (!unsignedXdr) {
+          throw new Error("No unsigned transaction returned")
+        }
 
-      // Step 3: Submit signed transaction
+        const signerPublicKey =
+          typeof build.signerPublicKey === "string" ? build.signerPublicKey : walletAddress
+
+        if (build.paymentRail === "legacy" && build.legacyNotice) {
+          console.log("[Send Payment] Legacy classic payment:", build.legacyNotice)
+        }
+
+        const stellarSdk = await import("@stellar/stellar-sdk")
+        const { getStellarConfig } = await import("@/lib/turnkey/config")
+        const stellarConfig = getStellarConfig()
+        const networkPassphrase =
+          stellarConfig.network === "mainnet"
+            ? stellarSdk.Networks.PUBLIC
+            : stellarSdk.Networks.TESTNET
+        const transactionXdr = stellarSdk.TransactionBuilder.fromXDR(unsignedXdr, networkPassphrase)
+        if (transactionXdr instanceof stellarSdk.FeeBumpTransaction) {
+          throw new Error("Fee bump transactions are not supported")
+        }
+        const transaction = transactionXdr
+
+        if (transaction.source !== signerPublicKey) {
+          throw new Error(
+            `Transaction source mismatch. Expected signer ${signerPublicKey.substring(0, 8)}…, got ${transaction.source.substring(0, 8)}…`,
+          )
+        }
+
+        const { getCurrentCredentialId } = await import("@/lib/storage/key-utils")
+        const { signTransactionWithPasskeyApproval } = await import("@/lib/stellar/client-signing")
+
+        const lookupKey = signerPublicKey.startsWith("G") ? signerPublicKey : walletAddress
+        const credentialId = await getCurrentCredentialId(lookupKey)
+        if (!credentialId) {
+          throw new Error("Credential ID not found. Please log in again.")
+        }
+
+        const signedResult = await signTransactionWithPasskeyApproval(
+          transaction,
+          credentialId,
+          signerPublicKey,
+          userId,
+        )
+
+        if (!signedResult?.transaction) {
+          throw new Error("Transaction signing failed - no signed transaction returned.")
+        }
+
+        submitBody = { signedTransactionXdr: signedResult.transactionXdr }
+      }
+
       const submitResponse = await fetch("/api/wallet/stellar/payment", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-user-id": userId,
         },
-        body: JSON.stringify({
-          signedTransactionXdr: signedXdr,
-        }),
+        body: JSON.stringify(submitBody),
       })
 
       if (!submitResponse.ok) {
         const error = await submitResponse.json()
-        const errorMessage = error.error || "Failed to submit payment"
-        console.error("[Send Payment] Error response:", error)
-        throw new Error(errorMessage)
+        throw new Error(error.error || "Failed to submit payment")
       }
 
       const result = await submitResponse.json()
-      
-      if (result.success === true && result.transactionHash && typeof result.transactionHash === "string" && result.transactionHash.length > 0) {
-        console.log("[Send Payment] ✅ Transaction submitted successfully:", result.transactionHash)
-        
-        // Wait for transaction to be included in ledger
+
+      if (
+        result.success === true &&
+        result.transactionHash &&
+        typeof result.transactionHash === "string" &&
+        result.transactionHash.length > 0
+      ) {
         if (!result.confirmed) {
           await new Promise((resolve) => setTimeout(resolve, 2000))
         }
-        
-        // Refresh balance and transaction history
+
         if (onRefresh) {
           onRefresh()
           setTimeout(() => onRefresh(), 3000)
         }
-        
-        // Call success callback
+
         if (onSuccess) {
           onSuccess({
             amount,
@@ -344,52 +370,53 @@ export function useSendPayment(
             completedAt: new Date().toISOString(),
           })
         }
-        
-        // Reset state
+
         resetSendPayment()
       } else {
-        const errorMessage = result.error || "Payment failed. Transaction was not submitted successfully."
-        console.error("[Send Payment] ❌ Payment failed:", result)
-        throw new Error(errorMessage)
+        throw new Error(result.error || "Payment failed. Transaction was not submitted successfully.")
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("[Send Payment] Error:", error)
-      
-      let errorMessage = error.message || "Unknown error"
-      if (error.message?.includes("account not found")) {
-        errorMessage = "Your wallet account is not active on the Stellar network. Please ensure your account has been funded with at least 1 XLM."
-      } else if (error.message?.includes("insufficient")) {
-        errorMessage = "Insufficient balance. Please check your USDC balance."
-      } else if (error.message?.includes("trustline")) {
-        errorMessage = "USDC trustline not established. Please set up your wallet first."
-      } else if (error.message?.includes("Credential ID not found")) {
-        errorMessage = "Authentication error. Please log out and log back in."
+      let errorMessage = error instanceof Error ? error.message : "Unknown error"
+      if (errorMessage.includes("account not found")) {
+        errorMessage =
+          "Your wallet is not active on the network yet. Fund your smart account or classic wallet with XLM/USDC."
       }
-      
       alert(`❌ ${errorMessage}`)
     } finally {
       setIsSending(false)
     }
-  }, [sendAmount, amountInputCurrency, referenceFiat, sendRecipient, resolvedRecipientAddress, walletAddress, walletNetwork, defindexBalance, sendMemo, onSuccess, onRefresh, resetSendPayment])
-
-  return {
-    // State
-    sendRecipient,
+  }, [
     sendAmount,
     amountInputCurrency,
     referenceFiat,
+    sendRecipient,
+    resolvedRecipientAddress,
+    walletAddress,
+    walletNetwork,
+    defindexBalance,
+    sendMemo,
+    onSuccess,
+    onRefresh,
+    resetSendPayment,
+  ])
+
+  return {
+    sendRecipient,
+    sendAmount,
+    amountInputCurrency,
     isSending,
     sendStep,
     resolvedRecipientAddress,
+    resolvedPaymentRail,
+    legacyPaymentNotice,
     isResolvingRecipient,
     isManualMode,
     sendMemo,
     recipientError,
     isVibrating,
-    // Actions
     setSendRecipient,
     setSendAmount,
-    setSendStep,
     setIsManualMode,
     setSendMemo,
     setRecipientError,

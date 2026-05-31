@@ -20,6 +20,10 @@ import { useState, useRef, useEffect, useCallback, Suspense } from "react"
 import { usePwaInstall } from "@/hooks/use-pwa-install"
 import { useAppViewportLock } from "@/hooks/use-app-viewport-lock"
 import { WalletLanguageProvider, useWalletLanguage } from "@/lib/wallet-language"
+import {
+  loadClientWalletSession,
+  persistClientWalletSession,
+} from "@/lib/client-wallet-session"
 
 function AuthPageContent() {
   const [isAuthenticating, setIsAuthenticating] = useState(false)
@@ -46,20 +50,36 @@ function AuthPageContent() {
   /** SDP onboarding: middleware sends unauthenticated users to /auth?sdpInvite=1 */
   const postAuthPath = searchParams.get("sdpInvite") === "1" ? "/sdp/register" : "/home"
 
+  useEffect(() => {
+    if (searchParams.get("sdpInvite") !== "1" || redirectingRef.current) return
+
+    let cancelled = false
+    void (async () => {
+      const session = await loadClientWalletSession()
+      if (cancelled || !session.isAuthenticated || !session.publicKey || !session.userId) return
+      redirectingRef.current = true
+      router.replace("/sdp/register")
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [searchParams, router])
+
   const finalizePasskeyLoginSuccess = useCallback(
     async (userId: string, username: string | undefined, credential: { id: string }) => {
-      if (username && username !== "" && username !== "user") {
-        localStorage.setItem("sozu_username", username)
-      }
-      localStorage.setItem("dev_username", userId)
-      localStorage.setItem("dev_authenticated", "true")
       try {
         const { alignWalletMaterialAfterLogin } = await import("@/lib/storage/post-login-wallet")
         const { publicKey, needsWalletSync } = await alignWalletMaterialAfterLogin(userId, credential.id)
-        localStorage.setItem("stellar_public_key", publicKey)
         if (needsWalletSync) {
           console.warn("[Auth] Wallet sync may be required for this passkey on this device.")
         }
+        persistClientWalletSession({
+          userId,
+          publicKey,
+          credentialId: credential.id,
+          username: username && username !== "" && username !== "user" ? username : undefined,
+        })
       } catch (keyError) {
         console.error("[Auth] Failed to align wallet after login:", keyError)
       }
@@ -77,19 +97,29 @@ function AuthPageContent() {
 
   const finalizePinLoginSuccess = useCallback(
     async (userId: string, username: string) => {
-      localStorage.setItem("sozu_username", username)
-      localStorage.setItem("dev_username", userId)
-      localStorage.setItem("dev_authenticated", "true")
       sessionStorage.removeItem("credential_id")
       try {
         const res = await fetch("/api/wallet/stellar/address", { headers: { "x-user-id": userId } })
         const data = (await res.json()) as { publicKey?: string | null }
         if (data.publicKey && typeof data.publicKey === "string" && data.publicKey.startsWith("G")) {
-          localStorage.setItem("stellar_public_key", data.publicKey)
+          const { getCurrentCredentialId } = await import("@/lib/storage/key-utils")
+          const credentialId = (await getCurrentCredentialId(data.publicKey)) ?? ""
+          persistClientWalletSession({
+            userId,
+            publicKey: data.publicKey,
+            credentialId,
+            username,
+          })
           const { getKeypairByPublicKey } = await import("@/lib/storage/browser-keys")
           const kp = await getKeypairByPublicKey(data.publicKey)
           if (kp) sessionStorage.removeItem("wallet_sync_pending")
           else sessionStorage.setItem("wallet_sync_pending", "1")
+        } else {
+          localStorage.setItem("sozu_username", username)
+          localStorage.setItem("dev_username", userId)
+          localStorage.setItem("dev_authenticated", "true")
+          sessionStorage.setItem("dev_username", userId)
+          sessionStorage.setItem("dev_authenticated", "true")
         }
       } catch (e) {
         console.warn("[Auth] PIN login: could not load wallet address", e)
@@ -469,19 +499,14 @@ function AuthPageContent() {
               userId: finalUserId,
             })
 
-            // Store public key persistently; credential_id stays in sessionStorage (ephemeral)
-            localStorage.setItem("stellar_public_key", publicKey)
-            storeCredentialIdInSession(credential.id)
+            persistClientWalletSession({
+              userId: finalUserId,
+              publicKey,
+              credentialId: credential.id,
+              username: registeredUsername,
+            })
 
-            console.log("[Auth] ✅ Credential ID stored in sessionStorage for client-side signing")
-            console.log("[Auth] ✅ Public key stored:", publicKey.substring(0, 10) + "...")
-            console.log("[Auth] ✅ Credential ID stored:", credential.id.substring(0, 20) + "...")
-
-            // Verify storage
-            const storedCredentialId = sessionStorage.getItem("credential_id")
-            const storedPublicKey = sessionStorage.getItem("stellar_public_key")
-            console.log("[Auth] Verification - Stored credential_id:", storedCredentialId ? storedCredentialId.substring(0, 20) + "..." : "MISSING")
-            console.log("[Auth] Verification - Stored public_key:", storedPublicKey ? storedPublicKey.substring(0, 10) + "..." : "MISSING")
+            console.log("[Auth] ✅ Wallet session persisted for SDP/register")
           } catch (keyError) {
             console.error("[Auth] ❌ Failed to derive/store keypair:", keyError)
             console.error("[Auth] Error details:", {
@@ -498,11 +523,16 @@ function AuthPageContent() {
           })
         }
 
-        // Persist session so the user never needs to re-auth on next open
-        localStorage.setItem("dev_username", finalUserId)
-        localStorage.setItem("dev_authenticated", "true")
-        sessionStorage.setItem("passkey_registered", "true")
-        sessionStorage.setItem("dev_username_display", registeredUsername)
+        const regPublicKey =
+          localStorage.getItem("stellar_public_key") ?? sessionStorage.getItem("stellar_public_key")
+        if (regPublicKey?.startsWith("G") && credential?.id) {
+          persistClientWalletSession({
+            userId: finalUserId,
+            publicKey: regPublicKey,
+            credentialId: credential.id,
+            username: registeredUsername,
+          })
+        }
 
         console.log("[Auth] Persisted session after registration:", finalUserId, "Username:", registeredUsername)
 
@@ -611,7 +641,9 @@ function AuthPageContent() {
 
       // Check if we somehow got authenticated despite the error
       if (typeof window !== "undefined") {
-        const isAuth = sessionStorage.getItem("dev_authenticated") === "true"
+        const isAuth =
+          localStorage.getItem("dev_authenticated") === "true" ||
+          sessionStorage.getItem("dev_authenticated") === "true"
         console.log("[Auth] Checking sessionStorage after error - authenticated:", isAuth)
 
         if (isAuth) {

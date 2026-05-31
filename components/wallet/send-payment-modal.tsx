@@ -25,6 +25,10 @@ import {
   isValidSozuTag,
   normalizeSozuTag,
 } from "@/lib/payment/sozu-tag-lookup"
+import {
+  LEGACY_CLASSIC_PAYMENT_NOTICE,
+  paymentRailForAddress,
+} from "@/lib/payment/payment-rail"
 import { isValidStellarReceiveAddress } from "@/lib/payment/stellar-address"
 import { formatBalance, getUserId } from "@/lib/wallet-utils"
 import type { ReferenceFiat } from "@/lib/treasury/types"
@@ -63,6 +67,7 @@ export const SendPaymentModal = memo(function SendPaymentModal({
     sendMemo,
     recipientError,
     isVibrating,
+    legacyPaymentNotice,
     setSendRecipient,
     setSendAmount,
     setIsManualMode,
@@ -158,10 +163,12 @@ export const SendPaymentModal = memo(function SendPaymentModal({
     }
 
     const addr = trimmed.toUpperCase()
-    // Stellar address (G or C) — validate format locally, no API needed
     if (isValidStellarReceiveAddress(addr)) {
+      const rail = paymentRailForAddress(addr)
       setValidationState("valid")
-      setValidationLabel(addr.startsWith("C") ? "Contrato válido" : "Dirección válida")
+      setValidationLabel(
+        rail === "smart" ? "Smart account (C…)" : "Legacy (G…)",
+      )
       return
     }
 
@@ -194,7 +201,10 @@ export const SendPaymentModal = memo(function SendPaymentModal({
         const data = await res.json()
         if (data?.walletAddress) {
           setValidationState("valid")
-          setValidationLabel(formatSozuTagLabel(data.tag ?? normalizedTag))
+          const tagLabel = formatSozuTagLabel(data.tag ?? normalizedTag)
+          setValidationLabel(
+            data.paymentRail === "legacy" ? `${tagLabel} · legacy` : tagLabel,
+          )
         } else {
           setValidationState("invalid")
           setValidationLabel("Tag no encontrado")
@@ -597,9 +607,18 @@ export const SendPaymentModal = memo(function SendPaymentModal({
               <div className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2">
                 <span className="text-white/40 text-xs uppercase tracking-widest">To</span>
                 <span className="text-white/90 text-sm font-mono truncate max-w-[220px]">
-                  {sendRecipient.startsWith("$") ? sendRecipient : sendRecipient.startsWith("G") ? `${sendRecipient.slice(0,6)}…${sendRecipient.slice(-4)}` : sendRecipient}
+                  {sendRecipient.startsWith("$")
+                    ? sendRecipient
+                    : sendRecipient.length >= 12
+                      ? `${sendRecipient.slice(0, 6)}…${sendRecipient.slice(-4)}`
+                      : sendRecipient}
                 </span>
               </div>
+              {legacyPaymentNotice ? (
+                <p className="text-amber-200/90 text-xs text-center px-2 leading-snug">
+                  {legacyPaymentNotice}
+                </p>
+              ) : null}
               <button
                 type="button"
                 onClick={toggleAmountCurrency}

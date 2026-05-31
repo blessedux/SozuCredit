@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createClient } from "@/lib/supabase/server";
 import { parseSdpAllowedDomains, isSdpHostAllowed } from "@/lib/sdp/allowlist";
 import { fetchSdpTomlEndpoints } from "@/lib/sdp/fetchSdpToml";
 import { verifySdpRegistrationUrl } from "@/lib/sdp/verifyInviteUrl";
@@ -120,14 +119,7 @@ export async function GET(request: NextRequest) {
     path: "/",
   });
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const next = user
-    ? new URL("/sdp/register", request.url)
-    : new URL("/auth?sdpInvite=1", request.url);
-
+  // Always land on register; passkey auth is sessionStorage-based (not Supabase-only).
+  const next = new URL("/sdp/register", request.url);
   return NextResponse.redirect(next);
 }

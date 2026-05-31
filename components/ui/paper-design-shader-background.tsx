@@ -2,7 +2,6 @@
 
 import { cn } from "@/lib/utils"
 import { GrainGradient } from "@paper-design/shaders-react"
-import { useIsMobile } from "@/hooks/use-mobile"
 import type { ShaderTier } from "@/hooks/use-shader-performance-tier"
 import {
   MOBILE_MAX_PIXEL_COUNT,
@@ -18,8 +17,8 @@ import {
 type AuthOrangeOrbShaderProps = {
   className?: string
   /**
-   * "orb"   — mobile circular orb + ambient grain (default, used on auth/wallet/home/settings)
-   * "blobs" — original animated corner blobs, always, regardless of screen size (used on ledger)
+   * "orb"   — circular orb + CSS ambient (default on auth/wallet/home/settings — all screen sizes)
+   * "blobs" — full-viewport corner blobs (ledger/credit only)
    */
   variant?: "orb" | "blobs"
   /** Performance tier — passed down from PaperShaderBackgroundShell */
@@ -31,10 +30,8 @@ export function AuthOrangeOrbShader({
   variant = "orb",
   tier = "lite",
 }: AuthOrangeOrbShaderProps) {
-  const isMobile = useIsMobile()
-
-  // ── Desktop / ledger: animated corner blobs ──────────────────────────────
-  if (variant === "blobs" || !isMobile) {
+  // ── Ledger / credit: animated corner blobs ───────────────────────────────
+  if (variant === "blobs") {
     return (
       <div aria-hidden className={cn("h-full w-full", className)}>
         <GrainGradient
@@ -57,8 +54,9 @@ export function AuthOrangeOrbShader({
     )
   }
 
-  // ── Mobile orb: static CSS-only fallback (tier === "static") ─────────────
-  // No WebGL at all — pure radial gradients that match the orb visual.
+  // ── Orb: CSS ambient + single clipped WebGL canvas (all screen sizes) ─────
+
+  // ── Orb static fallback: pure CSS, no WebGL (tier === "static") ───────────
   if (tier === "static") {
     return (
       <div aria-hidden className={cn("pointer-events-none absolute inset-0", className)}>
@@ -97,7 +95,7 @@ export function AuthOrangeOrbShader({
     )
   }
 
-  // ── Mobile orb: single WebGL canvas (lite/full) ───────────────────────────
+  // ── Orb: single WebGL canvas (lite/full) ──────────────────────────────────
   //
   // Previous design used THREE full-viewport GrainGradient instances.
   // We now use ONE orb-clipped canvas. The upper atmosphere is reproduced

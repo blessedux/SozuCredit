@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Fingerprint } from "lucide-react";
 import { Transaction, Networks } from "@stellar/stellar-sdk";
+import { loadClientWalletSession } from "@/lib/client-wallet-session";
 
 const CTA_CLASS =
   "inline-flex items-center justify-center gap-2 w-full rounded-xl border border-orange-400/35 bg-orange-500/15 hover:bg-orange-500/25 active:bg-orange-500/30 backdrop-blur-md disabled:opacity-50 disabled:cursor-not-allowed text-orange-100 font-semibold py-3 px-6 transition-colors";
@@ -34,14 +35,18 @@ export function SdpRegisterFlow() {
   const [identityVerified, setIdentityVerified] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [sessionReady, setSessionReady] = useState(false);
+  const [hasWalletSession, setHasWalletSession] = useState(false);
 
-  const loadWallet = useCallback(() => {
-    if (typeof window === "undefined") return;
+  const refreshWallet = useCallback(async () => {
+    const session = await loadClientWalletSession();
     setWallet({
-      publicKey: sessionStorage.getItem("stellar_public_key"),
-      credentialId: sessionStorage.getItem("credential_id"),
-      userId: sessionStorage.getItem("dev_username"),
+      publicKey: session.publicKey,
+      credentialId: session.credentialId,
+      userId: session.userId,
     });
+    setHasWalletSession(session.isAuthenticated);
+    setSessionReady(true);
   }, []);
 
   const loadContext = useCallback(async () => {
@@ -63,11 +68,21 @@ export function SdpRegisterFlow() {
   }, []);
 
   useEffect(() => {
-    loadWallet();
-    loadContext();
-    window.addEventListener("storage", loadWallet);
-    return () => window.removeEventListener("storage", loadWallet);
-  }, [loadWallet, loadContext]);
+    void refreshWallet();
+    void loadContext();
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refreshWallet();
+    };
+    window.addEventListener("storage", () => void refreshWallet());
+    window.addEventListener("focus", () => void refreshWallet());
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("storage", () => void refreshWallet());
+      window.removeEventListener("focus", () => void refreshWallet());
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [refreshWallet, loadContext]);
 
   const verifyIdentity = async () => {
     setError(null);
@@ -184,18 +199,26 @@ export function SdpRegisterFlow() {
     }
   };
 
-  if (!wallet.publicKey) {
+  if (!sessionReady) {
+    return (
+      <div className="max-w-sm mx-auto mt-12 flex justify-center">
+        <span className="h-8 w-8 rounded-full border-2 border-orange-200/30 border-t-orange-100 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!hasWalletSession) {
     return (
       <div className="max-w-sm mx-auto mt-12 space-y-6 text-center">
         <div className="space-y-2">
           <h1 className="text-xl font-semibold text-white">Tenés un pago esperándote</h1>
           <p className="text-sm text-white/55">
-            Creá tu cuenta con passkey y elegí tu SozuTag para recibirlo.
+            Iniciá sesión o creá tu cuenta con passkey. Después volvés acá para recibir el pago.
           </p>
         </div>
         <Link href="/auth?sdpInvite=1" className={CTA_CLASS}>
           <Fingerprint className="w-4 h-4 shrink-0 opacity-80" aria-hidden />
-          Crear cuenta con passkey
+          Entrar con passkey
         </Link>
       </div>
     );

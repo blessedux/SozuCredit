@@ -9,7 +9,12 @@ export interface StellarWallet {
   id: string
   userId: string
   turnkeyWalletId?: string | null // Optional: null for wallets created with Stellar SDK
+  /** Primary address: Soroban smart account (C) or legacy classic (G). */
   publicKey: string
+  /** Classic G used to sign Soroban txs when publicKey is C (factory). */
+  signerPublicKey?: string | null
+  walletType?: "oz" | "factory" | "legacy" | null
+  ozCredentialId?: string | null
   network: "testnet" | "mainnet"
   createdAt: string
   updatedAt: string
@@ -362,11 +367,11 @@ export async function getStellarWallet(userId: string, useServiceClient = false)
     return null
   }
   
-  // Validate wallet data
-  if (!data.public_key || data.public_key.length !== 56 || !data.public_key.startsWith("G")) {
+  const pk = data.public_key?.trim() ?? ""
+  if (!pk || pk.length !== 56 || (!pk.startsWith("G") && !pk.startsWith("C"))) {
     console.error("[getStellarWallet] ❌ Invalid wallet public_key format:", {
-      publicKey: data.public_key ? data.public_key.substring(0, 20) + "..." : "NULL",
-      length: data.public_key?.length
+      publicKey: pk ? pk.substring(0, 20) + "..." : "NULL",
+      length: pk?.length,
     })
     return null
   }
@@ -382,11 +387,28 @@ export async function getStellarWallet(userId: string, useServiceClient = false)
   })
 
   // Map database column names to TypeScript property names
+  const signerRaw =
+    typeof data.signer_public_key === "string" ? data.signer_public_key.trim() : null
+  const walletTypeRaw = typeof data.wallet_type === "string" ? data.wallet_type.trim() : null
+  const walletType =
+    walletTypeRaw === "oz" || walletTypeRaw === "factory" || walletTypeRaw === "legacy"
+      ? walletTypeRaw
+      : pk.startsWith("C")
+        ? signerRaw
+          ? "factory"
+          : "oz"
+        : "legacy"
+  const ozCredentialId =
+    typeof data.oz_credential_id === "string" ? data.oz_credential_id.trim() : null
+
   return {
     id: data.id,
     userId: data.user_id,
-    turnkeyWalletId: data.turnkey_wallet_id || null, // Handle null values
-    publicKey: data.public_key,
+    turnkeyWalletId: data.turnkey_wallet_id || null,
+    publicKey: pk,
+    signerPublicKey: signerRaw && signerRaw.startsWith("G") ? signerRaw : null,
+    walletType,
+    ozCredentialId: ozCredentialId || null,
     network: data.network,
     createdAt: data.created_at,
     updatedAt: data.updated_at,

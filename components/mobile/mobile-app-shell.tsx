@@ -5,6 +5,7 @@ import { Suspense, useState, useCallback, useEffect, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import { useHorizontalPanelSwipe } from "@/hooks/use-horizontal-panel-swipe"
 import { useAppViewportLock } from "@/hooks/use-app-viewport-lock"
+import { SmartAccountKitProvider } from "@/components/SmartAccountKitProvider"
 import { WalletDataProvider } from "@/components/wallet/wallet-data-provider"
 import { WalletLanguageProvider } from "@/lib/wallet-language"
 import { signalShellReady } from "@/lib/app-ready"
@@ -101,6 +102,7 @@ export function MobileAppShell() {
 
   return (
     <WalletLanguageProvider>
+      <SmartAccountKitProvider>
       <WalletDataProvider>
         <div
           className={`sozu-app-shell sozu-app-viewport overscroll-none select-none touch-pan-x ${
@@ -168,6 +170,7 @@ export function MobileAppShell() {
       </div>
     </div>
       </WalletDataProvider>
+    </SmartAccountKitProvider>
     </WalletLanguageProvider>
   )
 }

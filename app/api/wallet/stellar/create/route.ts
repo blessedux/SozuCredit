@@ -119,20 +119,75 @@ export async function POST(request: Request) {
       }
       // ──────────────────────────────────────────────────────────────────────
 
-      const { data: updated, error } = await serviceClient
+      let publicKey = clientPublicKey.toUpperCase()
+      let signerPublicKey: string | null =
+        publicKey.startsWith("G") ? publicKey : null
+      let smartAccountProvisioned = false
+
+      const { data: existingWallet } = await serviceClient
         .from("stellar_wallets")
-        .upsert(
-          {
-            user_id: userId,
-            public_key: clientPublicKey,
-            turnkey_wallet_id: null,
-            network: stellarConfig.network,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id" }
-        )
+        .select("public_key, wallet_type")
+        .eq("user_id", userId)
+        .maybeSingle()
+
+      const alreadyOz =
+        existingWallet?.wallet_type === "oz" ||
+        (typeof existingWallet?.public_key === "string" &&
+          existingWallet.public_key.startsWith("C") &&
+          existingWallet.wallet_type !== "factory")
+
+      if (
+        !alreadyOz &&
+        publicKey.startsWith("G") &&
+        process.env.SMART_ACCOUNT_FACTORY_ID?.trim()
+      ) {
+        try {
+          const { provisionSmartWalletForSigner } = await import(
+            "@/lib/stellar/smart-account-provision"
+          )
+          const provisioned = await provisionSmartWalletForSigner(publicKey)
+          if (!("error" in provisioned)) {
+            publicKey = provisioned.contractId
+            signerPublicKey = provisioned.signerPublicKey
+            smartAccountProvisioned = true
+            console.log(
+              "[Stellar Wallet API] ✅ Smart account provisioned:",
+              publicKey.substring(0, 10) + "..."
+            )
+          } else {
+            console.warn("[Stellar Wallet API] Smart account provision skipped:", provisioned.error)
+          }
+        } catch (provErr) {
+          console.warn("[Stellar Wallet API] Smart account provision error (non-fatal):", provErr)
+        }
+      }
+
+      const upsertRow: Record<string, string | null> = {
+        user_id: userId,
+        public_key: publicKey,
+        signer_public_key: signerPublicKey,
+        turnkey_wallet_id: null,
+        network: stellarConfig.network,
+        updated_at: new Date().toISOString(),
+      }
+
+      let { data: updated, error } = await serviceClient
+        .from("stellar_wallets")
+        .upsert(upsertRow, { onConflict: "user_id" })
         .select()
         .single()
+
+      if (error?.message?.includes("signer_public_key")) {
+        const { signer_public_key: _s, ...withoutSigner } = upsertRow
+        const retry = await serviceClient
+          .from("stellar_wallets")
+          .upsert(withoutSigner, { onConflict: "user_id" })
+          .select()
+          .single()
+        updated = retry.data
+        error = retry.error
+      }
+
       if (error) {
         console.error("[Stellar Wallet API] Upsert error:", error)
         return NextResponse.json(
@@ -144,6 +199,8 @@ export async function POST(request: Request) {
         {
           walletId: updated.public_key,
           publicKey: updated.public_key,
+          signerPublicKey: signerPublicKey,
+          smartAccountProvisioned,
           network: updated.network,
           trustlineCreated: false,
           trustlineError: null,

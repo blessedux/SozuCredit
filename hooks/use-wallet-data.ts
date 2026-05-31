@@ -423,35 +423,39 @@ export function useWalletData() {
                 void fetchDefindexBalance(userId)
                 return
               }
-              const createResponse = await fetch("/api/wallet/stellar/create", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "x-user-id": userId,
-                },
-                body: JSON.stringify({ publicKey: clientPublicKey }),
-              })
-              
-              if (createResponse.ok) {
-                const createData = await createResponse.json()
-                if (createData.publicKey) {
-                  console.log("[Wallet] ✅ Wallet created and address loaded:", createData.publicKey)
-                  setWalletAddress(createData.publicKey)
-                  if (createData.network) {
-                    setWalletNetwork(createData.network)
-                  }
-                  if (createData.network === "testnet") {
-                    sessionStorage.setItem("sozu_auto_activate", "1")
-                  }
-                  bootstrapWalletFetches(createData.publicKey, userId)
-                  return
+              let createData: { publicKey?: string; network?: string } = {}
+              try {
+                const { ensureSmartWallet } = await import("@/lib/wallet/ensure-smart-wallet")
+                const ensured = await ensureSmartWallet(
+                  userId,
+                  sessionStorage.getItem("credential_id") ?? undefined,
+                )
+                createData = { publicKey: ensured.publicKey, network: undefined }
+              } catch (ensureErr) {
+                console.warn("[Wallet] ensureSmartWallet failed, falling back to create:", ensureErr)
+                const createResponse = await fetch("/api/wallet/stellar/create", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "x-user-id": userId,
+                  },
+                  body: JSON.stringify({ publicKey: clientPublicKey }),
+                })
+                if (createResponse.ok) {
+                  createData = await createResponse.json()
                 }
               }
-              if (createResponse.status === 400) {
-                console.log("[Wallet] Wallet must be created client-side (sign in with passkey or use Create wallet)")
-                setWalletAddress("")
-                setIsBalanceLoading(false)
-                void fetchDefindexBalance(userId)
+
+              if (createData.publicKey) {
+                console.log("[Wallet] ✅ Wallet created and address loaded:", createData.publicKey)
+                setWalletAddress(createData.publicKey)
+                if (createData.network === "testnet" || createData.network === "mainnet") {
+                  setWalletNetwork(createData.network)
+                }
+                if (createData.network === "testnet") {
+                  sessionStorage.setItem("sozu_auto_activate", "1")
+                }
+                bootstrapWalletFetches(createData.publicKey, userId)
                 return
               }
             } catch (createError) {

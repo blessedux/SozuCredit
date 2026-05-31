@@ -76,6 +76,8 @@
     "react-resizable-panels": "^2.1.7",
     "react-use-measure": "^2.1.7",
     "recharts": "2.15.4",
+    "smart-account-kit": "0.2.10",
+    "smart-account-kit-bindings": "0.1.2",
     "sonner": "^1.7.4",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",

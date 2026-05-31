@@ -2,7 +2,16 @@ import { NextRequest, NextResponse } from "next/server"
 import { Horizon, Asset, TransactionBuilder, Networks, Operation, BASE_FEE, Account, Memo, Transaction, FeeBumpTransaction } from "@stellar/stellar-sdk"
 import { getStellarConfig } from "@/lib/turnkey/config"
 import { getStellarWallet } from "@/lib/turnkey/stellar-wallet"
+import {
+  LEGACY_CLASSIC_PAYMENT_NOTICE,
+  paymentRailForAddress,
+} from "@/lib/payment/payment-rail"
 import { isValidStellarReceiveAddress } from "@/lib/payment/stellar-address"
+import {
+  buildOzSmartUsdcTransferEnvelope,
+  buildSorobanUsdcTransferXdr,
+  submitSignedSorobanEnvelope,
+} from "@/lib/stellar/soroban-usdc-transfer"
 
 // Helper function to get transaction source (handles both Transaction and FeeBumpTransaction)
 function getTransactionSource(tx: Transaction | FeeBumpTransaction): string {
@@ -43,6 +52,19 @@ export async function POST(request: NextRequest) {
 
     // Extract memo if provided (for transaction building)
     const transactionMemo = memo || null
+
+    if (body.signedEnvelopeXdr && typeof body.signedEnvelopeXdr === "string") {
+      try {
+        const hash = await submitSignedSorobanEnvelope(body.signedEnvelopeXdr.trim())
+        return NextResponse.json(
+          { success: true, transactionHash: hash, confirmed: true },
+          { headers: corsHeaders(request) }
+        )
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        return NextResponse.json({ success: false, error: msg }, { status: 400, headers: corsHeaders(request) })
+      }
+    }
 
     // If signed transaction is provided, submit it
     if (body.signedTransactionXdr) {
@@ -500,6 +522,118 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const destinationNorm =
+      typeof destination === "string" ? destination.trim().toUpperCase() : ""
+    if (!isValidStellarReceiveAddress(destinationNorm)) {
+      return NextResponse.json(
+        {
+          error: "Invalid recipient wallet address format.",
+          details: "Please check the recipient address and try again.",
+        },
+        { status: 400, headers: corsHeaders(request) }
+      )
+    }
+
+    const destinationRail = paymentRailForAddress(destinationNorm)
+    if (!destinationRail) {
+      return NextResponse.json(
+        { error: "Invalid recipient wallet address format." },
+        { status: 400, headers: corsHeaders(request) }
+      )
+    }
+
+    const senderPk = wallet.publicKey.trim().toUpperCase()
+    let signerPk = wallet.signerPublicKey?.trim().toUpperCase() || null
+    if (!signerPk && senderPk.startsWith("G")) {
+      signerPk = senderPk
+    }
+    if (senderPk.startsWith("C") && !signerPk) {
+      const { createClient: createSvc } = await import("@supabase/supabase-js")
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+      if (supabaseUrl && supabaseServiceKey) {
+        const svc = createSvc(supabaseUrl, supabaseServiceKey)
+        const { data: row } = await svc
+          .from("stellar_wallets")
+          .select("signer_public_key")
+          .eq("user_id", userId)
+          .maybeSingle()
+        if (typeof row?.signer_public_key === "string") {
+          signerPk = row.signer_public_key.trim().toUpperCase()
+        }
+      }
+    }
+
+    const walletType =
+      wallet.walletType ??
+      (senderPk.startsWith("C") && !signerPk ? "oz" : senderPk.startsWith("C") ? "factory" : "legacy")
+
+    const useSmartRail = destinationRail === "smart" || senderPk.startsWith("C")
+
+    if (useSmartRail) {
+      const { getDepositableUsdcBalance } = await import("@/lib/stellar/soroban-token")
+      const sorobanBalance = await getDepositableUsdcBalance(senderPk, stellarConfig.network)
+      const amountNum = parseFloat(amount)
+      if (sorobanBalance < amountNum + 0.01) {
+        return NextResponse.json(
+          {
+            error: `Insufficient balance. You need ${(amountNum + 0.01).toFixed(2)} USDC but have ${sorobanBalance.toFixed(2)} USDC.`,
+          },
+          { status: 400, headers: corsHeaders(request) }
+        )
+      }
+
+      if (walletType === "oz") {
+        const prepared = await buildOzSmartUsdcTransferEnvelope({
+          fromContractId: senderPk,
+          toAddress: destinationNorm,
+          amount: String(amount),
+          network: stellarConfig.network,
+        })
+        return NextResponse.json(
+          {
+            envelopeXdr: prepared.envelopeXdr,
+            paymentRail: "smart",
+            signMethod: "oz_passkey",
+            walletAddress: senderPk,
+            ozCredentialId: wallet.ozCredentialId ?? null,
+          },
+          { headers: corsHeaders(request) }
+        )
+      }
+
+      if (!signerPk || !signerPk.startsWith("G")) {
+        return NextResponse.json(
+          {
+            error:
+              "Smart wallet signer missing. Re-open the app to finish smart account setup.",
+            code: "SMART_SIGNER_REQUIRED",
+          },
+          { status: 422, headers: corsHeaders(request) }
+        )
+      }
+
+      const { unsignedXdr } = await buildSorobanUsdcTransferXdr({
+        signerPublicKey: signerPk,
+        fromAddress: senderPk,
+        toAddress: destinationNorm,
+        amount: String(amount),
+        network: stellarConfig.network,
+      })
+
+      return NextResponse.json(
+        {
+          unsignedXdr,
+          paymentRail: "smart",
+          signMethod: "factory_ed25519",
+          signerPublicKey: signerPk,
+          walletAddress: senderPk,
+        },
+        { headers: corsHeaders(request) }
+      )
+    }
+
+    // Legacy classic path (G → G Operation.payment)
     // Create USDC asset
     const usdcAsset = new Asset("USDC", usdcIssuer)
 
@@ -624,22 +758,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate destination address format (classic G or Soroban contract C)
-    const destinationNorm =
-      typeof destination === "string" ? destination.trim().toUpperCase() : ""
-    const isValidDestination = isValidStellarReceiveAddress(destinationNorm)
-    if (!isValidDestination) {
-      console.error("[Payment API] ❌ Invalid destination address format:", destination)
-      return NextResponse.json(
-        { 
-          error: "Invalid recipient wallet address format.",
-          details: "Please check the recipient address and try again."
-        },
-        { status: 400, headers: corsHeaders(request) }
-      )
-    }
-
-    // Check if destination account exists on the network (non-blocking check)
+    // Check if destination account exists on the network (non-blocking check, legacy G only)
     // We log a warning but still proceed - Horizon will give the definitive answer
     console.log("[Payment API] Verifying destination account exists on network:", {
       destination: destination.substring(0, 10) + "..." + destination.substring(destination.length - 10),
@@ -650,6 +769,7 @@ export async function POST(request: NextRequest) {
     
     try {
       const destAccount = await server.loadAccount(destinationNorm)
+      // destinationNorm is legacy G here
       console.log("[Payment API] ✅ Destination account exists on network:", {
         sequence: destAccount.sequenceNumber(),
         balances: destAccount.balances.length,
@@ -810,6 +930,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         unsignedXdr,
+        paymentRail: "legacy",
+        signerPublicKey: wallet.publicKey,
+        walletAddress: wallet.publicKey,
+        legacyNotice: LEGACY_CLASSIC_PAYMENT_NOTICE,
       },
       { headers: corsHeaders(request) }
     )

@@ -5,6 +5,10 @@ import {
   normalizeSozuTag,
 } from "@/lib/payment/sozu-tag-lookup"
 import {
+  LEGACY_CLASSIC_PAYMENT_NOTICE,
+  paymentRailForAddress,
+} from "@/lib/payment/payment-rail"
+import {
   isValidStellarReceiveAddress,
   normalizeStellarAddressInput,
 } from "@/lib/payment/stellar-address"
@@ -33,12 +37,15 @@ export async function POST(request: NextRequest) {
     const trimmed = rawRecipient.trim()
     const stellarDirect = normalizeStellarAddressInput(trimmed)
 
-    // Stellar address (classic G or Soroban C) — return as-is
     if (isValidStellarReceiveAddress(stellarDirect)) {
+      const rail = paymentRailForAddress(stellarDirect)!
       return NextResponse.json(
         {
           walletAddress: stellarDirect,
-          addressType: stellarDirect.startsWith("C") ? "contract" : "classic",
+          addressType: rail === "smart" ? "contract" : "classic",
+          paymentRail: rail,
+          paymentSupported: true,
+          ...(rail === "legacy" && { legacyNotice: LEGACY_CLASSIC_PAYMENT_NOTICE }),
         },
         { headers: corsHeaders(request) }
       )
@@ -146,14 +153,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log("[Resolve Recipient] Returning wallet for tag:", profile.username)
+    const rail = paymentRailForAddress(pk)!
+    console.log("[Resolve Recipient] Returning wallet for tag:", profile.username, rail)
 
     return NextResponse.json(
       {
         walletAddress: pk,
         tag: profile.username,
         network: wallet.network,
-        addressType: pk.startsWith("C") ? "contract" : "classic",
+        addressType: rail === "smart" ? "contract" : "classic",
+        paymentRail: rail,
+        paymentSupported: true,
+        ...(rail === "legacy" && { legacyNotice: LEGACY_CLASSIC_PAYMENT_NOTICE }),
       },
       { headers: corsHeaders(request) }
     )
