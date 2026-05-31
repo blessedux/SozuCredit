@@ -596,6 +596,12 @@ export async function getWalletBalance(
   assetCode: string = "native",
   assetIssuer?: string
 ): Promise<number> {
+  const pk = publicKey.trim().toUpperCase()
+  // Soroban smart accounts (C…) are not classic Horizon accounts — no trustlines / native XLM row.
+  if (pk.startsWith("C") && pk.length === 56) {
+    return 0
+  }
+
   const stellarConfig = getStellarConfig()
 
   try {
@@ -675,8 +681,9 @@ export async function getWalletBalance(
     }
     return balanceValue
   } catch (error: any) {
-    // If account doesn't exist or has no balance, return 0
-    if (error?.response?.status === 404) {
+    const status = error?.response?.status
+    // Unfunded / missing account, or Horizon rejecting non-G addresses
+    if (status === 404 || status === 400 || error?.message === "Not Found") {
       return 0
     }
     console.error(`[getWalletBalance] Error fetching ${assetCode} balance:`, error)

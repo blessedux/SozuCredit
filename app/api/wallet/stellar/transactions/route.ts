@@ -18,8 +18,8 @@ export async function GET(request: NextRequest) {
     let publicKeyToUse: string | null = null
     let wallet: any = null
     
-    if (publicKeyParam && /^G[A-Z0-9]{55}$/.test(publicKeyParam)) {
-      publicKeyToUse = publicKeyParam
+    if (publicKeyParam && /^[GC][A-Z0-9]{55}$/.test(publicKeyParam)) {
+      publicKeyToUse = publicKeyParam.trim().toUpperCase()
       console.log("[Transaction History API] Using provided publicKey:", publicKeyToUse.substring(0, 10) + "...")
     } else {
       const supabase = await createClient()
@@ -80,6 +80,19 @@ export async function GET(request: NextRequest) {
 
     console.log("[Transaction History API] Fetching transactions for account:", publicKeyToUse.substring(0, 10) + "...")
     console.log("[Transaction History API] Network:", stellarConfig.network, "USDC Issuer:", usdcIssuer)
+
+    // C smart accounts: Horizon payments API is for classic G accounts only.
+    if (publicKeyToUse.startsWith("C")) {
+      return NextResponse.json(
+        {
+          success: true,
+          transactions: [],
+          count: 0,
+          note: "Smart account (C) — classic payment history not available via Horizon",
+        },
+        { headers: corsHeaders(request as any) },
+      )
+    }
 
     // Use payments endpoint which is more reliable and includes asset info directly
     // This fetches all payments (sent and received) for the account
@@ -226,7 +239,7 @@ export async function GET(request: NextRequest) {
         : null
     const message = error instanceof Error ? error.message : String(error)
     // Brand-new accounts are not on Horizon until funded; payments.forAccount returns 404.
-    if (status === 404 || message === "Not Found") {
+    if (status === 404 || status === 400 || message === "Not Found") {
       console.log(
         "[Transaction History API] No Horizon account yet (404) — returning empty history"
       )

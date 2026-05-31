@@ -9,7 +9,6 @@ import {
 } from "@/lib/stellar/soroban-token"
 import { getStellarConfig } from "@/lib/turnkey/config"
 import { Horizon } from "@stellar/stellar-sdk"
-import { monitorBalanceAndAutoDeposit } from "@/lib/defindex/auto-deposit"
 
 export async function OPTIONS(request: Request) {
   return handleOPTIONS(request as any)
@@ -86,18 +85,42 @@ export async function GET(request: NextRequest) {
 
     let signerForBreakdown = wallet?.signerPublicKey?.trim() ?? null
     if (!signerForBreakdown && publicKeyToUse.startsWith("C") && balanceUserId) {
-      const rowWallet = await getStellarWallet(balanceUserId, true)
-      if (rowWallet?.signerPublicKey) {
-        signerForBreakdown = rowWallet.signerPublicKey.trim()
+      try {
+        const rowWallet = await getStellarWallet(balanceUserId, true)
+        if (rowWallet?.signerPublicKey) {
+          signerForBreakdown = rowWallet.signerPublicKey.trim()
+        }
+      } catch (signerErr) {
+        console.warn("[Stellar Balance API] Could not load signer for C wallet:", signerErr)
       }
     }
 
-    // Query XLM balance from Stellar network
-    const balance = await getWalletBalance(publicKeyToUse, "native")
-    const usdcBreakdown = await getUsdcBalanceBreakdown({
-      walletAddress: publicKeyToUse,
-      signerPublicKey: signerForBreakdown,
-    })
+    // XLM via Horizon only for G accounts; C smart accounts return 0 here (USDC via Soroban below).
+    const balance = publicKeyToUse.startsWith("C")
+      ? 0
+      : await getWalletBalance(publicKeyToUse, "native")
+
+    let usdcBreakdown
+    try {
+      usdcBreakdown = await getUsdcBalanceBreakdown({
+        walletAddress: publicKeyToUse,
+        signerPublicKey: signerForBreakdown,
+      })
+    } catch (usdcErr) {
+      console.error("[Stellar Balance API] USDC breakdown failed:", usdcErr)
+      usdcBreakdown = {
+        sorobanOnWallet: 0,
+        sorobanSacOnWallet: 0,
+        classicOnWallet: 0,
+        classicOnSigner: 0,
+        spendable: 0,
+        displayOnWallet: 0,
+        spendableAssetLabel: "BlendUSDC",
+        walletAddress: publicKeyToUse,
+        signerPublicKey: signerForBreakdown,
+        network: getStellarConfig().network,
+      }
+    }
     const usdcBalance = usdcBreakdown.spendable
     const displayWalletUsdc = usdcBreakdown.displayOnWallet
 
@@ -232,12 +255,11 @@ export async function GET(request: NextRequest) {
 
     const isDevelopment = process.env.NODE_ENV === "development"
 
+    const message = error instanceof Error ? error.message : String(error)
     return NextResponse.json(
       {
         error: "Failed to get wallet balance",
-        ...(isDevelopment && {
-          details: error instanceof Error ? error.message : String(error),
-        }),
+        details: message,
       },
       { status: 500, headers: corsHeaders(request as any) }
     )

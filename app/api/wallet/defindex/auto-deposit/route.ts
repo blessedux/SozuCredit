@@ -124,19 +124,18 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    // Get user ID from session
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
+    const userId = user?.id ?? request.headers.get("x-user-id")
 
-    if (!user) {
+    if (!userId) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401, headers: corsHeaders(request) }
       )
     }
 
-    // Get user's Stellar wallet
-    const wallet = await getStellarWallet(user.id, true) // Use service client
+    const wallet = await getStellarWallet(userId, !user)
 
     if (!wallet) {
       return NextResponse.json(
@@ -145,8 +144,12 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get current USDC balance
-    const currentBalance = await getUSDCBalance(wallet.publicKey)
+    const { getSpendableUsdcBalance } = await import("@/lib/stellar/usdc-balance")
+    const currentBalance = await getSpendableUsdcBalance(
+      wallet.publicKey,
+      wallet.signerPublicKey ?? null,
+      wallet.network as "testnet" | "mainnet",
+    )
 
     // Calculate auto-deposit status
     const balanceIncrease = wallet.previousUsdcBalance
