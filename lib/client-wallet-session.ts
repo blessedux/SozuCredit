@@ -43,7 +43,11 @@ export async function loadClientWalletSession(): Promise<ClientWalletSession> {
   }
 
   const isAuthenticated =
-    isAuthenticatedClient() && !!userId && !!publicKey && publicKey.startsWith("G");
+    isAuthenticatedClient() &&
+    !!userId &&
+    !!publicKey &&
+    (publicKey.startsWith("C") || publicKey.startsWith("G")) &&
+    publicKey.length === 56;
 
   return { userId, publicKey, credentialId, isAuthenticated };
 }

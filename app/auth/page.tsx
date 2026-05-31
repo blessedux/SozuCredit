@@ -472,32 +472,13 @@ function AuthPageContent() {
           throw new Error("No userId available. Cannot continue.")
         }
 
-        // PHASE 1: Derive and store keys AFTER server verification (so we have the correct userId)
-        // This ensures keys are derived with the correct userId that matches the server
-        console.log("[Auth] Reg Step 6.5: Deriving Stellar keypair from passkey...")
-        console.log("[Auth] Window available:", typeof window !== "undefined")
-        console.log("[Auth] Credential available:", !!credential)
-        console.log("[Auth] Credential ID:", credential?.id ? credential.id.substring(0, 20) + "..." : "NO")
-        console.log("[Auth] Server userId:", finalUserId)
-
+        // Provision passkey smart account (C…) — same path as login (never persist G as primary)
         if (typeof window !== "undefined" && credential?.id) {
           try {
-            const { deriveAndStoreKey } = await import("@/lib/storage/browser-keys")
-            const { storeCredentialIdInSession } = await import("@/lib/storage/key-utils")
-
-            console.log("[Auth] Calling deriveAndStoreKey with:", {
-              credentialId: credential.id.substring(0, 20) + "...",
-              userId: finalUserId,
-            })
-
-            // Use server userId for key derivation (this is the canonical userId)
-            const { keypair, publicKey } = await deriveAndStoreKey(credential.id, finalUserId)
-
-            console.log("[Auth] ✅ Stellar keypair derived and stored:", {
-              publicKey: publicKey.substring(0, 10) + "...",
-              credentialId: credential.id.substring(0, 20) + "...",
-              userId: finalUserId,
-            })
+            console.log("[Auth] Reg Step 6.5: Provisioning smart wallet (C…) for userId:", finalUserId)
+            const { alignWalletMaterialAfterLogin } = await import("@/lib/storage/post-login-wallet")
+            const { publicKey } = await alignWalletMaterialAfterLogin(finalUserId, credential.id)
+            console.log("[Auth] ✅ Smart wallet ready:", publicKey.substring(0, 10) + "…")
 
             persistClientWalletSession({
               userId: finalUserId,
@@ -505,33 +486,15 @@ function AuthPageContent() {
               credentialId: credential.id,
               username: registeredUsername,
             })
-
-            console.log("[Auth] ✅ Wallet session persisted for SDP/register")
-          } catch (keyError) {
-            console.error("[Auth] ❌ Failed to derive/store keypair:", keyError)
-            console.error("[Auth] Error details:", {
-              message: keyError instanceof Error ? keyError.message : String(keyError),
-              stack: keyError instanceof Error ? keyError.stack : undefined,
-            })
-            // Don't fail authentication if key derivation fails - user can create wallet later
+          } catch (walletError) {
+            console.error("[Auth] ❌ Smart wallet provisioning failed:", walletError)
+            sessionStorage.setItem("wallet_sync_pending", "1")
+            alert(
+              "Tu cuenta se creó, pero la billetera inteligente (C…) no se pudo activar. Cierra sesión, vuelve a entrar con passkey o contacta soporte.",
+            )
           }
         } else {
-          console.warn("[Auth] ⚠️ Skipping key derivation:", {
-            windowAvailable: typeof window !== "undefined",
-            credentialAvailable: !!credential,
-            credentialIdAvailable: !!credential?.id,
-          })
-        }
-
-        const regPublicKey =
-          localStorage.getItem("stellar_public_key") ?? sessionStorage.getItem("stellar_public_key")
-        if (regPublicKey?.startsWith("G") && credential?.id) {
-          persistClientWalletSession({
-            userId: finalUserId,
-            publicKey: regPublicKey,
-            credentialId: credential.id,
-            username: registeredUsername,
-          })
+          console.warn("[Auth] ⚠️ Skipping smart wallet setup — no credential id")
         }
 
         console.log("[Auth] Persisted session after registration:", finalUserId, "Username:", registeredUsername)

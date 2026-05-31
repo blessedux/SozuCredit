@@ -7,9 +7,13 @@ export async function registerOzSmartAccount(params: {
   contractId: string
   credentialId: string
   publicKey: Uint8Array
+  signerPublicKey?: string
 }): Promise<void> {
   const userId = getUserId()
   if (!userId) throw new Error("Not authenticated")
+
+  const signer =
+    typeof params.signerPublicKey === "string" ? params.signerPublicKey.trim().toUpperCase() : undefined
 
   const res = await fetch("/api/smart-accounts/register", {
     method: "POST",
@@ -21,6 +25,7 @@ export async function registerOzSmartAccount(params: {
       contractId: params.contractId,
       credentialId: params.credentialId,
       publicKey65b: publicKeyToBase64Url(params.publicKey),
+      ...(signer?.startsWith("G") ? { signerPublicKey: signer } : {}),
     }),
   })
   const data = await res.json().catch(() => ({}))

@@ -46,10 +46,16 @@ export async function POST(request: Request) {
       // No body is ok
     }
 
-    const clientPublicKey = typeof body?.publicKey === "string" ? body.publicKey.trim() : null
+    const clientPublicKey = typeof body?.publicKey === "string" ? body.publicKey.trim().toUpperCase() : null
 
-    // Path 1: Client sends the public key they derived (non-custodial) → register it (always upsert so client key wins)
+    // Path 1: Client sends a public key → only smart accounts (C…) may be stored; G triggers factory provision.
     if (clientPublicKey && clientPublicKey.length > 0) {
+      if (clientPublicKey.startsWith("C") && clientPublicKey.length !== 56) {
+        return NextResponse.json(
+          { error: "Invalid smart account address." },
+          { status: 400, headers: corsHeaders(request as any) }
+        )
+      }
       console.log("[Stellar Wallet API] Registering client-derived public key (non-custodial):", clientPublicKey.substring(0, 10) + "...")
       const stellarConfig = getStellarConfig()
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL

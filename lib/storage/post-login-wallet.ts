@@ -1,6 +1,5 @@
 /**
- * After passkey login, align IndexedDB wallet material with the canonical on-chain wallet
- * (avoids storing a different Stellar key when logging in with a second passkey before wallet sync).
+ * After passkey login/register, provision the canonical C smart wallet (never persist G as primary).
  */
 
 "use client"
@@ -15,15 +14,23 @@ export async function alignWalletMaterialAfterLogin(
   storeCredentialIdInSession(credentialId)
 
   try {
-    const { publicKey } = await syncCanonicalWallet(userId, credentialId)
-    if (typeof window !== "undefined") {
-      sessionStorage.removeItem("wallet_sync_pending")
-    }
-    return { publicKey, needsWalletSync: false }
-  } catch (e) {
-    console.warn("[alignWalletMaterialAfterLogin] syncCanonicalWallet failed:", e)
     const { deriveAndStoreKey } = await import("./browser-keys")
-    const { publicKey } = await deriveAndStoreKey(credentialId, userId)
-    return { publicKey, needsWalletSync: true }
+    await deriveAndStoreKey(credentialId, userId)
+  } catch (e) {
+    console.warn("[alignWalletMaterialAfterLogin] signer key derive failed:", e)
   }
+
+  const { publicKey } = await syncCanonicalWallet(userId, credentialId)
+
+  if (!publicKey.startsWith("C") || publicKey.length !== 56) {
+    throw new Error(
+      "Smart wallet (C…) was not created. Sign out and sign in again, or contact support if this persists.",
+    )
+  }
+
+  if (typeof window !== "undefined") {
+    sessionStorage.removeItem("wallet_sync_pending")
+  }
+
+  return { publicKey, needsWalletSync: false }
 }

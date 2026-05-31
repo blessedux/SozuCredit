@@ -1,17 +1,7 @@
 "use client"
 
 import { ensureSmartWallet } from "@/lib/wallet/ensure-smart-wallet"
-
-function persistWalletSession(publicKey: string, walletType: string, credentialId?: string) {
-  if (typeof window === "undefined") return
-  localStorage.setItem("stellar_public_key", publicKey)
-  sessionStorage.setItem("stellar_public_key", publicKey)
-  sessionStorage.setItem("wallet_type", walletType)
-  if (credentialId) {
-    sessionStorage.setItem("credential_id", credentialId)
-    localStorage.setItem("credential_id", credentialId)
-  }
-}
+import { persistCanonicalWalletSession } from "@/lib/wallet/persist-wallet-session"
 
 /**
  * Canonical wallet = OpenZeppelin passkey smart account (C…).
@@ -20,7 +10,7 @@ function persistWalletSession(publicKey: string, walletType: string, credentialI
 export async function syncCanonicalWallet(
   userId: string,
   loginCredentialId?: string
-): Promise<{ publicKey: string; walletType: "oz" | "factory" | "legacy" }> {
+): Promise<{ publicKey: string; walletType: "oz" | "factory" }> {
   const credId =
     loginCredentialId?.trim() ||
     (typeof window !== "undefined"
@@ -48,14 +38,14 @@ export async function syncCanonicalWallet(
 
   if (dbPk?.startsWith("C")) {
     const wt = dbWalletType || sessionStorage.getItem("wallet_type") || "oz"
-    persistWalletSession(dbPk, wt, credId ?? undefined)
+    persistCanonicalWalletSession(dbPk, wt, credId ?? undefined)
     return {
       publicKey: dbPk,
-      walletType: (wt === "factory" || wt === "legacy" ? wt : "oz") as "oz" | "factory" | "legacy",
+      walletType: wt === "factory" ? "factory" : "oz",
     }
   }
 
   const ensured = await ensureSmartWallet(userId, credId ?? undefined)
-  persistWalletSession(ensured.publicKey, ensured.walletType, ensured.credentialId)
+  persistCanonicalWalletSession(ensured.publicKey, ensured.walletType, ensured.credentialId)
   return ensured
 }

@@ -20,6 +20,9 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}))
   const contractId = typeof body.contractId === "string" ? body.contractId.trim() : ""
   const credentialIdRaw = typeof body.credentialId === "string" ? body.credentialId.trim() : ""
+  const signerRaw =
+    typeof body.signerPublicKey === "string" ? body.signerPublicKey.trim().toUpperCase() : ""
+  const signerPublicKey = signerRaw.startsWith("G") && signerRaw.length === 56 ? signerRaw : null
 
   if (!contractId.startsWith("C") || !credentialIdRaw) {
     return NextResponse.json(
@@ -43,7 +46,7 @@ export async function POST(request: NextRequest) {
     public_key: contractId.toUpperCase(),
     wallet_type: "oz",
     oz_credential_id: credentialId,
-    signer_public_key: null,
+    signer_public_key: signerPublicKey,
     turnkey_wallet_id: null,
     network: stellarConfig.network,
     updated_at: new Date().toISOString(),

@@ -69,12 +69,15 @@ export async function GET(request: Request) {
       )
     }
 
+    const pk = wallet.publicKey.trim().toUpperCase()
+
     return NextResponse.json(
       {
-        publicKey: wallet.publicKey,
+        publicKey: pk,
         network: wallet.network,
         walletType: wallet.walletType ?? null,
         signerPublicKey: wallet.signerPublicKey ?? null,
+        walletMustMigrate: pk.startsWith("G"),
       },
       { headers: corsHeaders(request as any) }
     )

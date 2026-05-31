@@ -480,10 +480,15 @@ export function useWalletData() {
           } else {
             // Avoid infinite loops: if we already tried registration, fall back to session key (if any) and stop retrying.
             const sessionPublicKey = typeof window !== "undefined" ? sessionStorage.getItem("stellar_public_key") : null
-            if (sessionPublicKey) {
-              console.log("[Wallet] Falling back to session public key (DB not yet synced).")
+            if (sessionPublicKey?.startsWith("C")) {
+              console.log("[Wallet] Using session C while DB catches up.")
               setWalletAddress(sessionPublicKey)
               bootstrapWalletFetches(sessionPublicKey, userId)
+              return
+            }
+            if (sessionPublicKey?.startsWith("G") && retryCount < 2) {
+              console.log("[Wallet] Session still G — retrying smart wallet sync…")
+              setTimeout(() => fetchWalletAddress(userId, retryCount + 1), 2000)
               return
             }
             setWalletAddress("")
@@ -539,10 +544,10 @@ export function useWalletData() {
         
         // Stop looping hard on 404: rely on session public key UX while server catches up.
         const sessionPublicKey = typeof window !== "undefined" ? sessionStorage.getItem("stellar_public_key") : null
-        if (sessionPublicKey) {
+        if (sessionPublicKey?.startsWith("C")) {
           setWalletAddress(sessionPublicKey)
           void fetchWalletUSDCBalance(sessionPublicKey)
-          void fetchDefindexBalance(userId)
+          void fetchDefindexBalance(userId, sessionPublicKey)
           deferNonCritical(() => {
             void fetchTransactionHistory(sessionPublicKey)
           })
