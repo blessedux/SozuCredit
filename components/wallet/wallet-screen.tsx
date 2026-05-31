@@ -148,7 +148,7 @@ export function WalletScreen({
 
   // Get base balance
   const baseBalance = useMemo(() => {
-    if (defindexBalance) return defindexBalance.totalBalance
+    if (defindexBalance) return defindexBalance.walletBalance
     return Number(vault?.balance || 0)
   }, [defindexBalance, vault?.balance])
 

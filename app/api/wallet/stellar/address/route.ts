@@ -73,6 +73,8 @@ export async function GET(request: Request) {
       {
         publicKey: wallet.publicKey,
         network: wallet.network,
+        walletType: wallet.walletType ?? null,
+        signerPublicKey: wallet.signerPublicKey ?? null,
       },
       { headers: corsHeaders(request as any) }
     )

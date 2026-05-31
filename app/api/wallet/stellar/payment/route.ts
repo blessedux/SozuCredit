@@ -362,8 +362,8 @@ export async function POST(request: NextRequest) {
       console.warn("[Payment API] ⚠️ Wallet not found by userId — trying fallback by sender public key")
 
       // Fallback: if the client sent a valid sender public key, look it up directly
-      const senderFromBody = typeof body?.sender === "string" ? body.sender.trim() : null
-      const isValidSender = senderFromBody && /^G[A-Z0-9]{55}$/.test(senderFromBody)
+      const senderFromBody = typeof body?.sender === "string" ? body.sender.trim().toUpperCase() : null
+      const isValidSender = senderFromBody && /^[GC][A-Z0-9]{55}$/.test(senderFromBody)
 
       if (isValidSender) {
         // Try to find any wallet with this public key in the DB
@@ -434,13 +434,14 @@ export async function POST(request: NextRequest) {
     // If sender address is provided from frontend, use it if it's valid
     // The frontend might be using a derived keypair address from sessionStorage
     // which is the actual wallet the user is using, even if it doesn't match the database
-    if (sender) {
-      console.log("[Payment API] Frontend provided sender address:", sender.substring(0, 10) + "..." + sender.substring(sender.length - 10))
+    const senderNorm = typeof sender === "string" ? sender.trim().toUpperCase() : ""
+
+    if (senderNorm) {
+      console.log("[Payment API] Frontend provided sender address:", senderNorm.substring(0, 10) + "..." + senderNorm.substring(senderNorm.length - 10))
       
-      // Validate the sender address format (Stellar addresses start with G and are 56 chars)
-      const isValidStellarAddress = /^G[A-Z0-9]{55}$/.test(sender)
+      const isValidStellarAddress = /^[GC][A-Z0-9]{55}$/.test(senderNorm)
       if (!isValidStellarAddress) {
-        console.error("[Payment API] ❌ Invalid sender address format:", sender)
+        console.error("[Payment API] ❌ Invalid sender address format:", senderNorm)
         return NextResponse.json(
           { 
             error: "Invalid sender wallet address format.",
@@ -450,49 +451,79 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      if (sender !== wallet.publicKey) {
+      if (!senderNorm.startsWith("C")) {
+        return NextResponse.json(
+          {
+            error:
+              "Send from your passkey smart account (C…). Sign out, sign in again, and complete wallet setup.",
+            code: "WALLET_MUST_BE_SMART_ACCOUNT",
+          },
+          { status: 422, headers: corsHeaders(request) }
+        )
+      }
+
+      if (senderNorm !== wallet.publicKey) {
         console.warn("[Payment API] ⚠️ Frontend sender address doesn't match database wallet!")
-        console.warn("[Payment API]   Frontend:", sender)
+        console.warn("[Payment API]   Frontend:", senderNorm)
         console.warn("[Payment API]   Database:", wallet.publicKey)
         
-        // Try to find the wallet by the provided address in the database first
         const { createClient } = await import("@supabase/supabase-js")
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
         const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
         if (supabaseUrl && supabaseServiceKey) {
           const serviceClient = createClient(supabaseUrl, supabaseServiceKey)
+          const { data: walletByUser } = await serviceClient
+            .from("stellar_wallets")
+            .select("*")
+            .eq("user_id", userId)
+            .maybeSingle()
+
           const { data: walletByAddress, error: addressError } = await serviceClient
             .from("stellar_wallets")
             .select("*")
-            .eq("public_key", sender)
+            .eq("public_key", senderNorm)
             .eq("user_id", userId)
             .maybeSingle()
           
-          if (!addressError && walletByAddress) {
-            console.log("[Payment API] ✅ Found wallet by frontend address in database, using it")
-            wallet.publicKey = walletByAddress.public_key
-            wallet.network = walletByAddress.network
-            wallet.createdAt = walletByAddress.created_at
-            wallet.updatedAt = walletByAddress.updated_at
+          const row = !addressError && walletByAddress ? walletByAddress : walletByUser
+          if (row) {
+            console.log("[Payment API] ✅ Using canonical C from client; signer from DB row")
+            wallet.publicKey = senderNorm
+            wallet.network = row.network
+            wallet.createdAt = row.created_at
+            wallet.updatedAt = row.updated_at
+            if (typeof row.signer_public_key === "string") {
+              wallet.signerPublicKey = row.signer_public_key.trim().toUpperCase()
+            }
+            if (typeof row.wallet_type === "string") {
+              wallet.walletType = row.wallet_type as "oz" | "factory" | "legacy"
+            }
+            if (typeof row.oz_credential_id === "string") {
+              wallet.ozCredentialId = row.oz_credential_id.trim()
+            }
           } else {
-            // Frontend address is valid but not in database - this is OK for non-custodial wallets
-            // The user might be using a derived keypair from sessionStorage
-            // Use the frontend address directly (it's the actual wallet they're using)
-            console.log("[Payment API] ⚠️ Frontend address not in database, but it's valid - using it anyway")
-            console.log("[Payment API]   This is normal for non-custodial wallets using derived keypairs")
-            wallet.publicKey = sender
-            // Keep the network from database (or use config default)
+            console.log("[Payment API] Using frontend C (DB row not found yet)")
+            wallet.publicKey = senderNorm
             const tempStellarConfig = getStellarConfig()
             wallet.network = wallet.network || tempStellarConfig.network
           }
         } else {
-          // No service client available, but sender is valid - use it
-          console.log("[Payment API] Using frontend sender address (service client not available)")
-          wallet.publicKey = sender
+          console.log("[Payment API] Using frontend sender C (service client not available)")
+          wallet.publicKey = senderNorm
         }
       } else {
         console.log("[Payment API] ✅ Frontend sender address matches database wallet")
+        wallet.publicKey = senderNorm
       }
+    } else if (wallet.publicKey.startsWith("G")) {
+      return NextResponse.json(
+        {
+          error:
+            "Your wallet is still a classic G account in our records. Sign out and sign in with passkey to migrate to a smart account (C…).",
+          code: "WALLET_MUST_BE_SMART_ACCOUNT",
+        },
+        { status: 422, headers: corsHeaders(request) }
+      )
     }
 
     const stellarConfig = getStellarConfig()
@@ -568,22 +599,37 @@ export async function POST(request: NextRequest) {
       wallet.walletType ??
       (senderPk.startsWith("C") && !signerPk ? "oz" : senderPk.startsWith("C") ? "factory" : "legacy")
 
-    const useSmartRail = destinationRail === "smart" || senderPk.startsWith("C")
+    const amountNum = parseFloat(amount)
+    const feeBuffer = 0.01
 
-    if (useSmartRail) {
-      const { getDepositableUsdcBalance } = await import("@/lib/stellar/soroban-token")
-      const sorobanBalance = await getDepositableUsdcBalance(senderPk, stellarConfig.network)
-      const amountNum = parseFloat(amount)
-      if (sorobanBalance < amountNum + 0.01) {
-        return NextResponse.json(
-          {
-            error: `Insufficient balance. You need ${(amountNum + 0.01).toFixed(2)} USDC but have ${sorobanBalance.toFixed(2)} USDC.`,
-          },
-          { status: 400, headers: corsHeaders(request) }
-        )
+    if (!senderPk.startsWith("C")) {
+      return NextResponse.json(
+        {
+          error:
+            "Your wallet must be a passkey smart account (C…). Close the app, sign in again, and complete wallet setup when prompted.",
+          code: "WALLET_MUST_BE_SMART_ACCOUNT",
+        },
+        { status: 422, headers: corsHeaders(request) }
+      )
+    }
+
+    const { getUsdcBalanceBreakdown } = await import("@/lib/stellar/usdc-balance")
+    const balanceBreakdown = await getUsdcBalanceBreakdown({
+      walletAddress: senderPk,
+      signerPublicKey: signerPk,
+      network: stellarConfig.network,
+    })
+
+    if (balanceBreakdown.spendable < amountNum + feeBuffer) {
+      const asset = balanceBreakdown.spendableAssetLabel
+      let error = `Insufficient balance. You need ${(amountNum + feeBuffer).toFixed(2)} ${asset} but have ${balanceBreakdown.spendable.toFixed(2)} ${asset} on your smart wallet.`
+      if (stellarConfig.network === "testnet" && balanceBreakdown.classicOnSigner > 0) {
+        error += ` You have ${balanceBreakdown.classicOnSigner.toFixed(2)} Circle testnet USDC on a classic G account — that balance is separate. Move or mint BlendUSDC on your C address via testnet.blend.capital.`
       }
+      return NextResponse.json({ error }, { status: 400, headers: corsHeaders(request) })
+    }
 
-      if (walletType === "oz") {
+    if (walletType === "oz") {
         const prepared = await buildOzSmartUsdcTransferEnvelope({
           fromContractId: senderPk,
           toAddress: destinationNorm,
@@ -631,33 +677,45 @@ export async function POST(request: NextRequest) {
         },
         { headers: corsHeaders(request) }
       )
+
+    // Unreachable: all sends require C smart account above.
+    const legacySourcePk =
+      wallet.publicKey.startsWith("G") && wallet.publicKey.length === 56
+        ? wallet.publicKey
+        : signerPk?.startsWith("G")
+          ? signerPk
+          : wallet.publicKey
+
+    if (!legacySourcePk.startsWith("G")) {
+      return NextResponse.json(
+        {
+          error:
+            "Cannot send classic USDC: no classic G account linked to this smart wallet.",
+          code: "LEGACY_SIGNER_REQUIRED",
+        },
+        { status: 422, headers: corsHeaders(request) }
+      )
     }
 
-    // Legacy classic path (G → G Operation.payment)
-    // Create USDC asset
     const usdcAsset = new Asset("USDC", usdcIssuer)
 
-    // Create Stellar server instance
-    const server = new Horizon.Server(
-      stellarConfig.horizonUrl,
-      { allowHttp: stellarConfig.network === "testnet" }
-    )
+    const server = new Horizon.Server(stellarConfig.horizonUrl, {
+      allowHttp: stellarConfig.network === "testnet",
+    })
 
-    // Load sender account with retry logic
-    // Sometimes Horizon API has temporary issues, so we retry with exponential backoff
     let account: Account
     const maxRetries = 3
-    const retryDelay = 2000 // 2 seconds
-    
+    const retryDelay = 2000
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         console.log(`[Payment API] Loading account for transaction (attempt ${attempt}/${maxRetries}):`, {
-          publicKey: wallet.publicKey,
+          publicKey: legacySourcePk,
           network: stellarConfig.network,
-          horizonUrl: stellarConfig.horizonUrl
+          horizonUrl: stellarConfig.horizonUrl,
         })
-        
-        account = await server.loadAccount(wallet.publicKey)
+
+        account = await server.loadAccount(legacySourcePk)
         
         // Get detailed balance information
         // Account type from Stellar SDK has balances as a getter
@@ -811,8 +869,8 @@ export async function POST(request: NextRequest) {
     const accountUSDCAmount = accountUSDCBalance ? parseFloat(accountUSDCBalance.balance) : 0
     
     console.log("[Payment API] Building payment transaction:", {
-      source: wallet.publicKey.substring(0, 10) + "..." + wallet.publicKey.substring(wallet.publicKey.length - 10),
-      fullSource: wallet.publicKey, // Log full source for debugging
+      source: legacySourcePk.substring(0, 10) + "..." + legacySourcePk.substring(legacySourcePk.length - 10),
+      fullSource: legacySourcePk,
       destination: destination.substring(0, 10) + "..." + destination.substring(destination.length - 10),
       fullDestination: destination, // Log full destination for debugging
       amount: amount,
@@ -852,12 +910,13 @@ export async function POST(request: NextRequest) {
     // Verify transaction source matches wallet
     // Verify transaction source matches wallet address
     const transactionSource = getTransactionSource(transaction)
-    if (transactionSource !== wallet.publicKey) {
+    if (transactionSource !== legacySourcePk) {
       console.error("[Payment API] ❌ Transaction source mismatch!", {
         transactionSource: transactionSource,
+        legacySourcePk,
         walletPublicKey: wallet.publicKey,
         senderFromFrontend: sender,
-        note: "Transaction source must match the wallet address being used"
+        note: "Transaction source must match the classic G account used for payment"
       })
       return NextResponse.json(
         {
@@ -871,7 +930,7 @@ export async function POST(request: NextRequest) {
     // Verify account has sufficient balance before returning transaction
     if (accountUSDCAmount < parseFloat(amount)) {
       console.error("[Payment API] ❌ Insufficient balance in account:", {
-        accountPublicKey: wallet.publicKey,
+        accountPublicKey: legacySourcePk,
         accountUSDCBalance: accountUSDCAmount,
         requestedAmount: parseFloat(amount),
         shortfall: parseFloat(amount) - accountUSDCAmount,
@@ -883,7 +942,7 @@ export async function POST(request: NextRequest) {
           details: {
             accountBalance: accountUSDCAmount,
             requestedAmount: parseFloat(amount),
-            accountAddress: wallet.publicKey
+            accountAddress: legacySourcePk
           }
         },
         { status: 400, headers: corsHeaders(request) }
@@ -931,8 +990,8 @@ export async function POST(request: NextRequest) {
       {
         unsignedXdr,
         paymentRail: "legacy",
-        signerPublicKey: wallet.publicKey,
-        walletAddress: wallet.publicKey,
+        signerPublicKey: legacySourcePk,
+        walletAddress: senderPk.startsWith("C") ? senderPk : legacySourcePk,
         legacyNotice: LEGACY_CLASSIC_PAYMENT_NOTICE,
       },
       { headers: corsHeaders(request) }

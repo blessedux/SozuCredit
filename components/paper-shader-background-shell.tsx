@@ -56,8 +56,8 @@ export function PaperShaderBackgroundShell({
     pathname.startsWith("/credit/")
 
   const variant = isLedger ? "blobs" : "orb"
-  const isAuthRoute =
-    pathname === "/auth" || pathname.startsWith("/auth/")
+  // Same compact footer orb as /auth on tablet+ (home, wallet, settings, sdp use orb variant too)
+  const orbCompact = variant === "orb"
 
   return (
     <>
@@ -70,7 +70,7 @@ export function PaperShaderBackgroundShell({
             className="sozu-app-viewport-inner"
             variant={variant}
             tier={tier}
-            orbCompact={isAuthRoute}
+            orbCompact={orbCompact}
           />
         </div>
       ) : null}

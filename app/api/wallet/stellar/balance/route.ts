@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { NextResponse, NextRequest } from "next/server"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
 import { getStellarWallet, getWalletBalance } from "@/lib/turnkey/stellar-wallet"
-import { getUSDCBalance } from "@/lib/turnkey/stellar-wallet"
+import { getUsdcBalanceBreakdown } from "@/lib/stellar/usdc-balance"
 import { getStellarConfig } from "@/lib/turnkey/config"
 import { Horizon } from "@stellar/stellar-sdk"
 import { monitorBalanceAndAutoDeposit } from "@/lib/defindex/auto-deposit"
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     let publicKeyToUse: string | null = null
     let wallet: any = null
     
-    if (publicKeyParam && /^G[A-Z0-9]{55}$/.test(publicKeyParam)) {
+    if (publicKeyParam && /^[GC][A-Z0-9]{55}$/.test(publicKeyParam)) {
       // Use provided public key directly (for real-time balance checks)
       publicKeyToUse = publicKeyParam
       console.log("[Stellar Balance API] Using provided publicKey:", publicKeyToUse.substring(0, 10) + "...")
@@ -73,47 +73,57 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    let balanceUserId: string | null = wallet?.userId ?? null
+    if (!balanceUserId) {
+      const supabase = await createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      balanceUserId = user?.id ?? request.headers.get("x-user-id")
+    }
+
+    let signerForBreakdown = wallet?.signerPublicKey?.trim() ?? null
+    if (!signerForBreakdown && publicKeyToUse.startsWith("C") && balanceUserId) {
+      const rowWallet = await getStellarWallet(balanceUserId, true)
+      if (rowWallet?.signerPublicKey) {
+        signerForBreakdown = rowWallet.signerPublicKey.trim()
+      }
+    }
+
     // Query XLM balance from Stellar network
     const balance = await getWalletBalance(publicKeyToUse, "native")
-    
-    // Query USDC balance for auto-deposit monitoring
-    let usdcBalance = 0
-    let allBalances: any[] = []
-    try {
-      // First, get all account balances to see what's actually on the account
-      const stellarConfig = getStellarConfig()
-      const server = new Horizon.Server(
-        stellarConfig.horizonUrl,
-        { allowHttp: stellarConfig.network === "testnet" }
-      )
-      
-      const account = await server.loadAccount(publicKeyToUse)
-      allBalances = account.balances.map((b: any) => ({
-        asset_type: b.asset_type,
-        asset_code: b.asset_code || "XLM",
-        asset_issuer: b.asset_issuer || undefined,
-        balance: b.balance,
-        limit: b.limit || undefined,
-      }))
-      
-      console.log("[Stellar Balance API] 📊 All account balances on Stellar network:", {
-        publicKey: publicKeyToUse.substring(0, 10) + "...",
-        fullPublicKey: publicKeyToUse,
-        balances: allBalances,
-        totalBalances: allBalances.length
-      })
-      
-      // Now get USDC balance specifically
-      usdcBalance = await getUSDCBalance(publicKeyToUse)
-      console.log("[Stellar Balance API] 💰 USDC balance:", {
-        publicKey: publicKeyToUse.substring(0, 10) + "...",
-        fullPublicKey: publicKeyToUse,
-        usdcBalance,
-        note: "This is the actual USDC balance in the wallet (not in DeFindex)"
-      })
-    } catch (error) {
-      console.warn("[Stellar Balance API] Could not fetch USDC balance:", error)
+    const usdcBreakdown = await getUsdcBalanceBreakdown({
+      walletAddress: publicKeyToUse,
+      signerPublicKey: signerForBreakdown,
+    })
+    const usdcBalance = usdcBreakdown.spendable
+
+    let allBalances: { asset_type: string; asset_code: string; asset_issuer?: string; balance: string }[] =
+      []
+    if (publicKeyToUse.startsWith("G")) {
+      try {
+        const stellarConfig = getStellarConfig()
+        const server = new Horizon.Server(stellarConfig.horizonUrl, {
+          allowHttp: stellarConfig.network === "testnet",
+        })
+        const account = await server.loadAccount(publicKeyToUse)
+        allBalances = account.balances.map((b: { asset_type: string; asset_code?: string; asset_issuer?: string; balance: string; limit?: string }) => ({
+          asset_type: b.asset_type,
+          asset_code: b.asset_code || "XLM",
+          asset_issuer: b.asset_issuer || undefined,
+          balance: b.balance,
+          limit: b.limit || undefined,
+        }))
+      } catch (error) {
+        console.warn("[Stellar Balance API] Could not load classic account balances:", error)
+      }
     }
+
+    console.log("[Stellar Balance API] 💰 USDC breakdown:", {
+      publicKey: publicKeyToUse.substring(0, 10) + "...",
+      spendable: usdcBalance,
+      sorobanOnWallet: usdcBreakdown.sorobanOnWallet,
+      classicOnSigner: usdcBreakdown.classicOnSigner,
+      asset: usdcBreakdown.spendableAssetLabel,
+    })
     
     // Check DeFindex position if we have a userId
     let defindexBalance = 0
@@ -157,11 +167,15 @@ export async function GET(request: NextRequest) {
       {
         balance,
         asset: "XLM", // Native Stellar asset
-        usdcBalance, // Include USDC balance (real-time from Stellar network - available for sending)
+        usdcBalance, // Spendable for sends (BlendUSDC on C testnet, Circle USDC on G)
+        spendableAssetLabel: usdcBreakdown.spendableAssetLabel,
+        sorobanUsdcBalance: usdcBreakdown.sorobanOnWallet,
+        classicUsdcOnSigner: usdcBreakdown.classicOnSigner,
         defindexBalance, // USDC locked in DeFindex strategy (not available for sending)
         defindexShares, // Strategy shares
-        totalUsdcBalance: usdcBalance + defindexBalance, // Total USDC (wallet + strategy)
-        allBalances, // All balances on the Stellar account (for debugging)
+        totalUsdcBalance: usdcBalance + defindexBalance, // Spendable on C + strategy (never G classic)
+        walletMustMigrate: !publicKeyToUse.startsWith("C"),
+        allBalances, // Classic Horizon balances when wallet is G
         publicKey: publicKeyToUse,
         network: wallet?.network || "testnet",
         autoDepositTriggered: autoDepositTriggered,

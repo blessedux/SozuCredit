@@ -38,18 +38,34 @@ export async function GET(request: NextRequest) {
       }
     }
     
-    // Get user's Stellar wallet (use service client if no authenticated user)
+    const url = new URL(request.url)
+    const publicKeyParam = url.searchParams.get("publicKey")?.trim().toUpperCase()
+
     const wallet = await getStellarWallet(userId, !user)
     
-    if (!wallet) {
+    if (!wallet && !publicKeyParam) {
       return NextResponse.json(
         { error: "Wallet not found" },
         { status: 404, headers: corsHeaders(request) }
       )
     }
+
+    const walletPk =
+      publicKeyParam && /^[GC][A-Z0-9]{55}$/.test(publicKeyParam)
+        ? publicKeyParam
+        : wallet!.publicKey
+
+    if (!walletPk.startsWith("C")) {
+      return NextResponse.json(
+        {
+          error: "DeFindex requires a smart account (C…). Complete passkey wallet setup first.",
+          code: "WALLET_MUST_BE_SMART_ACCOUNT",
+        },
+        { status: 422, headers: corsHeaders(request) }
+      )
+    }
     
-    // Get vault balance from DeFindex (including database position tracking)
-    const vaultBalance = await getVaultBalance(wallet.publicKey, userId)
+    const vaultBalance = await getVaultBalance(walletPk, userId)
     
     // Get strategy info including APY
     const strategyInfo = await getStrategyInfo()

@@ -706,7 +706,18 @@ export default function SettingsPage() {
 
             {process.env.NEXT_PUBLIC_STELLAR_NETWORK !== "mainnet" && (
               <p className="text-[11px] text-amber-400/60 leading-relaxed">
-                En testnet se usa BlendUSDC (no el USDC real). Obtén tokens de prueba en testnet.blend.capital.
+                En testnet, envíos desde tu billetera inteligente (C) usan{" "}
+                <span className="text-amber-200/80">BlendUSDC</span> (Soroban), no el USDC clásico de Circle en una cuenta G.
+                Si ves saldo en G pero no puedes enviar, obtén BlendUSDC en{" "}
+                <a
+                  href="https://testnet.blend.capital"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline text-amber-200/90"
+                >
+                  testnet.blend.capital
+                </a>
+                .
               </p>
             )}
 

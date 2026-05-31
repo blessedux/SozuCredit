@@ -131,24 +131,46 @@ export async function getWalletBalanceClientSide(
  * Uses testnet USDC issuer for testnet, mainnet issuer for mainnet
  */
 export async function getUSDCBalanceClientSide(publicKey: string): Promise<number> {
+  const pk = publicKey.trim()
   const { getStellarConfig } = await import("../turnkey/config")
   const stellarConfig = getStellarConfig()
+
+  // Smart accounts (C): Horizon has no trustlines — use server balance API (Soroban BlendUSDC on testnet).
+  if (pk.startsWith("C") && pk.length === 56) {
+    try {
+      const { getUserId } = await import("@/lib/wallet-utils")
+      const userId = getUserId()
+      const headers: HeadersInit = userId ? { "x-user-id": userId } : {}
+      const res = await fetch(
+        `/api/wallet/stellar/balance?publicKey=${encodeURIComponent(pk)}`,
+        { headers },
+      )
+      if (res.ok) {
+        const data = (await res.json()) as { usdcBalance?: number }
+        if (typeof data.usdcBalance === "number") {
+          return data.usdcBalance
+        }
+      }
+    } catch (e) {
+      console.warn("[getUSDCBalanceClientSide] C balance API failed:", e)
+    }
+    return 0
+  }
+
   const usdcIssuer = USDC_ISSUERS[stellarConfig.network]
-  
+
   console.log("[getUSDCBalanceClientSide] Fetching USDC balance:", {
-    publicKey: publicKey.substring(0, 10) + "...",
+    publicKey: pk.substring(0, 10) + "...",
     network: stellarConfig.network,
     issuer: usdcIssuer,
   })
-  
+
   try {
-    // Try with specific issuer first
     const usdcBalance = await getWalletBalanceClientSide(publicKey, "USDC", usdcIssuer)
     console.log("[getUSDCBalanceClientSide] ✅ USDC balance found:", usdcBalance, "with issuer:", usdcIssuer)
     return usdcBalance
   } catch (error) {
     console.warn("[getUSDCBalanceClientSide] Could not find USDC balance with issuer, trying without issuer:", error)
-    // Fallback: try without issuer (in case there's a different USDC asset)
     try {
       const usdcBalance = await getWalletBalanceClientSide(publicKey, "USDC")
       console.log("[getUSDCBalanceClientSide] ✅ USDC balance found (without issuer):", usdcBalance)

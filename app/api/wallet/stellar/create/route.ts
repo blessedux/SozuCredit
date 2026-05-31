@@ -136,11 +136,18 @@ export async function POST(request: Request) {
           existingWallet.public_key.startsWith("C") &&
           existingWallet.wallet_type !== "factory")
 
-      if (
-        !alreadyOz &&
-        publicKey.startsWith("G") &&
-        process.env.SMART_ACCOUNT_FACTORY_ID?.trim()
-      ) {
+      // Legacy G-only registration: provision factory C when configured (OZ is client-first via ensureSmartWallet).
+      if (!alreadyOz && publicKey.startsWith("G")) {
+        if (!process.env.SMART_ACCOUNT_FACTORY_ID?.trim()) {
+          return NextResponse.json(
+            {
+              error:
+                "Smart account required. Sign in again so the app can link your passkey wallet (C…).",
+              code: "SMART_ACCOUNT_REQUIRED",
+            },
+            { status: 422, headers: corsHeaders(request as any) }
+          )
+        }
         try {
           const { provisionSmartWalletForSigner } = await import(
             "@/lib/stellar/smart-account-provision"
@@ -155,17 +162,36 @@ export async function POST(request: Request) {
               publicKey.substring(0, 10) + "..."
             )
           } else {
-            console.warn("[Stellar Wallet API] Smart account provision skipped:", provisioned.error)
+            return NextResponse.json(
+              { error: provisioned.error, code: "SMART_ACCOUNT_PROVISION_FAILED" },
+              { status: 502, headers: corsHeaders(request as any) }
+            )
           }
         } catch (provErr) {
-          console.warn("[Stellar Wallet API] Smart account provision error (non-fatal):", provErr)
+          const msg = provErr instanceof Error ? provErr.message : String(provErr)
+          return NextResponse.json(
+            { error: msg, code: "SMART_ACCOUNT_PROVISION_FAILED" },
+            { status: 502, headers: corsHeaders(request as any) }
+          )
         }
+      }
+
+      if (publicKey.startsWith("G")) {
+        return NextResponse.json(
+          {
+            error:
+              "Only smart accounts (C…) are supported. Use passkey login to register your wallet.",
+            code: "LEGACY_G_NOT_ALLOWED",
+          },
+          { status: 422, headers: corsHeaders(request as any) }
+        )
       }
 
       const upsertRow: Record<string, string | null> = {
         user_id: userId,
         public_key: publicKey,
         signer_public_key: signerPublicKey,
+        wallet_type: publicKey.startsWith("C") ? "oz" : null,
         turnkey_wallet_id: null,
         network: stellarConfig.network,
         updated_at: new Date().toISOString(),

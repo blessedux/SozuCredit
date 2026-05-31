@@ -23,7 +23,7 @@ type AuthOrangeOrbShaderProps = {
   variant?: "orb" | "blobs"
   /** Performance tier — passed down from PaperShaderBackgroundShell */
   tier?: ShaderTier
-  /** On /auth: smaller orb anchored at bottom on tablet and desktop (phone unchanged) */
+  /** Smaller orb at bottom on tablet/desktop; phone keeps full-width arc (auth, home, wallet, …) */
   orbCompact?: boolean
 }
 
@@ -35,7 +35,7 @@ export function AuthOrangeOrbShader({
 }: AuthOrangeOrbShaderProps) {
   const orbWrapClass = cn(
     "sozu-orb-wrap",
-    orbCompact && "sozu-orb-wrap--auth-compact",
+    orbCompact && "sozu-orb-wrap--compact-md",
   )
   // ── Ledger / credit: animated corner blobs ───────────────────────────────
   if (variant === "blobs") {

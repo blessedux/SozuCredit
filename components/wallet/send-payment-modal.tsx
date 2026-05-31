@@ -270,7 +270,8 @@ export const SendPaymentModal = memo(function SendPaymentModal({
     return referenceFiat === "CLP" || referenceFiat === "ARS" ? Math.round(local) : local
   }
 
-  const availableBalance = defindexBalance?.totalBalance ?? 0
+  /** Sends use spendable USDC on the canonical C wallet only (not DeFindex strategy). */
+  const availableBalance = defindexBalance?.walletBalance ?? 0
   const availableFiatFormatted = formatReferenceAmount(
     referenceDisplayValue(availableBalance),
     referenceFiat,

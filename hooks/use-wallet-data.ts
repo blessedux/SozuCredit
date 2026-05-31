@@ -98,41 +98,41 @@ export function useWalletData() {
     })
   }, [])
 
-  // Fetch USDC balance from Stellar wallet
-  const fetchWalletUSDCBalance = useCallback(async (publicKey: string) => {
-    if (!publicKey) {
-      console.warn("[Wallet] No public key provided for USDC balance fetch")
-      return
-    }
-    
+  /** Single balance source: C-wallet spendable USDC + DeFindex strategy (no G+C double count). */
+  const refreshUnifiedBalance = useCallback(async (userId: string, publicKey?: string) => {
     try {
-      console.log("[Wallet] 🔍 Fetching USDC balance directly from Stellar wallet:", publicKey.substring(0, 10) + "...")
-      const { getUSDCBalanceClientSide } = await import("@/lib/stellar/client-wallet")
-      const balance = await getUSDCBalanceClientSide(publicKey)
-      console.log("[Wallet] ✅ USDC wallet balance fetched from Stellar:", balance)
-      
-      setDefindexBalance((prev) => {
-        if (prev) {
-          return {
-            ...prev,
-            walletBalance: balance,
-            totalBalance: balance + (prev.strategyBalance || 0),
-          }
-        } else {
-          return {
-            walletBalance: balance,
-            strategyBalance: 0,
-            totalBalance: balance,
-            strategyShares: 0,
-            apy: 15.5,
-          }
-        }
-      })
-      setIsBalanceLoading(false)
+      const { fetchUnifiedUsdcBalance } = await import("@/lib/wallet/unified-usdc-balance")
+      const unified = await fetchUnifiedUsdcBalance(userId, publicKey)
+      if (!unified) {
+        setIsBalanceLoading(false)
+        return
+      }
+      console.log("[Wallet] ✅ Unified USDC balance:", unified)
+      setDefindexBalance((prev) => ({
+        walletBalance: unified.walletBalance,
+        strategyBalance: unified.strategyBalance,
+        totalBalance: unified.totalBalance,
+        strategyShares: prev?.strategyShares ?? 0,
+        apy: prev?.apy ?? 15.5,
+      }))
+      if (unified.walletAddress && unified.walletAddress !== publicKey) {
+        setWalletAddress(unified.walletAddress)
+      }
     } catch (error) {
-      console.error("[Wallet] ❌ Error fetching USDC wallet balance:", error)
+      console.error("[Wallet] ❌ Error fetching unified balance:", error)
+    } finally {
+      setIsBalanceLoading(false)
     }
   }, [])
+
+  const fetchWalletUSDCBalance = useCallback(
+    async (publicKey: string) => {
+      const userId = getUserId()
+      if (!userId) return
+      await refreshUnifiedBalance(userId, publicKey)
+    },
+    [refreshUnifiedBalance],
+  )
 
   // Resolve address to Sozu tag
   const resolveAddressToTag = useCallback(async (address: string): Promise<string | null> => {
@@ -212,10 +212,14 @@ export function useWalletData() {
   }, [resolveAddressToTag])
 
   // Fetch DeFindex balance
-  const fetchDefindexBalance = useCallback(async (userId: string) => {
+  const fetchDefindexBalance = useCallback(async (userId: string, publicKey?: string) => {
     try {
       console.log("[Wallet] Fetching DeFindex balance")
-      const defindexResponse = await fetch("/api/wallet/defindex/balance", {
+      const qs =
+        publicKey && /^[GC][A-Z0-9]{55}$/.test(publicKey)
+          ? `?publicKey=${encodeURIComponent(publicKey)}`
+          : ""
+      const defindexResponse = await fetch(`/api/wallet/defindex/balance${qs}`, {
         headers: {
           "x-user-id": userId,
         },
@@ -231,17 +235,13 @@ export function useWalletData() {
             : Number(defindexData.apy) || 15.5
           
           setDefindexBalance((prev) => {
-            const walletBalance = prev?.walletBalance !== undefined && prev.walletBalance > 0 
-              ? prev.walletBalance
-              : (defindexData.walletBalance || 0)
-            
             const strategyBalance = defindexData.strategyBalance || 0
-            const totalBalance = walletBalance + strategyBalance
-            
+            // walletBalance comes from unified /api/wallet/stellar/balance (C spendable only)
+            const walletBalance = prev?.walletBalance ?? 0
             return {
               walletBalance,
               strategyBalance,
-              totalBalance,
+              totalBalance: walletBalance + strategyBalance,
               strategyShares: defindexData.strategyShares || 0,
               apy: apyNumber,
             }
@@ -348,9 +348,10 @@ export function useWalletData() {
 
   const bootstrapWalletFetches = useCallback(
     (publicKey: string, userId: string) => {
-      void fetchWalletUSDCBalance(publicKey)
-      void fetchDefindexBalance(userId)
+      setIsBalanceLoading(true)
+      void refreshUnifiedBalance(userId, publicKey)
       deferNonCritical(() => {
+        void fetchDefindexBalance(userId, publicKey)
         void fetchTransactionHistory(publicKey)
         void fetchXLMBalance(publicKey, userId)
         void fetchAutoDepositStatus(userId)
@@ -358,7 +359,7 @@ export function useWalletData() {
       })
     },
     [
-      fetchWalletUSDCBalance,
+      refreshUnifiedBalance,
       fetchDefindexBalance,
       fetchTransactionHistory,
       fetchXLMBalance,
@@ -369,8 +370,25 @@ export function useWalletData() {
 
   // Fetch wallet address with retry logic
   const fetchWalletAddress = useCallback(async (userId: string, retryCount = 0): Promise<void> => {
-    console.log(`[Wallet] Fetching wallet address for userId: ${userId} (attempt ${retryCount + 1})`)
+    console.log(`[Wallet] Syncing canonical wallet for userId: ${userId} (attempt ${retryCount + 1})`)
     try {
+      const credId =
+        sessionStorage.getItem("credential_id") ?? localStorage.getItem("credential_id") ?? undefined
+
+      try {
+        const { syncCanonicalWallet } = await import("@/lib/wallet/sync-canonical-wallet")
+        const { publicKey, walletType } = await syncCanonicalWallet(userId, credId ?? undefined)
+        if (!publicKey.startsWith("C")) {
+          console.warn("[Wallet] Expected C smart account; got:", publicKey.substring(0, 8))
+        }
+        console.log("[Wallet] ✅ Canonical wallet:", publicKey.substring(0, 10) + "…", walletType)
+        setWalletAddress(publicKey)
+        bootstrapWalletFetches(publicKey, userId)
+        return
+      } catch (syncErr) {
+        console.warn("[Wallet] syncCanonicalWallet failed, falling back to address API:", syncErr)
+      }
+
       const walletAddressResponse = await fetch("/api/wallet/stellar/address", {
         method: "GET",
         headers: {
@@ -378,36 +396,32 @@ export function useWalletData() {
           "x-user-id": userId,
         },
       })
-      
+
       console.log(`[Wallet] Wallet address response status: ${walletAddressResponse.status}`)
-      
+
       if (walletAddressResponse.ok) {
         const walletData = await walletAddressResponse.json()
         console.log("[Wallet] Wallet data received:", walletData)
-        
-        const derivedPublicKey = sessionStorage.getItem("stellar_public_key")
-        let publicKeyToUse = walletData.publicKey
-        
-        if (derivedPublicKey) {
-          console.log("[Wallet] Found derived public key in sessionStorage:", derivedPublicKey.substring(0, 10) + "...")
-          if (derivedPublicKey !== walletData.publicKey) {
-            console.log("[Wallet] ⚠️ Mismatch detected: Using derived keypair public key instead of database address")
-            publicKeyToUse = derivedPublicKey
-          } else {
-            console.log("[Wallet] ✅ Public keys match")
-          }
-        }
-        
+
+        const publicKeyToUse =
+          typeof walletData.publicKey === "string" ? walletData.publicKey.trim() : ""
+
         if (publicKeyToUse) {
+          if (publicKeyToUse.startsWith("G") && retryCount < 2) {
+            console.log("[Wallet] Legacy G in DB — retrying smart account sync…")
+            setTimeout(() => fetchWalletAddress(userId, retryCount + 1), 1500)
+            return
+          }
           console.log("[Wallet] ✅ Stellar wallet address loaded:", publicKeyToUse)
           setWalletAddress(publicKeyToUse)
           if (walletData.network) {
             setWalletNetwork(walletData.network)
           }
-          
-          // Critical path: show balance fast
+          if (typeof window !== "undefined") {
+            localStorage.setItem("stellar_public_key", publicKeyToUse)
+            sessionStorage.setItem("stellar_public_key", publicKeyToUse)
+          }
           bootstrapWalletFetches(publicKeyToUse, userId)
-
           return
         } else {
           console.warn("[Wallet] No public key in wallet response:", walletData)
@@ -579,12 +593,8 @@ export function useWalletData() {
     // Read from localStorage (persistent) falling back to sessionStorage (legacy).
     const sessionPublicKey =
       localStorage.getItem("stellar_public_key") ?? sessionStorage.getItem("stellar_public_key")
-    if (sessionPublicKey && !walletAddress) {
+    if (sessionPublicKey?.startsWith("C") && !walletAddress) {
       setWalletAddress(sessionPublicKey)
-      void fetchWalletUSDCBalance(sessionPublicKey)
-      deferNonCritical(() => {
-        void fetchTransactionHistory(sessionPublicKey)
-      })
     }
 
     const checkAuth = () => {

@@ -192,21 +192,42 @@ export function useSendPayment(
     }
 
     console.log("[Send Payment] Fetching real-time USDC balance for verification...")
-    let currentBalance = defindexBalance?.walletBalance || 0
+    let currentBalance = defindexBalance?.walletBalance ?? 0
+
+    if (!walletAddress.startsWith("C")) {
+      alert(
+        "Tu billetera debe ser una cuenta inteligente (C…). Cerrá sesión, volvé a entrar con passkey y completá la configuración.",
+      )
+      return
+    }
 
     if (walletAddress) {
       try {
-        const balanceResponse = await fetch(`/api/wallet/stellar/balance?publicKey=${walletAddress}`, {
-          headers: {
-            "x-user-id": userId,
-          },
-        })
+        const balanceResponse = await fetch(
+          `/api/wallet/stellar/balance?publicKey=${encodeURIComponent(walletAddress)}`,
+          { headers: { "x-user-id": userId } },
+        )
 
         if (balanceResponse.ok) {
-          const balanceData = await balanceResponse.json()
-          if (balanceData.usdcBalance !== undefined) {
+          const balanceData = (await balanceResponse.json()) as {
+            usdcBalance?: number
+            classicUsdcOnSigner?: number
+            spendableAssetLabel?: string
+          }
+          if (typeof balanceData.usdcBalance === "number") {
             currentBalance = balanceData.usdcBalance
-            console.log("[Send Payment] ✅ Real-time USDC balance:", currentBalance)
+            console.log("[Send Payment] ✅ Spendable on C:", currentBalance)
+          }
+          if (
+            currentBalance < requiredBalance &&
+            typeof balanceData.classicUsdcOnSigner === "number" &&
+            balanceData.classicUsdcOnSigner > 0
+          ) {
+            const label = balanceData.spendableAssetLabel ?? "BlendUSDC"
+            alert(
+              `You have ${balanceData.classicUsdcOnSigner.toFixed(2)} Circle testnet USDC on a classic G account, but sends use ${label} on your smart account (C…). Mint or move funds to your C address via testnet.blend.capital.`,
+            )
+            return
           }
         }
       } catch (balanceError) {

@@ -282,7 +282,7 @@
   animation: orb-breathe 10s ease-in-out infinite;
 }
 
-/* Orb placement: phone = large bottom arc; auth on tablet/desktop = compact footer orb */
+/* Orb placement: phone = large bottom arc; tablet/desktop = compact footer orb (auth, home, wallet, …) */
 .sozu-orb-wrap {
   position: absolute;
   left: 50%;
@@ -293,7 +293,7 @@
 }
 
 @media (min-width: 768px) {
-  .sozu-orb-wrap--auth-compact {
+  .sozu-orb-wrap--compact-md {
     bottom: -5rem;
     width: min(26rem, 50vw);
     height: min(26rem, 50vw);
@@ -303,7 +303,7 @@
 }
 
 @media (min-width: 1024px) {
-  .sozu-orb-wrap--auth-compact {
+  .sozu-orb-wrap--compact-md {
     bottom: -4rem;
     width: min(22rem, 34vw);
     height: min(22rem, 34vw);
