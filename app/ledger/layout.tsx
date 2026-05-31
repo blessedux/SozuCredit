@@ -22,7 +22,7 @@ export default function LedgerLayout({ children }: { children: React.ReactNode }
 
   return (
     <div
-      className="dark relative z-10 min-h-screen bg-transparent text-white pb-28"
+      className="dark relative z-10 min-h-[var(--sozu-app-height,100lvh)] w-full bg-transparent text-white pb-28 overscroll-none"
       style={{
         // Override shadcn CSS variables so cards/tables are glassmorphic
         // instead of opaque white, letting the shader show through
@@ -42,9 +42,9 @@ export default function LedgerLayout({ children }: { children: React.ReactNode }
       <header className="sticky top-0 z-20 border-b border-white/10 bg-black/40 backdrop-blur-md">
         <div className={`${ledgerMainWidth} flex items-center gap-3 pb-3 pt-4`}>
           <Link
-            href="/wallet"
+            href="/home"
             className="p-2 rounded-full bg-white/10 border border-white/15 hover:bg-white/15 transition-colors"
-            aria-label="Volver al wallet"
+            aria-label="Volver al inicio"
           >
             <ArrowLeft className="w-5 h-5" />
           </Link>

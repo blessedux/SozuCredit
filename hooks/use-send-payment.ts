@@ -193,6 +193,8 @@ export function useSendPayment(
 
     console.log("[Send Payment] Fetching real-time USDC balance for verification...")
     let currentBalance = defindexBalance?.walletBalance ?? 0
+    const bufferAmount = 0.01
+    const requiredBalance = amount + bufferAmount
 
     if (!walletAddress.startsWith("C")) {
       alert(
@@ -234,9 +236,6 @@ export function useSendPayment(
         console.warn("[Send Payment] Could not fetch real-time balance, using cached:", balanceError)
       }
     }
-
-    const bufferAmount = 0.01
-    const requiredBalance = amount + bufferAmount
 
     if (currentBalance < requiredBalance) {
       const strategyBalance = defindexBalance?.strategyBalance || 0

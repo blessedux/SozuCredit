@@ -450,7 +450,7 @@ export const SendPaymentModal = memo(function SendPaymentModal({
                           handleResolveRecipient()
                         }
                       }}
-                      placeholder="$Sozutag"
+                      placeholder="$sozu"
                       className={`bg-white/5 text-white placeholder:text-white/40 text-lg h-14 pr-[4.5rem] transition-colors ${
                         recipientError
                           ? "border-red-500/60"

@@ -49,15 +49,9 @@ export function PaperShaderBackgroundShell({
   // only reliable way to prevent the GPU from running in the background.
   const shaderActive = showShader && shaderReady && isVisible && tier !== "static"
 
-  const isLedger =
-    pathname === "/ledger" ||
-    pathname.startsWith("/ledger/") ||
-    pathname === "/credit" ||
-    pathname.startsWith("/credit/")
-
-  const variant = isLedger ? "blobs" : "orb"
-  // Same compact footer orb as /auth on tablet+ (home, wallet, settings, sdp use orb variant too)
-  const orbCompact = variant === "orb"
+  // Same orb background on mobile and desktop (ledger/cashflow included — blobs were hard to read on phone).
+  const variant = "orb"
+  const orbCompact = true
 
   return (
     <>

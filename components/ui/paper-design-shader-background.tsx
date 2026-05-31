@@ -17,8 +17,8 @@ import {
 type AuthOrangeOrbShaderProps = {
   className?: string
   /**
-   * "orb"   — circular orb + CSS ambient (default on auth/wallet/home/settings — all screen sizes)
-   * "blobs" — full-viewport corner blobs (ledger/credit only)
+   * "orb"   — circular orb + CSS ambient (default everywhere, including ledger/cashflow)
+   * "blobs" — full-viewport corner blobs (legacy; prefer orb for legibility)
    */
   variant?: "orb" | "blobs"
   /** Performance tier — passed down from PaperShaderBackgroundShell */

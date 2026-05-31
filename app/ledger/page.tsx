@@ -1042,22 +1042,22 @@ export default function LedgerHomePage() {
             <Table className="min-w-[640px] lg:min-w-0">
               <TableHeader>
                 <TableRow className="border-white/10 hover:bg-transparent">
-                  <TableHead className="sticky top-0 bg-neutral-950/95 px-3 text-white/55 backdrop-blur-sm lg:px-4">
+                  <TableHead className="sticky top-0 bg-black/55 px-3 text-white/55 backdrop-blur-md lg:px-4">
                     Fecha
                   </TableHead>
-                  <TableHead className="sticky top-0 bg-neutral-950/95 px-3 text-white/55 backdrop-blur-sm lg:min-w-[12rem] lg:px-4 xl:min-w-[16rem]">
+                  <TableHead className="sticky top-0 bg-black/55 px-3 text-white/55 backdrop-blur-md lg:min-w-[12rem] lg:px-4 xl:min-w-[16rem]">
                     Comercio
                   </TableHead>
                   <TableHead className="sticky top-0 bg-neutral-950/95 px-3 text-right text-white/55 backdrop-blur-sm lg:px-4">
                     Monto
                   </TableHead>
-                  <TableHead className="sticky top-0 bg-neutral-950/95 px-3 text-white/55 backdrop-blur-sm lg:px-4">
+                  <TableHead className="sticky top-0 bg-black/55 px-3 text-white/55 backdrop-blur-md lg:px-4">
                     Tipo
                   </TableHead>
-                  <TableHead className="sticky top-0 max-w-[88px] bg-neutral-950/95 px-3 text-white/55 backdrop-blur-sm lg:max-w-none lg:min-w-[7rem] lg:px-4">
+                  <TableHead className="sticky top-0 max-w-[88px] bg-black/55 px-3 text-white/55 backdrop-blur-md lg:max-w-none lg:min-w-[7rem] lg:px-4">
                     Origen
                   </TableHead>
-                  <TableHead className="sticky top-0 bg-neutral-950/95 px-3 text-white/55 backdrop-blur-sm lg:px-4">
+                  <TableHead className="sticky top-0 bg-black/55 px-3 text-white/55 backdrop-blur-md lg:px-4">
                     Cat.
                   </TableHead>
                 </TableRow>

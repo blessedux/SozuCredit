@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { createPortal } from "react-dom"
 import { QRCodeSVG } from "qrcode.react"
 import { Copy, Check, X } from "lucide-react"
 import { copyToClipboard, formatAddress } from "@/lib/wallet-utils"
@@ -25,6 +26,11 @@ function buildAddressQrPayload(address: string): string {
   return address
 }
 
+/** Block horizontal swipes from reaching the app shell panel carousel. */
+function blockShellSwipe(e: React.SyntheticEvent) {
+  e.stopPropagation()
+}
+
 export function DepositModal({ isOpen, onClose, walletAddress: walletAddressProp }: DepositModalProps) {
   const { t } = useWalletLanguage()
   const [address, setAddress] = useState<string>("")
@@ -33,6 +39,11 @@ export function DepositModal({ isOpen, onClose, walletAddress: walletAddressProp
   const [tagCopied, setTagCopied] = useState(false)
   const [addressCopied, setAddressCopied] = useState(false)
   const [visible, setVisible] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     if (!isOpen) {
@@ -99,21 +110,27 @@ export function DepositModal({ isOpen, onClose, walletAddress: walletAddressProp
     setTimeout(() => setAddressCopied(false), 2000)
   }
 
-  if (!isOpen) return null
+  if (!isOpen || !mounted) return null
 
-  return (
+  const modal = (
     <div
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-5 px-6 sm:px-8"
+      className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-5 px-6 sm:px-8 overscroll-none"
       style={{
         opacity: visible ? 1 : 0,
         transition: "opacity 0.35s ease",
         background: "rgba(0,0,0,0.72)",
         backdropFilter: "blur(18px)",
         WebkitBackdropFilter: "blur(18px)",
+        touchAction: "none",
       }}
       onClick={onClose}
+      onTouchStart={blockShellSwipe}
+      onTouchMove={blockShellSwipe}
+      onTouchEnd={blockShellSwipe}
+      onMouseDown={blockShellSwipe}
     >
       <button
+        type="button"
         onClick={onClose}
         aria-label={t.depositClose}
         className="absolute right-5 top-[max(1.25rem,env(safe-area-inset-top))] flex h-8 w-8 items-center justify-center rounded-full bg-white/8 text-white/40 transition hover:bg-white/15 hover:text-white"
@@ -132,6 +149,7 @@ export function DepositModal({ isOpen, onClose, walletAddress: walletAddressProp
           style={{
             transform: visible ? "translateY(0)" : "translateY(8px)",
             transition: "transform 0.35s cubic-bezier(0.4,0,0.2,1)",
+            touchAction: "manipulation",
           }}
         >
           <span
@@ -174,6 +192,7 @@ export function DepositModal({ isOpen, onClose, walletAddress: walletAddressProp
         style={{
           transform: visible ? "translateY(0)" : "translateY(12px)",
           transition: "transform 0.4s cubic-bezier(0.4,0,0.2,1)",
+          touchAction: "manipulation",
         }}
       >
         {qrPayload ? (
@@ -198,6 +217,7 @@ export function DepositModal({ isOpen, onClose, walletAddress: walletAddressProp
         style={{
           transform: visible ? "translateY(0)" : "translateY(8px)",
           transition: "transform 0.45s cubic-bezier(0.4,0,0.2,1) 0.05s",
+          touchAction: "manipulation",
         }}
       >
         {activeMode === "tag" && sozuTag ? (
@@ -249,4 +269,6 @@ export function DepositModal({ isOpen, onClose, walletAddress: walletAddressProp
       <p className="text-[9px] text-white/25">{t.depositUsdcOnly}</p>
     </div>
   )
+
+  return createPortal(modal, document.body)
 }

@@ -43,6 +43,7 @@ export function MobileAppShell() {
   const searchParams = useSearchParams()
   const [activePanel, setActivePanel] = useState(() => panelIndex(searchParams?.get("panel")))
   const [isSendModalOpen, setIsSendModalOpen] = useState(false)
+  const [isDepositModalOpen, setIsDepositModalOpen] = useState(false)
   const [historyMounted, setHistoryMounted] = useState(false)
   const panelParamConsumedRef = useRef(false)
 
@@ -91,7 +92,7 @@ export function MobileAppShell() {
   const swipeHandlers = useHorizontalPanelSwipe({
     onSwipeLeft: goRight,
     onSwipeRight: goLeft,
-    disabled: isSendModalOpen,
+    disabled: isSendModalOpen || isDepositModalOpen,
   })
 
   const handlePayClick = useCallback(() => {
@@ -106,7 +107,9 @@ export function MobileAppShell() {
       <WalletDataProvider>
         <div
           className={`sozu-app-shell sozu-app-viewport overscroll-none select-none touch-pan-x ${
-            isSendModalOpen ? "cursor-default" : "cursor-grab active:cursor-grabbing"
+            isSendModalOpen || isDepositModalOpen
+              ? "cursor-default"
+              : "cursor-grab active:cursor-grabbing"
           }`}
       onTouchStart={swipeHandlers.onTouchStart}
       onTouchMove={swipeHandlers.onTouchMove}
@@ -143,6 +146,8 @@ export function MobileAppShell() {
             shellLayout="landing"
             isSendModalOpen={isSendModalOpen}
             onSendModalOpenChange={setIsSendModalOpen}
+            isDepositModalOpen={isDepositModalOpen}
+            onDepositModalOpenChange={setIsDepositModalOpen}
             onPayClick={handlePayClick}
             hideBottomBar
           />

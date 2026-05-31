@@ -53,6 +53,8 @@ export type WalletScreenProps = {
   /** Controlled from outside (mobile shell). If omitted, state is managed internally. */
   isSendModalOpen?: boolean
   onSendModalOpenChange?: (open: boolean) => void
+  isDepositModalOpen?: boolean
+  onDepositModalOpenChange?: (open: boolean) => void
   /** Hide the fixed bottom bar (mobile shell renders its own nav). */
   hideBottomBar?: boolean
   /** Mobile shell panel layout — landing merges balance + commands; history is tx list only. */
@@ -63,6 +65,8 @@ export type WalletScreenProps = {
 export function WalletScreen({
   isSendModalOpen: isSendModalOpenProp,
   onSendModalOpenChange,
+  isDepositModalOpen: isDepositModalOpenProp,
+  onDepositModalOpenChange,
   hideBottomBar = false,
   shellLayout,
   onPayClick,
@@ -129,7 +133,16 @@ export function WalletScreen({
 
   const [isBalanceAuditOpen, setIsBalanceAuditOpen] = useState(false)
   const [isBalanceAuditExpanded, setIsBalanceAuditExpanded] = useState(false)
-  const [isDepositOpen, setIsDepositOpen] = useState(false)
+  const [isDepositOpenInternal, setIsDepositOpenInternal] = useState(false)
+  const isDepositOpen =
+    isDepositModalOpenProp !== undefined ? isDepositModalOpenProp : isDepositOpenInternal
+  const setIsDepositOpen = useCallback(
+    (open: boolean) => {
+      if (onDepositModalOpenChange) onDepositModalOpenChange(open)
+      else setIsDepositOpenInternal(open)
+    },
+    [onDepositModalOpenChange],
+  )
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [paymentReceipt, setPaymentReceipt] = useState<PaymentReceipt | null>(null)
@@ -218,7 +231,7 @@ export function WalletScreen({
 
   // Swipe gestures (profile sheet)
   const swipeHandlers = useSwipeGestures(
-    isProfileSheetOpen,
+    isProfileSheetOpen || isDepositOpen,
     () => setIsProfileSheetOpen(true),
     () => setIsProfileSheetOpen(false),
   )
@@ -280,7 +293,12 @@ export function WalletScreen({
 
   const { pull, progress, refreshing, isPulling, handlers: pullHandlers } = usePullToRefresh({
     onRefresh: handleBalanceRefresh,
-    disabled: isLoading || isBalanceLoading || shellLayout !== "landing" || isBalanceAuditExpanded,
+    disabled:
+      isLoading ||
+      isBalanceLoading ||
+      shellLayout !== "landing" ||
+      isBalanceAuditExpanded ||
+      isDepositOpen,
   })
 
   const handlePay = onPayClick ?? (() => setSendModalOpen(true))
@@ -685,9 +703,9 @@ export function WalletScreen({
     return (
       <WalletErrorBoundary>
         {activationOnboarding}
-        <div className={cn("relative h-full w-full overflow-hidden", walletContentClass)}>
-          <div className="relative z-10 h-full overflow-y-auto overscroll-none no-scrollbar touch-pan-x px-4 pt-[max(3.5rem,env(safe-area-inset-top))] pb-[max(2.5rem,env(safe-area-inset-bottom))]">
-            <div className="mx-auto w-full max-w-7xl space-y-5">
+        <div className={cn("relative flex h-full min-h-0 w-full flex-col overflow-hidden", walletContentClass)}>
+          <div className="relative z-10 min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain touch-pan-y no-scrollbar px-4 pt-[max(3.5rem,env(safe-area-inset-top))] pb-[max(2.5rem,env(safe-area-inset-bottom))]">
+            <div className="mx-auto w-full max-w-lg space-y-5 lg:max-w-7xl">
               <div className="flex justify-end">
                 <Link
                   href="/ledger"
@@ -715,6 +733,7 @@ export function WalletScreen({
               />
 
               <TransactionHistory
+                variant="history"
                 transactions={transactionHistory}
                 walletAddress={walletAddress}
                 walletNetwork={walletNetwork}

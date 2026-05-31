@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
-import { Horizon, Asset, TransactionBuilder, Networks, Operation, BASE_FEE, Account, Memo, Transaction, FeeBumpTransaction } from "@stellar/stellar-sdk"
+import { Horizon, TransactionBuilder, Networks, Transaction, FeeBumpTransaction } from "@stellar/stellar-sdk"
 import { getStellarConfig } from "@/lib/turnkey/config"
 import { getStellarWallet } from "@/lib/turnkey/stellar-wallet"
-import {
-  LEGACY_CLASSIC_PAYMENT_NOTICE,
-  paymentRailForAddress,
-} from "@/lib/payment/payment-rail"
+import { paymentRailForAddress } from "@/lib/payment/payment-rail"
 import { isValidStellarReceiveAddress } from "@/lib/payment/stellar-address"
 import {
   buildOzSmartUsdcTransferEnvelope,
@@ -27,11 +24,6 @@ const corsHeaders = (request: NextRequest) => ({
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, x-user-id",
 })
-
-const USDC_ISSUERS = {
-  testnet: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
-  mainnet: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-}
 
 export async function OPTIONS(request: NextRequest) {
   return NextResponse.json({}, { headers: corsHeaders(request) })
@@ -544,15 +536,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const usdcIssuer = USDC_ISSUERS[stellarConfig.network]
-
-    if (!usdcIssuer) {
-      return NextResponse.json(
-        { error: `USDC issuer not configured for network: ${stellarConfig.network}` },
-        { status: 500, headers: corsHeaders(request) }
-      )
-    }
-
     const destinationNorm =
       typeof destination === "string" ? destination.trim().toUpperCase() : ""
     if (!isValidStellarReceiveAddress(destinationNorm)) {
@@ -630,372 +613,54 @@ export async function POST(request: NextRequest) {
     }
 
     if (walletType === "oz") {
-        const prepared = await buildOzSmartUsdcTransferEnvelope({
-          fromContractId: senderPk,
-          toAddress: destinationNorm,
-          amount: String(amount),
-          network: stellarConfig.network,
-        })
-        return NextResponse.json(
-          {
-            envelopeXdr: prepared.envelopeXdr,
-            paymentRail: "smart",
-            signMethod: "oz_passkey",
-            walletAddress: senderPk,
-            ozCredentialId: wallet.ozCredentialId ?? null,
-          },
-          { headers: corsHeaders(request) }
-        )
-      }
-
-      if (!signerPk || !signerPk.startsWith("G")) {
-        return NextResponse.json(
-          {
-            error:
-              "Smart wallet signer missing. Re-open the app to finish smart account setup.",
-            code: "SMART_SIGNER_REQUIRED",
-          },
-          { status: 422, headers: corsHeaders(request) }
-        )
-      }
-
-      const { unsignedXdr } = await buildSorobanUsdcTransferXdr({
-        signerPublicKey: signerPk,
-        fromAddress: senderPk,
+      const prepared = await buildOzSmartUsdcTransferEnvelope({
+        fromContractId: senderPk,
         toAddress: destinationNorm,
         amount: String(amount),
         network: stellarConfig.network,
       })
-
       return NextResponse.json(
         {
-          unsignedXdr,
+          envelopeXdr: prepared.envelopeXdr,
           paymentRail: "smart",
-          signMethod: "factory_ed25519",
-          signerPublicKey: signerPk,
+          signMethod: "oz_passkey",
           walletAddress: senderPk,
+          ozCredentialId: wallet.ozCredentialId ?? null,
         },
         { headers: corsHeaders(request) }
       )
+    }
 
-    // Unreachable: all sends require C smart account above.
-    const legacySourcePk =
-      wallet.publicKey.startsWith("G") && wallet.publicKey.length === 56
-        ? wallet.publicKey
-        : signerPk?.startsWith("G")
-          ? signerPk
-          : wallet.publicKey
-
-    if (!legacySourcePk.startsWith("G")) {
+    if (!signerPk || !signerPk.startsWith("G")) {
       return NextResponse.json(
         {
           error:
-            "Cannot send classic USDC: no classic G account linked to this smart wallet.",
-          code: "LEGACY_SIGNER_REQUIRED",
+            "Smart wallet signer missing. Re-open the app to finish smart account setup.",
+          code: "SMART_SIGNER_REQUIRED",
         },
         { status: 422, headers: corsHeaders(request) }
       )
     }
 
-    const usdcAsset = new Asset("USDC", usdcIssuer)
-
-    const server = new Horizon.Server(stellarConfig.horizonUrl, {
-      allowHttp: stellarConfig.network === "testnet",
-    })
-
-    let account: Account
-    const maxRetries = 3
-    const retryDelay = 2000
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        console.log(`[Payment API] Loading account for transaction (attempt ${attempt}/${maxRetries}):`, {
-          publicKey: legacySourcePk,
-          network: stellarConfig.network,
-          horizonUrl: stellarConfig.horizonUrl,
-        })
-
-        account = await server.loadAccount(legacySourcePk)
-        
-        // Get detailed balance information
-        // Account type from Stellar SDK has balances as a getter
-        const accountBalances = (account as any).balances || []
-        const usdcBalance = accountBalances.find((b: any) => 
-          b.asset_code === "USDC" && 
-          b.asset_issuer === USDC_ISSUERS[stellarConfig.network]
-        )
-        const xlmBalance = accountBalances.find((b: any) => b.asset_type === "native")
-        
-        console.log("[Payment API] ✅ Account loaded successfully:", {
-          publicKey: wallet.publicKey,
-          sequence: account.sequenceNumber(),
-          balances: accountBalances.length,
-          allBalances: accountBalances.map((b: any) => ({
-            asset_type: b.asset_type,
-            asset_code: b.asset_code || "XLM",
-            asset_issuer: b.asset_issuer || undefined,
-            balance: b.balance,
-          })),
-          hasUSDC: !!usdcBalance,
-          usdcBalance: usdcBalance ? parseFloat(usdcBalance.balance) : 0,
-          usdcIssuer: usdcBalance ? usdcBalance.asset_issuer : undefined,
-          xlmBalance: xlmBalance ? parseFloat(xlmBalance.balance) : 0,
-          note: "This is the actual balance on the Stellar network for the account being used"
-        })
-        break // Success, exit retry loop
-      } catch (error: any) {
-        const isNotFound = error?.response?.status === 404 || 
-                          error?.message?.includes("404") || 
-                          error?.message?.includes("Not Found") ||
-                          error?.constructor?.name === "NotFoundError"
-        
-        if (isNotFound) {
-          if (attempt < maxRetries) {
-            // Retry with exponential backoff in case of temporary Horizon API issues
-            const delay = retryDelay * attempt
-            console.log(`[Payment API] ⚠️ Account not found (attempt ${attempt}), retrying in ${delay}ms...`)
-            await new Promise(resolve => setTimeout(resolve, delay))
-            continue
-          } else {
-            // All retries exhausted - check if account might exist but Horizon is having issues
-            console.error("[Payment API] ❌ Account not found after all retries:", {
-              publicKey: wallet.publicKey,
-              network: stellarConfig.network,
-              horizonUrl: stellarConfig.horizonUrl,
-              attempts: attempt,
-              error: error.message
-            })
-            
-            // Try one more time with a direct Horizon API call to verify
-            try {
-              const horizonUrl = `${stellarConfig.horizonUrl}/accounts/${wallet.publicKey}`
-              console.log("[Payment API] Attempting direct Horizon API call:", horizonUrl)
-              const directResponse = await fetch(horizonUrl)
-              
-              if (directResponse.ok) {
-                // Account exists! Try loading again
-                console.log("[Payment API] ✅ Direct API call confirms account exists, retrying loadAccount...")
-                account = await server.loadAccount(wallet.publicKey)
-                console.log("[Payment API] ✅ Account loaded after direct API verification")
-                break
-              }
-            } catch (directError) {
-              console.error("[Payment API] Direct API call also failed:", directError)
-            }
-            
-            return NextResponse.json(
-              { 
-                error: "Sender account not found. Please fund your account first.",
-                details: `Account ${wallet.publicKey.substring(0, 8)}... does not exist on ${stellarConfig.network} network. The account needs to be funded with at least 1 XLM to exist on the Stellar network.`,
-                horizonUrl: stellarConfig.horizonUrl,
-                suggestion: "Please fund your account using a Stellar wallet or exchange, then try again."
-              },
-              { status: 404, headers: corsHeaders(request) }
-            )
-          }
-        }
-        
-        // For other errors, throw them
-        console.error("[Payment API] ❌ Unexpected error loading account:", {
-          error: error.message,
-          status: error?.response?.status,
-          data: error?.response?.data
-        })
-        throw error
-      }
-    }
-    
-    // Ensure account was loaded
-    if (!account!) {
-      return NextResponse.json(
-        { 
-          error: "Failed to load account after multiple attempts",
-          details: "Please try again in a moment."
-        },
-        { status: 503, headers: corsHeaders(request) }
-      )
-    }
-
-    // Check if destination account exists on the network (non-blocking check, legacy G only)
-    // We log a warning but still proceed - Horizon will give the definitive answer
-    console.log("[Payment API] Verifying destination account exists on network:", {
-      destination: destination.substring(0, 10) + "..." + destination.substring(destination.length - 10),
-      fullDestination: destination, // Log full address for debugging
+    const { unsignedXdr } = await buildSorobanUsdcTransferXdr({
+      signerPublicKey: signerPk,
+      fromAddress: senderPk,
+      toAddress: destinationNorm,
+      amount: String(amount),
       network: stellarConfig.network,
-      horizonUrl: stellarConfig.horizonUrl
     })
-    
-    try {
-      const destAccount = await server.loadAccount(destinationNorm)
-      // destinationNorm is legacy G here
-      console.log("[Payment API] ✅ Destination account exists on network:", {
-        sequence: destAccount.sequenceNumber(),
-        balances: destAccount.balances.length,
-        hasXLM: destAccount.balances.some((b: any) => b.asset_type === "native"),
-        hasUSDC: destAccount.balances.some((b: any) => b.asset_code === "USDC")
-      })
-    } catch (destError: any) {
-      const isDestNotFound = destError?.response?.status === 404 || 
-                            destError?.message?.includes("404") || 
-                            destError?.message?.includes("Not Found") ||
-                            destError?.constructor?.name === "NotFoundError"
-      
-      if (isDestNotFound) {
-        console.warn("[Payment API] ⚠️ Pre-check: Destination account doesn't exist on network (non-blocking):", {
-          destination: destination,
-          network: stellarConfig.network,
-          horizonUrl: stellarConfig.horizonUrl,
-          note: "Transaction will still be built and submitted - Horizon will provide definitive answer"
-        })
-        // Don't fail here - let the transaction be built and submitted
-        // Horizon will return the definitive error if the account doesn't exist
-      } else {
-        // Network error - log but don't fail (might be temporary Horizon issue)
-        console.warn("[Payment API] ⚠️ Could not verify destination account (non-fatal):", destError.message)
-      }
-    }
-
-    // Convert amount to Stellar format (7 decimal places as decimal string)
-    // Operation.payment expects amount as a decimal string like "0.1000000", not stroops
-    const amountDecimal = parseFloat(amount).toFixed(7)
-
-    // Get USDC balance from loaded account for verification
-    // Note: usdcIssuer is already defined earlier in the function (line 307)
-    const accountBalances = (account as any).balances || []
-    const accountUSDCBalance = accountBalances.find((b: any) => 
-      b.asset_code === "USDC" && 
-      b.asset_issuer === usdcIssuer
-    )
-    const accountUSDCAmount = accountUSDCBalance ? parseFloat(accountUSDCBalance.balance) : 0
-    
-    console.log("[Payment API] Building payment transaction:", {
-      source: legacySourcePk.substring(0, 10) + "..." + legacySourcePk.substring(legacySourcePk.length - 10),
-      fullSource: legacySourcePk,
-      destination: destination.substring(0, 10) + "..." + destination.substring(destination.length - 10),
-      fullDestination: destination, // Log full destination for debugging
-      amount: amount,
-      amountDecimal: amountDecimal, // Decimal format for Operation.payment
-      asset: "USDC",
-      assetIssuer: usdcIssuer,
-      accountUSDCBalance: accountUSDCAmount, // Actual USDC balance on the account
-      note: "Verifying account has sufficient balance before building transaction"
-    })
-
-    // Build payment transaction
-    const networkPassphrase = stellarConfig.network === "mainnet" ? Networks.PUBLIC : Networks.TESTNET
-
-    const transactionBuilder = new TransactionBuilder(account, {
-      fee: BASE_FEE,
-      networkPassphrase,
-    })
-      .addOperation(
-        Operation.payment({
-          destination: destinationNorm,
-          asset: usdcAsset,
-          amount: amountDecimal, // Use decimal format, not stroops
-        })
-      )
-      .setTimeout(30)
-
-    // Add memo if provided
-    if (transactionMemo && transactionMemo.trim()) {
-      // Stellar memos can be text (max 28 bytes), id (uint64), hash (32 bytes), or return (32 bytes)
-      // For simplicity, we'll use text memo
-      transactionBuilder.addMemo(Memo.text(transactionMemo.trim().substring(0, 28)))
-      console.log("[Payment API] ✅ Added memo to transaction:", transactionMemo.trim().substring(0, 28))
-    }
-
-    const transaction = transactionBuilder.build()
-
-    // Verify transaction source matches wallet
-    // Verify transaction source matches wallet address
-    const transactionSource = getTransactionSource(transaction)
-    if (transactionSource !== legacySourcePk) {
-      console.error("[Payment API] ❌ Transaction source mismatch!", {
-        transactionSource: transactionSource,
-        legacySourcePk,
-        walletPublicKey: wallet.publicKey,
-        senderFromFrontend: sender,
-        note: "Transaction source must match the classic G account used for payment"
-      })
-      return NextResponse.json(
-        {
-          error: "Transaction source mismatch. Please refresh and try again.",
-          details: "The transaction source doesn't match your wallet address."
-        },
-        { status: 400, headers: corsHeaders(request) }
-      )
-    }
-    
-    // Verify account has sufficient balance before returning transaction
-    if (accountUSDCAmount < parseFloat(amount)) {
-      console.error("[Payment API] ❌ Insufficient balance in account:", {
-        accountPublicKey: legacySourcePk,
-        accountUSDCBalance: accountUSDCAmount,
-        requestedAmount: parseFloat(amount),
-        shortfall: parseFloat(amount) - accountUSDCAmount,
-        note: "Account balance check failed before building transaction"
-      })
-      return NextResponse.json(
-        {
-          error: `Insufficient balance. Account has ${accountUSDCAmount.toFixed(2)} USDC but ${parseFloat(amount).toFixed(2)} USDC is required.`,
-          details: {
-            accountBalance: accountUSDCAmount,
-            requestedAmount: parseFloat(amount),
-            accountAddress: legacySourcePk
-          }
-        },
-        { status: 400, headers: corsHeaders(request) }
-      )
-    }
-    
-    console.log("[Payment API] ✅ Balance verification passed:", {
-      accountUSDCBalance: accountUSDCAmount,
-      requestedAmount: parseFloat(amount),
-      remaining: accountUSDCAmount - parseFloat(amount)
-    })
-
-    // Log the actual destination from the transaction operation
-    const paymentOp = transaction.operations[0] as any
-    const builtTxSource = getTransactionSource(transaction)
-    console.log("[Payment API] ✅ Transaction built successfully:", {
-      source: builtTxSource.substring(0, 10) + "..." + builtTxSource.substring(builtTxSource.length - 10),
-      fullSource: builtTxSource, // Log full source for debugging
-      destination: paymentOp.destination ? paymentOp.destination.substring(0, 10) + "..." + paymentOp.destination.substring(paymentOp.destination.length - 10) : "N/A",
-      fullDestination: paymentOp.destination, // Log full destination from operation for debugging
-      operations: transaction.operations.length,
-      fee: transaction.fee,
-      network: stellarConfig.network
-    })
-    
-    // Verify the destination in the operation matches what we expect
-    if (paymentOp.destination !== destination) {
-      console.error("[Payment API] ❌ Destination mismatch in transaction operation!", {
-        expectedDestination: destination,
-        actualDestination: paymentOp.destination,
-        network: stellarConfig.network
-      })
-      return NextResponse.json(
-        { 
-          error: "Transaction destination mismatch. Please refresh and try again.",
-          details: "The destination in the transaction doesn't match the expected address."
-        },
-        { status: 400, headers: corsHeaders(request) }
-      )
-    }
-
-    const unsignedXdr = transaction.toXDR()
 
     return NextResponse.json(
       {
         unsignedXdr,
-        paymentRail: "legacy",
-        signerPublicKey: legacySourcePk,
-        walletAddress: senderPk.startsWith("C") ? senderPk : legacySourcePk,
-        legacyNotice: LEGACY_CLASSIC_PAYMENT_NOTICE,
+        paymentRail: "smart",
+        signMethod: "factory_ed25519",
+        signerPublicKey: signerPk,
+        walletAddress: senderPk,
       },
       { headers: corsHeaders(request) }
     )
+
   } catch (error: any) {
     console.error("[Payment API] Error:", error)
     return NextResponse.json(

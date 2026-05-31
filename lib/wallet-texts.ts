@@ -72,6 +72,7 @@ export type WalletTexts = {
   // Transaction History
   loadingTransactions: string;
   noTransactions: string;
+  recentActivity: string;
   showLess: string;
   showAll: string;
   transactions: string;
@@ -405,7 +406,7 @@ export const walletTexts = {
     sendPaymentDesc: "Envía Dólares a un destinatario",
     continue: "Continuar",
     manualTransaction: "Transacción manual",
-    useSozuTag: "Usar etiqueta Sozu en su lugar",
+    useSozuTag: "Usar Sozu en su lugar",
     resolving: "Resolviendo...",
     sending: "Enviando...",
     send: "Enviar",
@@ -442,8 +443,9 @@ export const walletTexts = {
     // Transaction History
     loadingTransactions: "Cargando transacciones...",
     noTransactions: "Aún no hay transacciones",
+    recentActivity: "Actividad reciente",
     showLess: "Mostrar menos",
-    showAll: "Mostrar todas",
+    showAll: "Ver todas",
     transactions: "transacciones",
     // Error Messages
     somethingWentWrong: "Algo salió mal",
@@ -601,14 +603,14 @@ export const walletTexts = {
     depositTitle: "Depositar",
     depositClose: "Cerrar depósito",
     depositQrTypeLabel: "Tipo de código QR",
-    depositQrTag: "Tag Sozu",
+    depositQrTag: "Sozu",
     depositQrStellar: "Stellar",
-    depositSozuTag: "Tag Sozu",
+    depositSozuTag: "Sozu",
     depositStellarAddress: "Dirección Stellar",
     depositCopied: "Copiado",
     depositNoWallet: "Sin billetera conectada",
     depositUsdcOnly: "Envía solo USDC en la red Stellar",
-    depositTagCaption: "@{tag} · escanea para pagar con tag Sozu",
+    depositTagCaption: "@{tag} · escanea para pagar con Sozu",
     depositAddressCaption: "{addr} · dirección Stellar",
     depositConnectWallet: "Conecta tu billetera",
     hideBalance: "Ocultar saldo",
@@ -749,7 +751,7 @@ export const walletTexts = {
     sendPaymentDesc: "Send USDC to a recipient",
     continue: "Continue",
     manualTransaction: "Manual transaction",
-    useSozuTag: "Use Sozu tag instead",
+    useSozuTag: "Use Sozu instead",
     resolving: "Resolving...",
     sending: "Sending...",
     send: "Send",
@@ -786,8 +788,9 @@ export const walletTexts = {
     // Transaction History
     loadingTransactions: "Loading transactions...",
     noTransactions: "No transactions yet",
+    recentActivity: "Recent activity",
     showLess: "Show less",
-    showAll: "Show all",
+    showAll: "View all",
     transactions: "transactions",
     // Error Messages
     somethingWentWrong: "Something went wrong",
@@ -941,14 +944,14 @@ export const walletTexts = {
     depositTitle: "Deposit",
     depositClose: "Close deposit",
     depositQrTypeLabel: "QR code type",
-    depositQrTag: "Sozu tag",
+    depositQrTag: "Sozu",
     depositQrStellar: "Stellar",
-    depositSozuTag: "Sozu tag",
+    depositSozuTag: "Sozu",
     depositStellarAddress: "Stellar address",
     depositCopied: "Copied",
     depositNoWallet: "No wallet connected",
     depositUsdcOnly: "Send USDC on Stellar network only",
-    depositTagCaption: "@{tag} · scan to pay with Sozu tag",
+    depositTagCaption: "@{tag} · scan to pay with Sozu",
     depositAddressCaption: "{addr} · Stellar address",
     depositConnectWallet: "Connect your wallet",
     hideBalance: "Hide balance",

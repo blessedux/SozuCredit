@@ -84,7 +84,7 @@ async function provisionFactorySmartAccount(
   }
   return {
     contractId: pk,
-    walletType: createData.smartAccountProvisioned ? "factory" : "oz",
+    walletType: "factory",
   }
 }
 
