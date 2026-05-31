@@ -1,7 +1,8 @@
 import "server-only"
 
 import { Client as SmartAccountClient } from "smart-account-kit-bindings"
-import { Networks } from "@stellar/stellar-sdk"
+import { Networks, scValToNative } from "@stellar/stellar-sdk"
+import { Api } from "@stellar/stellar-sdk/rpc"
 import { getOzSmartAccountConfig } from "@/lib/stellar/smartAccounts/ozConfig"
 
 function sorobanRpcUrl(): string {
@@ -44,9 +45,9 @@ export async function contractSupportsOzKitSigning(contractId: string): Promise<
       context_rule_type: { tag: "Default", values: undefined },
     })
     const assembled = await tx.simulate()
-    if (assembled.simulation?.error) return false
-    const { scValToNative } = await import("@stellar/stellar-sdk")
-    const rules = scValToNative(assembled.simulation.result.retval)
+    const sim = assembled.simulation
+    if (sim == null || Api.isSimulationError(sim) || !sim.result?.retval) return false
+    const rules = scValToNative(sim.result.retval)
     return Array.isArray(rules)
   } catch {
     return false

@@ -2,6 +2,7 @@ import "server-only"
 
 import { Client as SmartAccountClient } from "smart-account-kit-bindings"
 import { Networks, scValToNative } from "@stellar/stellar-sdk"
+import { Api } from "@stellar/stellar-sdk/rpc"
 import { buildContextRuleTypesFromAuthEntry } from "@/lib/stellar/smartAccounts/contextRuleTypes"
 import {
   credentialIdToBuffer,
@@ -24,6 +25,12 @@ function getRpcUrl(): string {
 
 function getNetworkPassphrase(): string {
   return process.env.STELLAR_NETWORK === "public" ? Networks.PUBLIC : Networks.TESTNET
+}
+
+function simulationSucceeded(
+  sim: Api.SimulateTransactionResponse | undefined,
+): sim is Api.SimulateTransactionSuccessResponse {
+  return sim != null && !Api.isSimulationError(sim)
 }
 
 function credentialSuffixMatches(suffix: Uint8Array, credentialId: string): boolean {
@@ -114,7 +121,7 @@ async function readContextRuleById(
   const tx = await client.get_context_rule({ context_rule_id: contextRuleId })
   const assembled = await tx.simulate()
   const sim = assembled.simulation
-  if (sim?.error || !sim?.result?.retval) return null
+  if (!simulationSucceeded(sim) || !sim.result?.retval) return null
   const rule = scValToNative(sim.result.retval)
   return findKeyDataInContextRule(rule, credentialId)
 }
@@ -133,7 +140,7 @@ export async function contractCanReadOnChainSignerKeyData(contractId: string): P
     })
     const tx = await client.get_context_rule({ context_rule_id: 0 })
     const assembled = await tx.simulate()
-    return !assembled.simulation?.error
+    return simulationSucceeded(assembled.simulation)
   } catch {
     return false
   }
@@ -174,10 +181,9 @@ export async function resolveOnChainSignerKeyData(params: {
     for (const contextRuleType of contextTypes) {
       const tx = await client.get_context_rules({ context_rule_type: contextRuleType })
       const assembled = await tx.simulate()
-      if (assembled.simulation?.error) continue
-      const rules = assembled.simulation?.result?.retval
-        ? scValToNative(assembled.simulation.result.retval)
-        : null
+      const sim = assembled.simulation
+      if (!simulationSucceeded(sim) || !sim.result?.retval) continue
+      const rules = scValToNative(sim.result.retval)
       const found = findKeyDataInRules(rules, credentialId)
       if (found) return found
     }
