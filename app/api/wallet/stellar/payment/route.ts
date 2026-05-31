@@ -9,6 +9,7 @@ import {
   submitSignedSorobanEnvelope,
 } from "@/lib/stellar/soroban-usdc-transfer"
 import { contractIsFactoryForSigner } from "@/lib/stellar/factory-smart-account"
+import { contractSupportsOzKitSigning } from "@/lib/stellar/supports-oz-kit-contract"
 
 // Helper function to get transaction source (handles both Transaction and FeeBumpTransaction)
 function getTransactionSource(tx: Transaction | FeeBumpTransaction): string {
@@ -636,29 +637,24 @@ export async function POST(request: NextRequest) {
       network: stellarConfig.network,
     })
 
+    const supportsOzKitApi = await contractSupportsOzKitSigning(senderPk)
     const isFactoryWallet =
       walletType === "factory" ||
-      (walletType !== "oz" && (await contractIsFactoryForSigner(senderPk, signerPk)))
+      (await contractIsFactoryForSigner(senderPk, signerPk))
 
-    if (!isFactoryWallet) {
-      return NextResponse.json(
-        {
-          unsignedXdr,
-          paymentRail: "smart",
-          signMethod: "oz_passkey",
-          signerPublicKey: signerPk,
-          walletAddress: senderPk,
-          ozCredentialId: wallet.ozCredentialId ?? null,
-        },
-        { headers: corsHeaders(request) }
-      )
-    }
+    const signMethod =
+      isFactoryWallet && !supportsOzKitApi
+        ? "smart_g_signer"
+        : supportsOzKitApi
+          ? "oz_passkey"
+          : "oz_passkey_local"
 
     return NextResponse.json(
       {
         unsignedXdr,
         paymentRail: "smart",
-        signMethod: "smart_g_signer",
+        signMethod,
+        supportsOzKitApi,
         signerPublicKey: signerPk,
         walletAddress: senderPk,
         ozCredentialId: wallet.ozCredentialId ?? null,

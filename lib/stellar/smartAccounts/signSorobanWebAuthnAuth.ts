@@ -120,8 +120,9 @@ async function loadPasskeyKeyData(params: {
   contractId?: string
   authEntry: xdr.SorobanAuthorizationEntry
   kit?: SmartAccountKit
+  useOnChainKeyData?: boolean
 }): Promise<Buffer> {
-  if (params.contractId?.startsWith("C")) {
+  if (params.useOnChainKeyData !== false && params.contractId?.startsWith("C")) {
     const onChain = await resolveKeyDataFromChain({
       contractId: params.contractId,
       credentialId: params.credentialId,
@@ -201,6 +202,7 @@ export async function signAuthEntryWithStoredPasskey(params: {
   smartAccountContractId?: string
   kit?: SmartAccountKit
   expiration?: number
+  useOnChainKeyData?: boolean
 }): Promise<xdr.SorobanAuthorizationEntry> {
   const entryXdrBytes = params.entry.toXDR()
   const normalizedEntry = xdr.SorobanAuthorizationEntry.fromXDR(entryXdrBytes)
@@ -232,6 +234,7 @@ export async function signAuthEntryWithStoredPasskey(params: {
     contractId: params.smartAccountContractId,
     authEntry: normalizedEntry,
     kit: params.kit,
+    useOnChainKeyData: params.useOnChainKeyData,
   })
 
   const authResponse = await webAuthnSignSorobanPreimage(challenge, params.credentialId)

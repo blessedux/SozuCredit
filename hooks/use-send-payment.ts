@@ -324,7 +324,7 @@ export function useSendPayment(
       const networkPassphrase =
         stellarConfig.network === "mainnet" ? Networks.PUBLIC : Networks.TESTNET
 
-      if (signMethod === "oz_passkey") {
+      if (signMethod === "oz_passkey" || signMethod === "oz_passkey_local") {
         const { getSmartAccountKit } = await import("@/lib/stellar/smartAccounts/client")
         const { signSorobanPreparedTxWithPasskey } = await import(
           "@/lib/stellar/smartAccounts/signSorobanUsdc"
@@ -336,6 +336,8 @@ export function useSendPayment(
             : walletAddress.startsWith("C")
               ? walletAddress
               : null
+        const supportsOzKitApi =
+          build.supportsOzKitApi === true || signMethod === "oz_passkey"
         const signedEnvelopeXdr = await signSorobanPreparedTxWithPasskey({
           kit,
           unsignedXdr,
@@ -343,9 +345,10 @@ export function useSendPayment(
           credentialId,
           smartAccountContractId: walletContractId,
           webauthnVerifierAddress: config.webauthnVerifierAddress,
+          supportsOzKitApi,
         })
         submitBody = { signedEnvelopeXdr }
-      } else {
+      } else if (signMethod === "smart_g_signer") {
         const { signSorobanUsdcWithGSigner } = await import(
           "@/lib/stellar/smartAccounts/signSorobanTransferG"
         )
@@ -357,6 +360,8 @@ export function useSendPayment(
           networkPassphrase,
         })
         submitBody = { signedEnvelopeXdr }
+      } else {
+        throw new Error(`Unsupported sign method: ${signMethod ?? "unknown"}`)
       }
 
       const submitResponse = await fetch("/api/wallet/stellar/payment", {

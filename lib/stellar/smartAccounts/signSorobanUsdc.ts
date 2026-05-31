@@ -2,10 +2,7 @@
 
 import type { SmartAccountKit } from "smart-account-kit"
 import type { xdr } from "@stellar/stellar-sdk"
-import {
-  resolveKeyDataFromChain,
-  signAuthEntryWithStoredPasskey,
-} from "@/lib/stellar/smartAccounts/signSorobanWebAuthnAuth"
+import { signAuthEntryWithStoredPasskey } from "@/lib/stellar/smartAccounts/signSorobanWebAuthnAuth"
 
 /**
  * Sign Soroban USDC transfer auth entries for a passkey smart account (C).
@@ -17,6 +14,8 @@ export async function signSorobanPreparedTxWithPasskey(params: {
   credentialId?: string | null
   smartAccountContractId?: string | null
   webauthnVerifierAddress?: string | null
+  /** When false, skip get_context_rules and use passkey key material from kit/DB only. */
+  supportsOzKitApi?: boolean
 }): Promise<string> {
   const { TransactionBuilder, Operation, Transaction } = await import("@stellar/stellar-sdk")
 
@@ -66,38 +65,18 @@ export async function signSorobanPreparedTxWithPasskey(params: {
   const signedAuth = []
   const contractId = params.smartAccountContractId?.trim().toUpperCase()
 
-  for (const entry of authEntries) {
-    let signed: xdr.SorobanAuthorizationEntry
-    const onChainKeyData =
-      contractId?.startsWith("C") && params.credentialId
-        ? await resolveKeyDataFromChain({
-            contractId,
-            credentialId: params.credentialId,
-            authEntry: entry,
-          })
-        : null
+  const tryOnChainKeyData = params.supportsOzKitApi !== false
 
-    if (onChainKeyData) {
-      signed = await signAuthEntryWithStoredPasskey({
-        entry,
-        credentialId: params.credentialId,
-        networkPassphrase: params.networkPassphrase,
-        webauthnVerifierAddress: webauthnVerifier,
-        smartAccountContractId: contractId,
-        kit: params.kit,
-      })
-    } else {
-      try {
-        signed = await params.kit.signAuthEntry(entry, {
-          credentialId: params.credentialId,
-        })
-      } catch (kitErr) {
-        const msg = kitErr instanceof Error ? kitErr.message : String(kitErr)
-        throw new Error(
-          `${msg} Re-link your passkey wallet from Settings or sign out and sign in again.`,
-        )
-      }
-    }
+  for (const entry of authEntries) {
+    const signed = await signAuthEntryWithStoredPasskey({
+      entry,
+      credentialId: params.credentialId,
+      networkPassphrase: params.networkPassphrase,
+      webauthnVerifierAddress: webauthnVerifier,
+      smartAccountContractId: contractId,
+      kit: params.kit,
+      useOnChainKeyData: tryOnChainKeyData,
+    })
     signedAuth.push(signed)
   }
 

@@ -27,7 +27,8 @@ Run in Supabase:
 
 | Sender `wallet_type` | Sign path |
 |----------------------|-----------|
-| `oz` | WebAuthn `signAuthEntry` on C (falls back to stored passkey key if `get_context_rules` is missing) |
+| `oz` + `get_context_rules` on C | WebAuthn with on-chain keyData lookup |
+| `oz` without `get_context_rules` | `oz_passkey_local` — WebAuthn using kit/DB key material only (no kit `signAuthEntry`) |
 | `factory` | G fee payer + `authorizeEntry` with passkey-derived ed25519 G |
 | `legacy` | Classic `Operation.payment` |
 
