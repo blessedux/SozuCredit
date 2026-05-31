@@ -8,7 +8,6 @@ import {
   parsePasskeyPublicKey65,
 } from "@/lib/stellar/smartAccounts/passkeyPublicKey"
 import { normalizeCredentialId } from "@/lib/webauthn/normalize-credential-id"
-import { normalizeCredentialId } from "@/lib/webauthn/normalize-credential-id"
 import { base64URLToBuffer, bufferToBase64URL } from "@/lib/webauthn/utils"
 import { getUserId } from "@/lib/wallet-utils"
 
