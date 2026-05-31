@@ -5,10 +5,10 @@ import { getStellarWallet } from "@/lib/turnkey/stellar-wallet"
 import { paymentRailForAddress } from "@/lib/payment/payment-rail"
 import { isValidStellarReceiveAddress } from "@/lib/payment/stellar-address"
 import {
-  buildOzSmartUsdcTransferEnvelope,
   buildSorobanUsdcTransferXdr,
   submitSignedSorobanEnvelope,
 } from "@/lib/stellar/soroban-usdc-transfer"
+import { contractSupportsOzKitSigning } from "@/lib/stellar/supports-oz-kit-contract"
 
 // Helper function to get transaction source (handles both Transaction and FeeBumpTransaction)
 function getTransactionSource(tx: Transaction | FeeBumpTransaction): string {
@@ -628,17 +628,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (walletType === "oz") {
-      const prepared = await buildOzSmartUsdcTransferEnvelope({
-        fromContractId: senderPk,
-        toAddress: destinationNorm,
-        amount: String(amount),
-        signerPublicKey: signerPk,
-        network: stellarConfig.network,
-      })
+    const { unsignedXdr } = await buildSorobanUsdcTransferXdr({
+      signerPublicKey: signerPk,
+      fromAddress: senderPk,
+      toAddress: destinationNorm,
+      amount: String(amount),
+      network: stellarConfig.network,
+    })
+
+    const useOzKitPasskey =
+      walletType === "oz" && (await contractSupportsOzKitSigning(senderPk))
+
+    if (useOzKitPasskey) {
       return NextResponse.json(
         {
-          unsignedXdr: prepared.unsignedXdr,
+          unsignedXdr,
           paymentRail: "smart",
           signMethod: "oz_passkey",
           signerPublicKey: signerPk,
@@ -649,21 +653,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { unsignedXdr } = await buildSorobanUsdcTransferXdr({
-      signerPublicKey: signerPk,
-      fromAddress: senderPk,
-      toAddress: destinationNorm,
-      amount: String(amount),
-      network: stellarConfig.network,
-    })
-
     return NextResponse.json(
       {
         unsignedXdr,
         paymentRail: "smart",
-        signMethod: "factory_ed25519",
+        signMethod: "smart_g_signer",
         signerPublicKey: signerPk,
         walletAddress: senderPk,
+        ozCredentialId: wallet.ozCredentialId ?? null,
       },
       { headers: corsHeaders(request) }
     )

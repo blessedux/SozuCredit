@@ -288,88 +288,67 @@ export function useSendPayment(
 
       let submitBody: { signedTransactionXdr?: string; signedEnvelopeXdr?: string }
 
-      const ozUnsignedXdr =
+      const unsignedXdr =
         typeof build.unsignedXdr === "string"
           ? build.unsignedXdr
           : typeof build.envelopeXdr === "string"
             ? build.envelopeXdr
             : null
 
-      if (signMethod === "oz_passkey" && ozUnsignedXdr) {
+      if (!unsignedXdr) {
+        throw new Error("No unsigned transaction returned")
+      }
+
+      const signerPublicKey =
+        typeof build.signerPublicKey === "string" && build.signerPublicKey.startsWith("G")
+          ? build.signerPublicKey
+          : passkeySignerG ?? null
+
+      if (!signerPublicKey) {
+        throw new Error(
+          "Smart wallet signer (G…) missing. Sign out, sign in with passkey again, then retry.",
+        )
+      }
+
+      const { getCurrentCredentialId } = await import("@/lib/storage/key-utils")
+      const credentialId =
+        (typeof build.ozCredentialId === "string" ? build.ozCredentialId : null) ||
+        (await getCurrentCredentialId(signerPublicKey))
+      if (!credentialId) {
+        throw new Error("Credential ID not found. Please log in again.")
+      }
+
+      const { getStellarConfig } = await import("@/lib/turnkey/config")
+      const stellarConfig = getStellarConfig()
+      const { Networks } = await import("@stellar/stellar-sdk")
+      const networkPassphrase =
+        stellarConfig.network === "mainnet" ? Networks.PUBLIC : Networks.TESTNET
+
+      if (signMethod === "oz_passkey") {
         const { getSmartAccountKit } = await import("@/lib/stellar/smartAccounts/client")
         const { signSorobanPreparedTxWithPasskey } = await import(
           "@/lib/stellar/smartAccounts/signSorobanUsdc"
         )
-        const { getCurrentCredentialId } = await import("@/lib/storage/key-utils")
         const { kit, config } = await getSmartAccountKit()
-        const credentialId =
-          (typeof build.ozCredentialId === "string" ? build.ozCredentialId : null) ||
-          (await getCurrentCredentialId(
-            typeof build.signerPublicKey === "string" ? build.signerPublicKey : walletAddress,
-          ))
-        if (!credentialId) {
-          throw new Error("Credential ID not found. Please log in again.")
-        }
         const signedEnvelopeXdr = await signSorobanPreparedTxWithPasskey({
           kit,
-          unsignedXdr: ozUnsignedXdr,
+          unsignedXdr,
           networkPassphrase: config.networkPassphrase,
           credentialId,
         })
         submitBody = { signedEnvelopeXdr }
       } else {
-        const unsignedXdr = build.unsignedXdr
-        if (!unsignedXdr) {
-          throw new Error("No unsigned transaction returned")
-        }
-
-        const signerPublicKey =
-          typeof build.signerPublicKey === "string" ? build.signerPublicKey : walletAddress
-
-        if (build.paymentRail === "legacy" && build.legacyNotice) {
-          console.log("[Send Payment] Legacy classic payment:", build.legacyNotice)
-        }
-
-        const stellarSdk = await import("@stellar/stellar-sdk")
-        const { getStellarConfig } = await import("@/lib/turnkey/config")
-        const stellarConfig = getStellarConfig()
-        const networkPassphrase =
-          stellarConfig.network === "mainnet"
-            ? stellarSdk.Networks.PUBLIC
-            : stellarSdk.Networks.TESTNET
-        const transactionXdr = stellarSdk.TransactionBuilder.fromXDR(unsignedXdr, networkPassphrase)
-        if (transactionXdr instanceof stellarSdk.FeeBumpTransaction) {
-          throw new Error("Fee bump transactions are not supported")
-        }
-        const transaction = transactionXdr
-
-        if (transaction.source !== signerPublicKey) {
-          throw new Error(
-            `Transaction source mismatch. Expected signer ${signerPublicKey.substring(0, 8)}…, got ${transaction.source.substring(0, 8)}…`,
-          )
-        }
-
-        const { getCurrentCredentialId } = await import("@/lib/storage/key-utils")
-        const { signTransactionWithPasskeyApproval } = await import("@/lib/stellar/client-signing")
-
-        const lookupKey = signerPublicKey.startsWith("G") ? signerPublicKey : walletAddress
-        const credentialId = await getCurrentCredentialId(lookupKey)
-        if (!credentialId) {
-          throw new Error("Credential ID not found. Please log in again.")
-        }
-
-        const signedResult = await signTransactionWithPasskeyApproval(
-          transaction,
-          credentialId,
-          signerPublicKey,
-          userId,
+        const { signSorobanUsdcWithGSigner } = await import(
+          "@/lib/stellar/smartAccounts/signSorobanTransferG"
         )
-
-        if (!signedResult?.transaction) {
-          throw new Error("Transaction signing failed - no signed transaction returned.")
-        }
-
-        submitBody = { signedTransactionXdr: signedResult.transactionXdr }
+        const signedEnvelopeXdr = await signSorobanUsdcWithGSigner({
+          unsignedXdr,
+          signerPublicKey,
+          credentialId,
+          userId,
+          networkPassphrase,
+        })
+        submitBody = { signedEnvelopeXdr }
       }
 
       const submitResponse = await fetch("/api/wallet/stellar/payment", {
