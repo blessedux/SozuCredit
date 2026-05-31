@@ -95,6 +95,7 @@ export async function GET(request: NextRequest) {
       signerPublicKey: signerForBreakdown,
     })
     const usdcBalance = usdcBreakdown.spendable
+    const displayWalletUsdc = usdcBreakdown.displayOnWallet
 
     let allBalances: { asset_type: string; asset_code: string; asset_issuer?: string; balance: string }[] =
       []
@@ -119,11 +120,27 @@ export async function GET(request: NextRequest) {
 
     console.log("[Stellar Balance API] 💰 USDC breakdown:", {
       publicKey: publicKeyToUse.substring(0, 10) + "...",
+      fullPublicKey: publicKeyToUse,
       spendable: usdcBalance,
+      displayOnWallet: displayWalletUsdc,
       sorobanOnWallet: usdcBreakdown.sorobanOnWallet,
+      sorobanSacOnWallet: usdcBreakdown.sorobanSacOnWallet,
       classicOnSigner: usdcBreakdown.classicOnSigner,
       asset: usdcBreakdown.spendableAssetLabel,
+      hasFunder: Boolean(process.env.STELLAR_FUNDER_SECRET?.trim()),
+      rpcUrl: process.env.SOROBAN_RPC_URL?.trim() ? "SOROBAN_RPC_URL" : "default/public",
     })
+
+    if (
+      publicKeyToUse.startsWith("C") &&
+      usdcBreakdown.sorobanOnWallet === 0 &&
+      usdcBreakdown.sorobanSacOnWallet === 0 &&
+      usdcBreakdown.classicOnSigner === 0
+    ) {
+      console.warn(
+        "[Stellar Balance API] C wallet shows 0 Soroban USDC — verify BlendUSDC was sent to this exact address and STELLAR_FUNDER_SECRET + SOROBAN_RPC_URL are set on the server.",
+      )
+    }
     
     // Check DeFindex position if we have a userId
     let defindexBalance = 0
@@ -168,12 +185,15 @@ export async function GET(request: NextRequest) {
         balance,
         asset: "XLM", // Native Stellar asset
         usdcBalance, // Spendable for sends (BlendUSDC on C testnet, Circle USDC on G)
+        displayWalletUsdc, // All USDC visible on wallet (+ classic on G signer when C)
         spendableAssetLabel: usdcBreakdown.spendableAssetLabel,
         sorobanUsdcBalance: usdcBreakdown.sorobanOnWallet,
+        sorobanSacUsdcBalance: usdcBreakdown.sorobanSacOnWallet,
         classicUsdcOnSigner: usdcBreakdown.classicOnSigner,
         defindexBalance, // USDC locked in DeFindex strategy (not available for sending)
         defindexShares, // Strategy shares
-        totalUsdcBalance: usdcBalance + defindexBalance, // Spendable on C + strategy (never G classic)
+        totalUsdcBalance: displayWalletUsdc + defindexBalance,
+        totalDisplayUsdcBalance: displayWalletUsdc + defindexBalance,
         walletMustMigrate: !publicKeyToUse.startsWith("C"),
         allBalances, // Classic Horizon balances when wallet is G
         publicKey: publicKeyToUse,

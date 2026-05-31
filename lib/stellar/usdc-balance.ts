@@ -1,20 +1,27 @@
 import "server-only"
 
-import { getDepositableUsdcBalance, getSorobanTokenBalance } from "@/lib/stellar/soroban-token"
+import {
+  getDepositableUsdcBalance,
+  getSorobanUsdcOnContractWallet,
+} from "@/lib/stellar/soroban-token"
 import { getStellarConfig } from "@/lib/turnkey/config"
 
 const CIRCLE_TESTNET_USDC_ISSUER =
   "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
 
 export type UsdcBalanceBreakdown = {
-  /** Balance used for Soroban sends from a C wallet (BlendUSDC on testnet). */
+  /** BlendUSDC (or mainnet USDC token) on the canonical wallet — used for sends. */
   sorobanOnWallet: number
+  /** Circle USDC SAC on a C wallet (testnet only; not used for sends today). */
+  sorobanSacOnWallet: number
   /** Classic Circle USDC on the same address when it is a G account. */
   classicOnWallet: number
   /** Classic USDC on the linked G signer when the wallet is C (not spendable via smart rail). */
   classicOnSigner: number
   /** What the payment API enforces for the primary wallet address. */
   spendable: number
+  /** All USDC the user can see (wallet + signer + strategy added separately in API). */
+  displayOnWallet: number
   spendableAssetLabel: string
   walletAddress: string
   signerPublicKey: string | null
@@ -46,15 +53,18 @@ export async function getUsdcBalanceBreakdown(params: {
   const signer = params.signerPublicKey?.trim().toUpperCase() ?? null
 
   if (wallet.startsWith("C")) {
-    const sorobanOnWallet = await getDepositableUsdcBalance(wallet, network)
+    const soroban = await getSorobanUsdcOnContractWallet(wallet, network)
     const classicOnSigner =
       signer && signer !== wallet ? await getClassicUsdcOnG(signer) : 0
+    const displayOnWallet = soroban.total + classicOnSigner
 
     return {
-      sorobanOnWallet,
+      sorobanOnWallet: soroban.blend,
+      sorobanSacOnWallet: soroban.circleSac,
       classicOnWallet: 0,
       classicOnSigner,
-      spendable: sorobanOnWallet,
+      spendable: soroban.blend,
+      displayOnWallet,
       spendableAssetLabel: network === "testnet" ? "BlendUSDC" : "USDC",
       walletAddress: wallet,
       signerPublicKey: signer,
@@ -63,12 +73,18 @@ export async function getUsdcBalanceBreakdown(params: {
   }
 
   const classicOnWallet = await getClassicUsdcOnG(wallet)
+  const sorobanOnG =
+    network === "testnet" ? await getDepositableUsdcBalance(wallet, network) : 0
+  const displayOnWallet = classicOnWallet + sorobanOnG
+
   return {
-    sorobanOnWallet: 0,
+    sorobanOnWallet: sorobanOnG,
+    sorobanSacOnWallet: 0,
     classicOnWallet,
     classicOnSigner: 0,
-    spendable: classicOnWallet,
-    spendableAssetLabel: "USDC",
+    spendable: network === "testnet" ? sorobanOnG || classicOnWallet : classicOnWallet,
+    displayOnWallet,
+    spendableAssetLabel: network === "testnet" && sorobanOnG > 0 ? "BlendUSDC" : "USDC",
     walletAddress: wallet,
     signerPublicKey: signer,
     network,

@@ -13,7 +13,12 @@ import { WalletErrorBoundary } from "@/components/wallet/wallet-error-boundary"
 import { useWalletLanguage } from "@/lib/wallet-language"
 import { getUserId } from "@/lib/wallet-utils"
 import { cn } from "@/lib/utils"
-import { checkAccountStatus, getOrCreateRealWallet } from "@/lib/stellar/wallet-creator"
+import { getOrCreateRealWallet } from "@/lib/stellar/wallet-creator"
+import {
+  isSmartContractWalletAddress,
+  markWalletActivationComplete,
+  needsWalletActivationOnboarding,
+} from "@/lib/wallet/needs-activation-onboarding"
 
 // Hooks
 import { useWalletDataContext } from "@/components/wallet/wallet-data-provider"
@@ -23,6 +28,7 @@ import { useTreasuryProjection } from "@/hooks/use-treasury-projection"
 import { useCashflowSummary } from "@/hooks/use-cashflow-summary"
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh"
 import { signalAppReady } from "@/lib/app-ready" // kept for analytics/telemetry consumers
+import { useSetOnboardingOverlayOpen } from "@/lib/onboarding-overlay-context"
 
 // Components
 import { WalletActivationOnboarding } from "@/components/wallet/wallet-activation-onboarding"
@@ -154,6 +160,12 @@ export function WalletScreen({
   const [activationSettled, setActivationSettled] = useState(false)
   const [walletRevealed, setWalletRevealed] = useState(true)
   const autoActivationStartedRef = useRef(false)
+  const setOnboardingOverlayOpen = useSetOnboardingOverlayOpen()
+
+  useEffect(() => {
+    setOnboardingOverlayOpen(showActivationOnboarding)
+    return () => setOnboardingOverlayOpen(false)
+  }, [showActivationOnboarding, setOnboardingOverlayOpen])
 
   // Balance animation refs
   const animatedBalanceRef = useRef(0)
@@ -161,7 +173,9 @@ export function WalletScreen({
 
   // Get base balance
   const baseBalance = useMemo(() => {
-    if (defindexBalance) return defindexBalance.walletBalance
+    if (defindexBalance) {
+      return defindexBalance.displayBalance ?? defindexBalance.totalBalance
+    }
     return Number(vault?.balance || 0)
   }, [defindexBalance, vault?.balance])
 
@@ -345,17 +359,33 @@ export function WalletScreen({
       setActivationNeeded(false)
       return
     }
-    try {
-      const info = await checkAccountStatus(walletAddress)
-      setActivationNeeded(!(info.exists && info.hasUSDCTrustline))
-    } catch {
-      setActivationNeeded(true)
-    }
+    const needed = await needsWalletActivationOnboarding({
+      walletAddress,
+      walletNetwork,
+      userId: getUserId(),
+    })
+    setActivationNeeded(needed)
   }, [walletAddress, walletNetwork])
 
-  useEffect(() => { void refreshActivationState() }, [refreshActivationState])
+  useEffect(() => {
+    void refreshActivationState()
+  }, [refreshActivationState])
+
+  // Canonical C loaded after a brief G in session — dismiss onboarding immediately.
+  useEffect(() => {
+    if (!isSmartContractWalletAddress(walletAddress)) return
+    setActivationNeeded(false)
+    if (showActivationOnboarding) {
+      setShowActivationOnboarding(false)
+      setWalletRevealed(true)
+      setActivationSettled(false)
+      setIsActivating(false)
+    }
+    autoActivationStartedRef.current = true
+  }, [walletAddress, showActivationOnboarding])
 
   const handleActivationOnboardingExit = useCallback(async () => {
+    markWalletActivationComplete()
     setShowActivationOnboarding(false)
     setWalletRevealed(true)
     setActivationSettled(false)
@@ -378,6 +408,7 @@ export function WalletScreen({
       })
       if (result.status === "error") throw new Error(result.error || result.message)
 
+      markWalletActivationComplete()
       const uid = typeof window !== "undefined" ? sessionStorage.getItem("dev_username") : null
       if (uid) fetchXLMBalance(walletAddress, uid, { gateBalance: true })
       fetchWalletUSDCBalance(walletAddress)
@@ -399,11 +430,14 @@ export function WalletScreen({
   ])
 
   useEffect(() => {
+    if (isLoading) return
     if (!walletAddress || walletNetwork !== "testnet" || !activationNeeded) return
+    if (isSmartContractWalletAddress(walletAddress)) return
     if (autoActivationStartedRef.current || isActivating || showActivationOnboarding) return
     autoActivationStartedRef.current = true
     void runActivationWithOnboarding()
   }, [
+    isLoading,
     walletAddress,
     walletNetwork,
     activationNeeded,
@@ -504,6 +538,7 @@ export function WalletScreen({
           isOpen={isDepositOpen}
           onClose={() => setIsDepositOpen(false)}
           walletAddress={walletAddress}
+          walletNetwork={walletNetwork}
         />
       </Suspense>
 

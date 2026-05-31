@@ -89,7 +89,8 @@ Local/dev only (require auth cookies):
 
 On testnet, users need a BlendUSDC balance (`CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU`).
 The app returns `{ needsTrustline: true }` from the deposit API when the balance is insufficient.
-Direct users to https://testnet.blend.capital to obtain test tokens.
+Direct users to https://testnet.blend.capital to obtain test tokens.  
+Full walkthrough: [obtain-blend-usdc-testnet.md](./obtain-blend-usdc-testnet.md).
 
 ## Troubleshooting
 

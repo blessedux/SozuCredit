@@ -9,6 +9,10 @@ import { SmartAccountKitProvider } from "@/components/SmartAccountKitProvider"
 import { WalletDataProvider } from "@/components/wallet/wallet-data-provider"
 import { WalletLanguageProvider } from "@/lib/wallet-language"
 import { signalShellReady } from "@/lib/app-ready"
+import {
+  OnboardingOverlayProvider,
+  useOnboardingOverlay,
+} from "@/lib/onboarding-overlay-context"
 // Static import: landing panel is always mounted, so paying the dynamic chunk
 // cost on cold start would delay the first paint unnecessarily.
 import { WalletScreen } from "@/components/wallet/wallet-screen"
@@ -39,7 +43,8 @@ function panelIndex(name: string | null): number {
   return 1
 }
 
-export function MobileAppShell() {
+function MobileAppShellPanels() {
+  const { isOnboardingOverlayOpen } = useOnboardingOverlay()
   const searchParams = useSearchParams()
   const [activePanel, setActivePanel] = useState(() => panelIndex(searchParams?.get("panel")))
   const [isSendModalOpen, setIsSendModalOpen] = useState(false)
@@ -92,7 +97,7 @@ export function MobileAppShell() {
   const swipeHandlers = useHorizontalPanelSwipe({
     onSwipeLeft: goRight,
     onSwipeRight: goLeft,
-    disabled: isSendModalOpen || isDepositModalOpen,
+    disabled: isSendModalOpen || isDepositModalOpen || isOnboardingOverlayOpen,
   })
 
   const handlePayClick = useCallback(() => {
@@ -102,9 +107,6 @@ export function MobileAppShell() {
   const translateX = -((100 / PANEL_COUNT) * activePanel)
 
   return (
-    <WalletLanguageProvider>
-      <SmartAccountKitProvider>
-      <WalletDataProvider>
         <div
           className={`sozu-app-shell sozu-app-viewport overscroll-none select-none touch-pan-x ${
             isSendModalOpen || isDepositModalOpen
@@ -163,19 +165,32 @@ export function MobileAppShell() {
         </div>
       </div>
 
-      <div className="pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom)+0.5rem)] left-1/2 z-50 flex -translate-x-1/2 gap-1.5">
-        {[0, 1, 2].map(i => (
-          <span
-            key={i}
-            className={`block h-1 rounded-full transition-all duration-300 ${
-              i === activePanel ? "w-5 bg-white/70" : "w-1 bg-white/25"
-            }`}
-          />
-        ))}
-      </div>
+      {!isOnboardingOverlayOpen ? (
+        <div className="pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom)+0.5rem)] left-1/2 z-50 flex -translate-x-1/2 gap-1.5">
+          {[0, 1, 2].map(i => (
+            <span
+              key={i}
+              className={`block h-1 rounded-full transition-all duration-300 ${
+                i === activePanel ? "w-5 bg-white/70" : "w-1 bg-white/25"
+              }`}
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
-      </WalletDataProvider>
-    </SmartAccountKitProvider>
+  )
+}
+
+export function MobileAppShell() {
+  return (
+    <WalletLanguageProvider>
+      <SmartAccountKitProvider>
+        <WalletDataProvider>
+          <OnboardingOverlayProvider>
+            <MobileAppShellPanels />
+          </OnboardingOverlayProvider>
+        </WalletDataProvider>
+      </SmartAccountKitProvider>
     </WalletLanguageProvider>
   )
 }

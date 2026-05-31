@@ -237,6 +237,10 @@ export type WalletTexts = {
   depositTagCaption: string;
   depositAddressCaption: string;
   depositConnectWallet: string;
+  depositBlendTitle: string;
+  depositBlendHint: string;
+  depositBlendFaucet: string;
+  depositBlendPool: string;
   // Balance card
   hideBalance: string;
   showBalance: string;
@@ -613,6 +617,11 @@ export const walletTexts = {
     depositTagCaption: "@{tag} · escanea para pagar con Sozu",
     depositAddressCaption: "{addr} · dirección Stellar",
     depositConnectWallet: "Conecta tu billetera",
+    depositBlendTitle: "Testnet: BlendUSDC para enviar",
+    depositBlendHint:
+      "Los pagos usan BlendUSDC en tu cuenta C (no el USDC clásico de Circle en G). Copia tu dirección C abajo y recibe BlendUSDC ahí.",
+    depositBlendFaucet: "Abrir testnet.blend.capital",
+    depositBlendPool: "Pool USDC (Blend)",
     hideBalance: "Ocultar saldo",
     showBalance: "Mostrar saldo",
     purchasingPowerSubline: "+{pct}% poder adquisitivo · {days}d",
@@ -954,6 +963,11 @@ export const walletTexts = {
     depositTagCaption: "@{tag} · scan to pay with Sozu",
     depositAddressCaption: "{addr} · Stellar address",
     depositConnectWallet: "Connect your wallet",
+    depositBlendTitle: "Testnet: BlendUSDC for sends",
+    depositBlendHint:
+      "Payments use BlendUSDC on your C smart account (not classic Circle USDC on G). Copy your C address below and receive BlendUSDC there.",
+    depositBlendFaucet: "Open testnet.blend.capital",
+    depositBlendPool: "USDC pool (Blend)",
     hideBalance: "Hide balance",
     showBalance: "Show balance",
     purchasingPowerSubline: "+{pct}% purchasing power · {days}d",

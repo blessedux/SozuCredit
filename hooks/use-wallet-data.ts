@@ -24,6 +24,9 @@ export interface DefindexBalance {
   walletBalance: number
   strategyBalance: number
   totalBalance: number
+  /** Primary balance card figure (wallet + strategy + classic on G signer when applicable). */
+  displayBalance: number
+  classicOnSigner: number
   strategyShares: number
   apy: number
 }
@@ -112,6 +115,8 @@ export function useWalletData() {
         walletBalance: unified.walletBalance,
         strategyBalance: unified.strategyBalance,
         totalBalance: unified.totalBalance,
+        displayBalance: unified.displayBalance,
+        classicOnSigner: unified.classicOnSigner,
         strategyShares: prev?.strategyShares ?? 0,
         apy: prev?.apy ?? 15.5,
       }))
@@ -236,12 +241,17 @@ export function useWalletData() {
           
           setDefindexBalance((prev) => {
             const strategyBalance = defindexData.strategyBalance || 0
-            // walletBalance comes from unified /api/wallet/stellar/balance (C spendable only)
             const walletBalance = prev?.walletBalance ?? 0
+            const classicOnSigner = prev?.classicOnSigner ?? 0
+            const displayBalance =
+              prev?.displayBalance ??
+              walletBalance + classicOnSigner + strategyBalance
             return {
               walletBalance,
               strategyBalance,
               totalBalance: walletBalance + strategyBalance,
+              displayBalance,
+              classicOnSigner,
               strategyShares: defindexData.strategyShares || 0,
               apy: apyNumber,
             }

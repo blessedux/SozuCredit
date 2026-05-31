@@ -101,7 +101,13 @@ export const BalanceDisplay = memo(function BalanceDisplay({
     const parent = wrapperRef.current?.parentElement
     if (!parent) return
     const next = parent.clientHeight
-    setExpandedHeight(next > 0 ? next : Math.round(window.innerHeight * 0.55))
+    const fallback = Math.round(
+      window.innerHeight -
+        (typeof window !== "undefined"
+          ? parseFloat(getComputedStyle(document.documentElement).fontSize) * 14
+          : 220),
+    )
+    setExpandedHeight(next > 0 ? next : Math.max(280, fallback))
   }, [])
 
   const setExpanded = useCallback(
@@ -217,7 +223,7 @@ export const BalanceDisplay = memo(function BalanceDisplay({
 
   const canInlineExpand = inlineAudit && treasuryPrefs && onUpdateTreasuryPrefs
   const inlineCardMaxHeight = auditExpanded
-    ? expandedHeight || collapsedHeightRef.current
+    ? Math.max(expandedHeight, collapsedHeightRef.current)
     : collapsedHeightRef.current
 
   const handleCardTransitionEnd = useCallback(
@@ -248,8 +254,9 @@ export const BalanceDisplay = memo(function BalanceDisplay({
         className={cn(
           "flex w-full flex-col rounded-[1.25rem] border border-white/10 bg-black/20 text-center shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur-md",
           inlineAudit &&
-            "min-h-0 self-start overflow-hidden transition-[max-height] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] will-change-[max-height]",
-          inlineAudit && auditExpanded && "flex-1 self-stretch",
+            "min-h-0 self-start transition-[max-height] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] will-change-[max-height]",
+          inlineAudit && !auditExpanded && "overflow-hidden",
+          inlineAudit && auditExpanded && "flex min-h-0 flex-1 flex-col self-stretch overflow-hidden",
           inlineAudit ? "p-5 sm:p-6" : "min-h-[11rem] p-6 sm:min-h-[12rem] sm:p-8 lg:min-h-[13.5rem] lg:p-7 lg:text-left xl:min-h-[14rem] xl:p-8",
         )}
       >
@@ -360,46 +367,35 @@ export const BalanceDisplay = memo(function BalanceDisplay({
           </button>
         </div>
 
-        {canInlineExpand ? (
+        {canInlineExpand && auditExpanded ? (
           <div
-            className={cn(
-              "grid min-h-0 transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
-              auditExpanded ? "grid-rows-[1fr] flex-1" : "grid-rows-[0fr]",
-            )}
+            className="mt-3 flex min-h-0 flex-1 flex-col border-t border-white/10 pt-3 text-left"
+            onTouchStart={stopPullPropagation}
+            onTouchMove={stopPullPropagation}
+            onMouseDown={stopPullPropagation}
           >
-            <div className="min-h-0 overflow-hidden">
-              <div
-                className={cn(
-                  "mt-3 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y border-t border-white/10 pt-3 text-left no-scrollbar transition-opacity duration-300 [-webkit-overflow-scrolling:touch]",
-                  auditExpanded ? "flex-1 opacity-100" : "pointer-events-none opacity-0",
-                )}
-                onTouchStart={stopPullPropagation}
-                onTouchMove={stopPullPropagation}
-                onMouseDown={stopPullPropagation}
-                aria-hidden={!auditExpanded}
-              >
-                <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.02] p-3">
-                  <PurchasingPowerPnlChart
-                    projection={treasuryProjection}
-                    loading={treasuryLoading}
-                    variant="full"
-                  />
-                </div>
-                <BalanceAuditPanel
-                  defindexBalance={defindexBalance}
-                  apyValue={apyValue}
-                  apyLoading={apyLoading}
-                  treasuryProjection={treasuryProjection}
-                  treasuryLoading={treasuryLoading}
-                  treasuryPrefs={treasuryPrefs}
-                  onUpdateTreasuryPrefs={onUpdateTreasuryPrefs}
-                  onClose={() => setExpanded(false)}
-                  showHeader
-                  hideChart
-                  walletNetwork={walletNetwork}
-                  onRefresh={onRefresh}
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain touch-pan-y no-scrollbar [-webkit-overflow-scrolling:touch]">
+              <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.02] p-3">
+                <PurchasingPowerPnlChart
+                  projection={treasuryProjection}
+                  loading={treasuryLoading}
+                  variant="full"
                 />
               </div>
+              <BalanceAuditPanel
+                defindexBalance={defindexBalance}
+                apyValue={apyValue}
+                apyLoading={apyLoading}
+                treasuryProjection={treasuryProjection}
+                treasuryLoading={treasuryLoading}
+                treasuryPrefs={treasuryPrefs}
+                onUpdateTreasuryPrefs={onUpdateTreasuryPrefs}
+                onClose={() => setExpanded(false)}
+                showHeader
+                hideChart
+                walletNetwork={walletNetwork}
+                onRefresh={onRefresh}
+              />
             </div>
           </div>
         ) : null}

@@ -8,12 +8,14 @@ import { copyToClipboard, formatAddress } from "@/lib/wallet-utils"
 import { cn } from "@/lib/utils"
 import { useWalletLanguage } from "@/lib/wallet-language"
 import { formatWalletText } from "@/lib/wallet-texts"
+import { getBlendUsdcTestnetFundingGuide } from "@/lib/wallet/blend-usdc-funding"
 
 type DepositModalProps = {
   isOpen: boolean
   onClose: () => void
   /** Prefer prop from wallet context; falls back to sessionStorage. */
   walletAddress?: string
+  walletNetwork?: "testnet" | "mainnet"
 }
 
 type QrMode = "tag" | "address"
@@ -31,7 +33,12 @@ function blockShellSwipe(e: React.SyntheticEvent) {
   e.stopPropagation()
 }
 
-export function DepositModal({ isOpen, onClose, walletAddress: walletAddressProp }: DepositModalProps) {
+export function DepositModal({
+  isOpen,
+  onClose,
+  walletAddress: walletAddressProp,
+  walletNetwork = "testnet",
+}: DepositModalProps) {
   const { t } = useWalletLanguage()
   const [address, setAddress] = useState<string>("")
   const [sozuTag, setSozuTag] = useState<string>("")
@@ -110,11 +117,18 @@ export function DepositModal({ isOpen, onClose, walletAddress: walletAddressProp
     setTimeout(() => setAddressCopied(false), 2000)
   }
 
+  const blendFunding =
+    walletNetwork === "testnet" ? getBlendUsdcTestnetFundingGuide("testnet") : null
+  const showBlendGuide =
+    Boolean(blendFunding) &&
+    Boolean(effectiveAddress?.startsWith("C")) &&
+    activeMode === "address"
+
   if (!isOpen || !mounted) return null
 
   const modal = (
     <div
-      className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-5 px-6 sm:px-8 overscroll-none"
+      className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-5 overflow-y-auto px-6 py-8 sm:px-8 overscroll-y-contain overscroll-none"
       style={{
         opacity: visible ? 1 : 0,
         transition: "opacity 0.35s ease",
@@ -264,9 +278,41 @@ export function DepositModal({ isOpen, onClose, walletAddress: walletAddressProp
             )}
           </button>
         ) : null}
+
+        {showBlendGuide && blendFunding ? (
+          <div className="rounded-2xl border border-amber-500/35 bg-amber-950/40 px-4 py-3 text-left">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-200/90">
+              {t.depositBlendTitle}
+            </p>
+            <p className="mt-1.5 text-[10px] leading-relaxed text-white/55">{t.depositBlendHint}</p>
+            <ol className="mt-2 list-decimal space-y-1 pl-4 text-[10px] leading-snug text-white/50">
+              {blendFunding.steps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <a
+                href={blendFunding.faucetUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex rounded-full border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-[10px] font-medium text-amber-100 hover:bg-amber-500/25"
+              >
+                {t.depositBlendFaucet}
+              </a>
+              <a
+                href={blendFunding.poolDeepLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-[10px] font-medium text-white/70 hover:bg-white/10"
+              >
+                {t.depositBlendPool}
+              </a>
+            </div>
+          </div>
+        ) : null}
       </div>
 
-      <p className="text-[9px] text-white/25">{t.depositUsdcOnly}</p>
+      <p className="shrink-0 text-[9px] text-white/25">{t.depositUsdcOnly}</p>
     </div>
   )
 
