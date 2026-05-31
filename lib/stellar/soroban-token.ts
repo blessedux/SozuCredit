@@ -18,6 +18,10 @@ import {
 } from "@stellar/stellar-sdk"
 import * as rpc from "@stellar/stellar-sdk/rpc"
 import { Api } from "@stellar/stellar-sdk/rpc"
+import {
+  getDefaultTestnetBlendUsdcId,
+  normalizeStellarContractId,
+} from "@/lib/stellar/contract-id"
 
 const DUMMY_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
 const STROOPS_PER_UNIT = 10_000_000
@@ -176,10 +180,16 @@ export async function getSorobanTokenBalance(
   const holder = normalizeHolderAddress(userAddress)
   const token = tokenAddress.trim().toUpperCase()
 
-  const attempts = [
-    () => readBalanceViaSimulate(token, holder, network),
-    () => readBalanceViaLedger(token, holder, network),
-  ]
+  const hasFunder = Boolean(process.env.STELLAR_FUNDER_SECRET?.trim())
+  const attempts = hasFunder
+    ? [
+        () => readBalanceViaSimulate(token, holder, network),
+        () => readBalanceViaLedger(token, holder, network),
+      ]
+    : [
+        () => readBalanceViaLedger(token, holder, network),
+        () => readBalanceViaSimulate(token, holder, network),
+      ]
 
   for (const attempt of attempts) {
     try {
@@ -198,16 +208,18 @@ export async function getSorobanTokenBalance(
   return 0
 }
 
-function getBlendUsdcContractId(network: "testnet" | "mainnet"): string {
+export function getBlendUsdcContractId(network: "testnet" | "mainnet"): string {
   if (network === "mainnet") {
-    return (
-      process.env.MAINNET_USDC_CONTRACT_ADDRESS?.trim() ||
-      "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75"
+    return normalizeStellarContractId(
+      process.env.MAINNET_USDC_CONTRACT_ADDRESS,
+      "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75",
+      "MAINNET_USDC_CONTRACT_ADDRESS",
     )
   }
-  return (
-    process.env.TESTNET_USDC_CONTRACT_ADDRESS?.trim() ||
-    "CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU"
+  return normalizeStellarContractId(
+    process.env.TESTNET_USDC_CONTRACT_ADDRESS,
+    getDefaultTestnetBlendUsdcId(),
+    "TESTNET_USDC_CONTRACT_ADDRESS",
   )
 }
 

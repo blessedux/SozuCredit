@@ -30,8 +30,13 @@ export async function fetchUnifiedUsdcBalance(
 
   const res = await fetch(`/api/wallet/stellar/balance${qs}`, {
     headers: { "x-user-id": userId },
+    cache: "no-store",
   })
-  if (!res.ok) return null
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}))
+    console.error("[UnifiedBalance] API error", res.status, errBody)
+    return null
+  }
 
   const data = (await res.json()) as {
     usdcBalance?: number
@@ -61,6 +66,17 @@ export async function fetchUnifiedUsdcBalance(
     typeof data.totalDisplayUsdcBalance === "number"
       ? data.totalDisplayUsdcBalance
       : displayWalletUsdc + strategyBalance
+
+  if (
+    publicKey?.startsWith("C") &&
+    displayBalance === 0 &&
+    displayWalletUsdc === 0
+  ) {
+    console.warn("[UnifiedBalance] C wallet returned 0 USDC", {
+      publicKey: publicKey.slice(0, 12) + "…",
+      diagnostics: (data as { diagnostics?: unknown }).diagnostics,
+    })
+  }
 
   return {
     walletBalance,

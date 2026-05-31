@@ -3,6 +3,10 @@ import { NextResponse, NextRequest } from "next/server"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
 import { getStellarWallet, getWalletBalance } from "@/lib/turnkey/stellar-wallet"
 import { getUsdcBalanceBreakdown } from "@/lib/stellar/usdc-balance"
+import {
+  getBlendUsdcContractId,
+  getCircleTestnetUsdcSacContractId,
+} from "@/lib/stellar/soroban-token"
 import { getStellarConfig } from "@/lib/turnkey/config"
 import { Horizon } from "@stellar/stellar-sdk"
 import { monitorBalanceAndAutoDeposit } from "@/lib/defindex/auto-deposit"
@@ -188,6 +192,9 @@ export async function GET(request: NextRequest) {
     // We skip it here to avoid issues with balance API calls
     const autoDepositTriggered = false
 
+    const cfg = getStellarConfig()
+    const network = (wallet?.network || cfg.network) as "testnet" | "mainnet"
+
     return NextResponse.json(
       {
         balance,
@@ -205,8 +212,18 @@ export async function GET(request: NextRequest) {
         walletMustMigrate: !publicKeyToUse.startsWith("C"),
         allBalances, // Classic Horizon balances when wallet is G
         publicKey: publicKeyToUse,
-        network: wallet?.network || "testnet",
+        network,
         autoDepositTriggered: autoDepositTriggered,
+        diagnostics: {
+          blendContractId: getBlendUsdcContractId(network),
+          circleSacContractId:
+            network === "testnet" ? getCircleTestnetUsdcSacContractId() : null,
+          sorobanRpcConfigured: Boolean(
+            process.env.SOROBAN_RPC_URL?.trim() ||
+              process.env.NEXT_PUBLIC_SOROBAN_RPC_URL?.trim(),
+          ),
+          funderConfigured: Boolean(process.env.STELLAR_FUNDER_SECRET?.trim()),
+        },
       },
       { headers: corsHeaders(request as any) }
     )

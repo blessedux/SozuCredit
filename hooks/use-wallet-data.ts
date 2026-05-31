@@ -117,6 +117,7 @@ export function useWalletData() {
             ""
           : "")
 
+      const requestedPk = publicKey?.trim().toUpperCase()
       const unified = await fetchUnifiedUsdcBalance(userId, pk || undefined)
       if (!unified) {
         console.warn("[Wallet] Unified balance fetch failed for", pk?.slice(0, 12) || userId)
@@ -124,6 +125,44 @@ export function useWalletData() {
         return
       }
       console.log("[Wallet] ✅ Unified USDC balance:", unified)
+
+      const sessionPk =
+        typeof window !== "undefined"
+          ? (
+              localStorage.getItem("stellar_public_key") ??
+              sessionStorage.getItem("stellar_public_key")
+            )
+              ?.trim()
+              .toUpperCase()
+          : null
+
+      if (
+        sessionPk?.startsWith("C") &&
+        unified.walletAddress &&
+        unified.walletAddress !== sessionPk &&
+        unified.displayBalance === 0
+      ) {
+        console.warn(
+          "[Wallet] DB address differs from session and balance is 0 — retrying with session C",
+          { db: unified.walletAddress.slice(0, 12), session: sessionPk.slice(0, 12) },
+        )
+        const retry = await fetchUnifiedUsdcBalance(userId, sessionPk)
+        if (retry && retry.displayBalance > 0) {
+          setDefindexBalance((prev) => ({
+            walletBalance: retry.walletBalance,
+            sorobanSacBalance: retry.sorobanSacBalance,
+            strategyBalance: retry.strategyBalance,
+            totalBalance: retry.displayBalance,
+            displayBalance: retry.displayBalance,
+            classicOnSigner: retry.classicOnSigner,
+            strategyShares: prev?.strategyShares ?? 0,
+            apy: prev?.apy ?? 15.5,
+          }))
+          setWalletAddress(sessionPk)
+          return
+        }
+      }
+
       setDefindexBalance((prev) => ({
         walletBalance: unified.walletBalance,
         sorobanSacBalance: unified.sorobanSacBalance,
@@ -134,11 +173,13 @@ export function useWalletData() {
         strategyShares: prev?.strategyShares ?? 0,
         apy: prev?.apy ?? 15.5,
       }))
-      if (unified.walletAddress && unified.walletAddress.length === 56) {
-        setWalletAddress(unified.walletAddress)
+
+      const addressToPersist = requestedPk || unified.walletAddress
+      if (addressToPersist && addressToPersist.length === 56) {
+        setWalletAddress(addressToPersist)
         if (typeof window !== "undefined") {
-          localStorage.setItem("stellar_public_key", unified.walletAddress)
-          sessionStorage.setItem("stellar_public_key", unified.walletAddress)
+          localStorage.setItem("stellar_public_key", addressToPersist)
+          sessionStorage.setItem("stellar_public_key", addressToPersist)
         }
       }
     } catch (error) {
@@ -147,6 +188,22 @@ export function useWalletData() {
       setIsBalanceLoading(false)
     }
   }, [])
+
+  const refreshBalanceFromSession = useCallback(
+    (userId: string) => {
+      if (typeof window === "undefined") return
+      const sessionPk =
+        localStorage.getItem("stellar_public_key") ??
+        sessionStorage.getItem("stellar_public_key")
+      const pk = sessionPk?.trim().toUpperCase()
+      if (pk?.startsWith("C") && pk.length === 56) {
+        void refreshUnifiedBalance(userId, pk)
+      } else {
+        void refreshUnifiedBalance(userId)
+      }
+    },
+    [refreshUnifiedBalance],
+  )
 
   const fetchWalletUSDCBalance = useCallback(
     async (publicKey: string) => {
@@ -463,7 +520,7 @@ export function useWalletData() {
                 console.warn("[Wallet] No client-derived public key available; skipping server registration.")
                 setWalletAddress("")
                 setIsBalanceLoading(false)
-                void fetchDefindexBalance(userId)
+                refreshBalanceFromSession(userId)
                 return
               }
               let createData: { publicKey?: string; network?: string } = {}
@@ -522,7 +579,7 @@ export function useWalletData() {
             }
             setWalletAddress("")
             setIsBalanceLoading(false)
-            void fetchDefindexBalance(userId)
+            refreshBalanceFromSession(userId)
           }
         }
       } else if (walletAddressResponse.status === 404) {
@@ -533,7 +590,7 @@ export function useWalletData() {
             if (!clientPublicKey) {
               setWalletAddress("")
               setIsBalanceLoading(false)
-              void fetchDefindexBalance(userId)
+              refreshBalanceFromSession(userId)
               return
             }
             const createResponse = await fetch("/api/wallet/stellar/create", {
@@ -563,7 +620,7 @@ export function useWalletData() {
             if (createResponse.status === 400) {
               setWalletAddress("")
               setIsBalanceLoading(false)
-              void fetchDefindexBalance(userId)
+              refreshBalanceFromSession(userId)
               return
             }
           } catch (createError) {
@@ -584,7 +641,7 @@ export function useWalletData() {
         }
         setWalletAddress("")
         setIsBalanceLoading(false)
-        fetchDefindexBalance(userId)
+        refreshBalanceFromSession(userId)
       } else if (walletAddressResponse.status === 500) {
         if (retryCount < 3) {
           console.log(`[Wallet] Retrying after error (attempt ${retryCount + 1}/3)...`)
@@ -593,7 +650,7 @@ export function useWalletData() {
           console.error("[Wallet] Failed to fetch wallet address after retries - stopping loading")
           setWalletAddress("")
           setIsBalanceLoading(false)
-          fetchDefindexBalance(userId)
+          refreshBalanceFromSession(userId)
         }
       } else {
         if (retryCount < 5) {
@@ -601,7 +658,7 @@ export function useWalletData() {
         } else {
           setWalletAddress("")
           setIsBalanceLoading(false)
-          void fetchDefindexBalance(userId)
+          refreshBalanceFromSession(userId)
         }
       }
     } catch (walletError) {
@@ -611,10 +668,10 @@ export function useWalletData() {
       } else {
         setWalletAddress("")
         setIsBalanceLoading(false)
-        void fetchDefindexBalance(userId)
+        refreshBalanceFromSession(userId)
       }
     }
-  }, [bootstrapWalletFetches, fetchDefindexBalance])
+  }, [bootstrapWalletFetches, fetchDefindexBalance, refreshBalanceFromSession])
 
   // Initialize wallet data (mount only: dev and prod both require a real /auth session)
   useEffect(() => {

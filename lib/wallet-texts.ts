@@ -259,6 +259,7 @@ export type WalletTexts = {
   walletSacBalanceLabel: string;
   walletSignerBalanceLabel: string;
   walletSacSendHint: string;
+  balanceAuditZeroHint: string;
   defiStrategyLabel: string;
   totalLabel: string;
   defindexSharesLabel: string;
@@ -643,6 +644,8 @@ export const walletTexts = {
     walletSignerBalanceLabel: "USDC en cuenta G (firmante)",
     walletSacSendHint:
       "Tienes USDC en el contrato SAC de Circle en tu C. Los envíos en la app usan BlendUSDC — obtén Blend en testnet.blend.capital o convierte según el pool.",
+    balanceAuditZeroHint:
+      "Si Stellar Expert muestra saldo pero aquí ves $0, confirma que Depositar usa la misma dirección C y que Vercel tiene TESTNET_USDC_CONTRACT_ADDRESS (Blend), SOROBAN_RPC_URL y STELLAR_FUNDER_SECRET.",
     defiStrategyLabel: "Estrategia DeFi",
     totalLabel: "Total",
     defindexSharesLabel: "Shares DeFindex",
@@ -994,6 +997,8 @@ export const walletTexts = {
     walletSignerBalanceLabel: "USDC on G signer",
     walletSacSendHint:
       "You hold Circle USDC SAC on your C smart account. In-app sends use BlendUSDC — mint Blend at testnet.blend.capital to pay.",
+    balanceAuditZeroHint:
+      "If Stellar Expert shows a balance but this reads $0, confirm Depositar matches your funded C address and Vercel has TESTNET_USDC_CONTRACT_ADDRESS (Blend), SOROBAN_RPC_URL, and STELLAR_FUNDER_SECRET.",
     defiStrategyLabel: "DeFi strategy",
     totalLabel: "Total",
     defindexSharesLabel: "DeFindex shares",

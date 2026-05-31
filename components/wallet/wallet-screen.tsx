@@ -187,36 +187,13 @@ export function WalletScreen({
     return Number(vault?.balance || 0)
   }, [defindexBalance, vault?.balance])
 
-  // Balance animation effect
+  // Keep card figure in sync with loaded USDC (avoid resetting to $0 while refetching).
   useEffect(() => {
-    const baseChanged = Math.abs(baseBalance - baseBalanceRef.current) / (baseBalanceRef.current || 1) > 0.001
-    if (defindexBalance !== null && isBalanceLoading) {
-      if (baseBalance > 0 && animatedBalanceRef.current === 0) {
-        animatedBalanceRef.current = 0
-        setAnimatedBalance(0)
-        setTimeout(() => {
-          animatedBalanceRef.current = baseBalance
-          baseBalanceRef.current = baseBalance
-          setAnimatedBalance(baseBalance)
-        }, 100)
-        return
-      }
-    }
-    if (baseChanged) {
-      animatedBalanceRef.current = baseBalance
-      baseBalanceRef.current = baseBalance
-      setAnimatedBalance(baseBalance)
-    } else if (animatedBalanceRef.current === 0 && baseBalance > 0) {
-      setTimeout(() => {
-        animatedBalanceRef.current = baseBalance
-        baseBalanceRef.current = baseBalance
-        setAnimatedBalance(baseBalance)
-      }, 100)
-    } else if (animatedBalanceRef.current === 0) {
-      animatedBalanceRef.current = baseBalance
-      baseBalanceRef.current = baseBalance
-      setAnimatedBalance(baseBalance)
-    }
+    if (isBalanceLoading && baseBalance === 0 && defindexBalance === null) return
+    if (Math.abs(baseBalance - animatedBalanceRef.current) < 0.000_001) return
+    animatedBalanceRef.current = baseBalance
+    baseBalanceRef.current = baseBalance
+    setAnimatedBalance(baseBalance)
   }, [baseBalance, defindexBalance, isBalanceLoading])
 
   // Treasury projection

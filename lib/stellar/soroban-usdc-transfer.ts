@@ -8,6 +8,7 @@ import {
   rpc,
   xdr,
 } from "@stellar/stellar-sdk"
+import { getBlendUsdcContractId } from "@/lib/stellar/soroban-token"
 import { getStellarConfig } from "@/lib/turnkey/config"
 
 const USDC_DECIMALS = 7
@@ -27,16 +28,7 @@ function getSorobanRpcUrl(network: "testnet" | "mainnet"): string {
 }
 
 export function getUsdcTokenContractId(network: "testnet" | "mainnet"): string {
-  if (network === "mainnet") {
-    return (
-      process.env.MAINNET_USDC_CONTRACT_ADDRESS?.trim() ||
-      "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75"
-    )
-  }
-  return (
-    process.env.TESTNET_USDC_CONTRACT_ADDRESS?.trim() ||
-    "CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU"
-  )
+  return getBlendUsdcContractId(network)
 }
 
 function amountToI128ScVal(amount: string): xdr.ScVal {

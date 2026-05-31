@@ -78,7 +78,12 @@ export const BalanceAuditPanel = memo(function BalanceAuditPanel({
   const strategyBalance = defindexBalance?.strategyBalance ?? 0
   const walletBalance = defindexBalance?.walletBalance ?? 0
   const sorobanSacBalance = defindexBalance?.sorobanSacBalance ?? 0
-  const displayTotal = defindexBalance?.displayBalance ?? 0
+  const classicOnSigner = defindexBalance?.classicOnSigner ?? 0
+  const displayTotal =
+    (defindexBalance?.displayBalance ?? 0) > 0
+      ? (defindexBalance?.displayBalance ?? 0)
+      : walletBalance + sorobanSacBalance + classicOnSigner + strategyBalance
+  const showTestnetAssetRows = walletNetwork === "testnet"
 
   const MIN_DEPOSIT = Number(process.env.NEXT_PUBLIC_VAULT_MIN_DEPOSIT || "10") || 10
   const FEE_BUFFER = Number(process.env.NEXT_PUBLIC_VAULT_FEE_BUFFER || "0.4") || 0.4
@@ -122,29 +127,40 @@ export const BalanceAuditPanel = memo(function BalanceAuditPanel({
         <p className="text-[10px] uppercase tracking-widest text-white/40">{t.usdcBalanceSection}</p>
         {defindexBalance ? (
           <div className="space-y-2">
-            {walletBalance > 0 ? (
+            {showTestnetAssetRows || walletBalance > 0 ? (
               <div className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/10">
                 <span className="text-white/80 text-sm">{t.walletBlendBalanceLabel}</span>
-                <span className="text-white font-medium tabular-nums">
+                <span
+                  className={`font-medium tabular-nums ${
+                    walletBalance > 0 ? "text-white" : "text-white/45"
+                  }`}
+                >
                   ${walletBalance.toFixed(2)} USD
                 </span>
               </div>
             ) : null}
-            {sorobanSacBalance > 0 ? (
+            {showTestnetAssetRows || sorobanSacBalance > 0 ? (
               <div className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/10">
                 <span className="text-white/80 text-sm">{t.walletSacBalanceLabel}</span>
-                <span className="text-white font-medium tabular-nums">
+                <span
+                  className={`font-medium tabular-nums ${
+                    sorobanSacBalance > 0 ? "text-white" : "text-white/45"
+                  }`}
+                >
                   ${sorobanSacBalance.toFixed(2)} USD
                 </span>
               </div>
             ) : null}
-            {defindexBalance.classicOnSigner > 0 ? (
+            {classicOnSigner > 0 ? (
               <div className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/10">
                 <span className="text-white/80 text-sm">{t.walletSignerBalanceLabel}</span>
                 <span className="text-white/70 font-medium tabular-nums">
-                  ${defindexBalance.classicOnSigner.toFixed(2)} USD
+                  ${classicOnSigner.toFixed(2)} USD
                 </span>
               </div>
+            ) : null}
+            {displayTotal === 0 && showTestnetAssetRows ? (
+              <p className="text-[10px] leading-snug text-white/45 px-1">{t.balanceAuditZeroHint}</p>
             ) : null}
             <div className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/10">
               <span className="text-white/80 text-sm">{t.defiStrategyLabel}</span>
