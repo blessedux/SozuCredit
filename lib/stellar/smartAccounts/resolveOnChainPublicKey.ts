@@ -1,7 +1,7 @@
 import "server-only"
 
 import { Client as SmartAccountClient } from "smart-account-kit-bindings"
-import { Networks } from "@stellar/stellar-sdk"
+import { Networks, scValToNative } from "@stellar/stellar-sdk"
 import { buildContextRuleTypesFromAuthEntry } from "@/lib/stellar/smartAccounts/contextRuleTypes"
 import {
   credentialIdToBuffer,
@@ -41,27 +41,102 @@ function credentialSuffixMatches(suffix: Uint8Array, credentialId: string): bool
   }
 }
 
+function credentialIdAppearsInKeyData(keyData: Buffer, credentialId: string): boolean {
+  if (keyData.length > 65 && credentialSuffixMatches(keyData.subarray(65), credentialId)) {
+    return true
+  }
+  let needle: Buffer
+  try {
+    needle = credentialIdToBuffer(credentialId)
+  } catch {
+    return false
+  }
+  return keyData.includes(needle)
+}
+
+function externalKeyDataFromSigner(signer: unknown): Buffer | null {
+  if (!Array.isArray(signer) || signer[0] !== "External" || !signer[2]) return null
+  const raw = signer[2] as { data?: number[] } | Uint8Array | Buffer
+  const bytes =
+    raw instanceof Uint8Array
+      ? Buffer.from(raw)
+      : Buffer.isBuffer(raw)
+        ? raw
+        : Buffer.from((raw as { data: number[] }).data ?? [])
+  return bytes.length > 0 ? bytes : null
+}
+
+function pickExternalKeyData(signers: unknown, credentialId: string): Buffer | null {
+  if (!Array.isArray(signers)) return null
+  const external: Buffer[] = []
+  for (const signer of signers) {
+    const keyData = externalKeyDataFromSigner(signer)
+    if (keyData) external.push(keyData)
+  }
+  if (external.length === 0) return null
+
+  for (const keyData of external) {
+    if (credentialIdAppearsInKeyData(keyData, credentialId)) return keyData
+  }
+
+  // Legacy deploys (e.g. attestation blob as keyData) — single External signer must be used as-is.
+  if (external.length === 1) return external[0]
+  return null
+}
+
 function findKeyDataInRules(
   rules: unknown,
   credentialId: string,
 ): Buffer | null {
   if (!Array.isArray(rules)) return null
   for (const rule of rules) {
-    const signers = (rule as { signers?: Array<{ tag: string; values: unknown[] }> }).signers ?? []
-    for (const signer of signers) {
-      if (signer.tag !== "External") continue
-      const raw = signer.values[1]
-      if (!raw) continue
-      const keyDataBytes =
-        raw instanceof Uint8Array ? Buffer.from(raw) : Buffer.from(raw as ArrayLike<number>)
-      if (keyDataBytes.length <= 65) continue
-      const suffix = keyDataBytes.subarray(65)
-      if (credentialSuffixMatches(suffix, credentialId)) {
-        return keyDataBytes
-      }
-    }
+    const signers = (rule as { signers?: unknown }).signers
+    const found = pickExternalKeyData(signers, credentialId)
+    if (found) return found
   }
   return null
+}
+
+function findKeyDataInContextRule(
+  rule: unknown,
+  credentialId: string,
+): Buffer | null {
+  if (!rule || typeof rule !== "object") return null
+  const signers = (rule as { signers?: unknown }).signers
+  return pickExternalKeyData(signers, credentialId)
+}
+
+async function readContextRuleById(
+  client: SmartAccountClient,
+  contextRuleId: number,
+  credentialId: string,
+): Promise<Buffer | null> {
+  const tx = await client.get_context_rule({ context_rule_id: contextRuleId })
+  const assembled = await tx.simulate()
+  const sim = assembled.simulation
+  if (sim?.error || !sim?.result?.retval) return null
+  const rule = scValToNative(sim.result.retval)
+  return findKeyDataInContextRule(rule, credentialId)
+}
+
+/** True when get_context_rule(0) simulates (legacy OZ wallets without get_context_rules). */
+export async function contractCanReadOnChainSignerKeyData(contractId: string): Promise<boolean> {
+  const id = contractId.trim().toUpperCase()
+  if (!id.startsWith("C") || id.length !== 56) return false
+  const rpcUrl = getRpcUrl()
+  try {
+    const client = new SmartAccountClient({
+      contractId: id,
+      networkPassphrase: getNetworkPassphrase(),
+      rpcUrl,
+      allowHttp: rpcUrl.startsWith("http://"),
+    })
+    const tx = await client.get_context_rule({ context_rule_id: 0 })
+    const assembled = await tx.simulate()
+    return !assembled.simulation?.error
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -84,6 +159,13 @@ export async function resolveOnChainSignerKeyData(params: {
     allowHttp: rpcUrl.startsWith("http://"),
   })
 
+  try {
+    const fromRule0 = await readContextRuleById(client, 0, credentialId)
+    if (fromRule0) return fromRule0
+  } catch {
+    /* try plural API */
+  }
+
   const contextTypes = params.authEntry
     ? buildContextRuleTypesFromAuthEntry(params.authEntry)
     : [{ tag: "Default" as const, values: undefined }]
@@ -91,8 +173,12 @@ export async function resolveOnChainSignerKeyData(params: {
   try {
     for (const contextRuleType of contextTypes) {
       const tx = await client.get_context_rules({ context_rule_type: contextRuleType })
-      await tx.simulate()
-      const found = findKeyDataInRules(tx.result, credentialId)
+      const assembled = await tx.simulate()
+      if (assembled.simulation?.error) continue
+      const rules = assembled.simulation?.result?.retval
+        ? scValToNative(assembled.simulation.result.retval)
+        : null
+      const found = findKeyDataInRules(rules, credentialId)
       if (found) return found
     }
   } catch {

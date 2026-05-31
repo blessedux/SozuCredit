@@ -4,9 +4,10 @@ import type { SmartAccountKit } from "smart-account-kit"
 import { Address, hash, rpc, xdr } from "@stellar/stellar-sdk"
 import {
   buildExternalSignerKeyData,
-  credentialIdBytesFromAssertion,
+  credentialIdToBuffer,
   parsePasskeyPublicKey65,
 } from "@/lib/stellar/smartAccounts/passkeyPublicKey"
+import { normalizeCredentialId } from "@/lib/webauthn/normalize-credential-id"
 import { normalizeCredentialId } from "@/lib/webauthn/normalize-credential-id"
 import { base64URLToBuffer, bufferToBase64URL } from "@/lib/webauthn/utils"
 import { getUserId } from "@/lib/wallet-utils"
@@ -186,7 +187,6 @@ export async function signAuthEntryWithStoredPasskey(params: {
   smartAccountContractId?: string
   kit?: SmartAccountKit
   expiration?: number
-  useOnChainKeyData?: boolean
 }): Promise<xdr.SorobanAuthorizationEntry> {
   const entryXdrBytes = params.entry.toXDR()
   const normalizedEntry = xdr.SorobanAuthorizationEntry.fromXDR(entryXdrBytes)
@@ -215,33 +215,24 @@ export async function signAuthEntryWithStoredPasskey(params: {
 
   const authResponse = await webAuthnSignSorobanPreimage(challenge, params.credentialId)
 
-  let keyData: Buffer
-  if (params.useOnChainKeyData !== false && params.smartAccountContractId?.startsWith("C")) {
-    const onChain = await resolveKeyDataFromChain({
+  let keyData: Buffer | null = null
+  if (params.smartAccountContractId?.startsWith("C")) {
+    keyData = await resolveKeyDataFromChain({
       contractId: params.smartAccountContractId,
       credentialId: params.credentialId,
       authEntry: normalizedEntry,
     })
-    if (onChain && onChain.length > 65) {
-      keyData = onChain
-    } else {
-      const pub = await loadPasskeyPublicKey65({
-        credentialId: params.credentialId,
-        kit: params.kit,
-      })
-      keyData = buildExternalSignerKeyData(
-        pub,
-        credentialIdBytesFromAssertion(authResponse.assertion),
-      )
-    }
-  } else {
+  }
+
+  if (!keyData) {
     const pub = await loadPasskeyPublicKey65({
       credentialId: params.credentialId,
       kit: params.kit,
     })
+    // Match smart-account-kit deploy: base64url-decoded credential id string, not assertion rawId.
     keyData = buildExternalSignerKeyData(
       pub,
-      credentialIdBytesFromAssertion(authResponse.assertion),
+      credentialIdToBuffer(normalizeCredentialId(params.credentialId)),
     )
   }
 

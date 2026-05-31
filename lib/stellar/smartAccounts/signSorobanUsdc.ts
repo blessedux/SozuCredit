@@ -65,8 +65,6 @@ export async function signSorobanPreparedTxWithPasskey(params: {
   const signedAuth = []
   const contractId = params.smartAccountContractId?.trim().toUpperCase()
 
-  const tryOnChainKeyData = params.supportsOzKitApi !== false
-
   for (const entry of authEntries) {
     const signed = await signAuthEntryWithStoredPasskey({
       entry,
@@ -75,7 +73,6 @@ export async function signSorobanPreparedTxWithPasskey(params: {
       webauthnVerifierAddress: webauthnVerifier,
       smartAccountContractId: contractId,
       kit: params.kit,
-      useOnChainKeyData: tryOnChainKeyData,
     })
     signedAuth.push(signed)
   }

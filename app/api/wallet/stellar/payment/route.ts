@@ -637,7 +637,11 @@ export async function POST(request: NextRequest) {
       network: stellarConfig.network,
     })
 
+    const { contractCanReadOnChainSignerKeyData } = await import(
+      "@/lib/stellar/smartAccounts/resolveOnChainPublicKey"
+    )
     const supportsOzKitApi = await contractSupportsOzKitSigning(senderPk)
+    const canReadOnChainKeyData = await contractCanReadOnChainSignerKeyData(senderPk)
     const isFactoryWallet =
       walletType === "factory" ||
       (await contractIsFactoryForSigner(senderPk, signerPk))
@@ -655,6 +659,7 @@ export async function POST(request: NextRequest) {
         paymentRail: "smart",
         signMethod,
         supportsOzKitApi,
+        canReadOnChainKeyData,
         signerPublicKey: signerPk,
         walletAddress: senderPk,
         ozCredentialId: wallet.ozCredentialId ?? null,

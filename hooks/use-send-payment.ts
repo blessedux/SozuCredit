@@ -336,8 +336,6 @@ export function useSendPayment(
             : walletAddress.startsWith("C")
               ? walletAddress
               : null
-        const supportsOzKitApi =
-          build.supportsOzKitApi === true || signMethod === "oz_passkey"
         const signedEnvelopeXdr = await signSorobanPreparedTxWithPasskey({
           kit,
           unsignedXdr,
@@ -345,7 +343,7 @@ export function useSendPayment(
           credentialId,
           smartAccountContractId: walletContractId,
           webauthnVerifierAddress: config.webauthnVerifierAddress,
-          supportsOzKitApi,
+          supportsOzKitApi: build.supportsOzKitApi === true,
         })
         submitBody = { signedEnvelopeXdr }
       } else if (signMethod === "smart_g_signer") {

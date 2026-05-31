@@ -43,8 +43,11 @@ export async function contractSupportsOzKitSigning(contractId: string): Promise<
     const tx = await client.get_context_rules({
       context_rule_type: { tag: "Default", values: undefined },
     })
-    await tx.simulate()
-    return Array.isArray(tx.result)
+    const assembled = await tx.simulate()
+    if (assembled.simulation?.error) return false
+    const { scValToNative } = await import("@stellar/stellar-sdk")
+    const rules = scValToNative(assembled.simulation.result.retval)
+    return Array.isArray(rules)
   } catch {
     return false
   }
