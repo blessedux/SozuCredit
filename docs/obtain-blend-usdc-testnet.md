@@ -33,8 +33,9 @@ pnpm exec tsx scripts/test-defi-e2e.ts <userId> <C_ADDRESS>
 
 ## Balance shows 0 in the app but Stellar Expert shows funds
 
-1. **Address match** — In Sozu Credit open **Depositar → Stellar** and compare the full **C…** address to the account you funded on Blend / Stellar Expert (must be identical).
-2. **Asset** — Expert may show **Circle USDC on G**; the app counts **BlendUSDC** (`CAQCFVLO…`) on **C** for sends and the main spendable line.
+1. **Address match** — In Sozu Credit open **Depositar → Stellar** and compare the full **C…** address to the account you funded on Blend / Stellar Expert (must be identical). Example: `CBNHZJX4H3MW342RGWV3JM4V6TQ63JTZRTEH6CWK4ZLGWBFHYDCJ2HGJ`.
+2. **Asset** — Stellar Expert often shows **Circle USDC SAC** on **C** (contract derived from issuer `GBBD47…`), not **BlendUSDC** (`CAQCFVLO…`). The balance card includes **both**; **Enviar** still needs **BlendUSDC** on C today.
+3. **Wrong env** — `TESTNET_USDC_CONTRACT_ADDRESS` must be **Blend** (`CAQCFVLO…` with leading `C`), not the SAC id. Do not strip the `C` prefix.
 3. **Server env (production)** — Balance reads simulate against Soroban RPC and need:
    - `SOROBAN_RPC_URL=https://soroban-testnet.stellar.org`
    - `STELLAR_FUNDER_SECRET` (testnet key with a few XLM for simulation source)

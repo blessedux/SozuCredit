@@ -1,12 +1,14 @@
 "use client"
 
 export type UnifiedUsdcBalance = {
-  /** Spendable on the canonical wallet (BlendUSDC on C testnet). */
+  /** Spendable for sends (BlendUSDC on C testnet). */
   walletBalance: number
+  /** Circle USDC SAC on C (testnet) — visible on Stellar Expert, not used for sends yet. */
+  sorobanSacBalance: number
   strategyBalance: number
-  /** wallet + strategy — portfolio total. */
-  totalBalance: number
-  /** Balance card primary figure (includes classic USDC on G signer when C). */
+  /** Visible wallet USDC (Blend + SAC + classic on G signer). */
+  displayWalletUsdc: number
+  /** Balance card primary figure (display wallet + DeFindex strategy). */
   displayBalance: number
   classicOnSigner: number
   spendableAssetLabel: string
@@ -34,6 +36,8 @@ export async function fetchUnifiedUsdcBalance(
   const data = (await res.json()) as {
     usdcBalance?: number
     displayWalletUsdc?: number
+    sorobanUsdcBalance?: number
+    sorobanSacUsdcBalance?: number
     defindexBalance?: number
     totalDisplayUsdcBalance?: number
     spendableAssetLabel?: string
@@ -42,11 +46,17 @@ export async function fetchUnifiedUsdcBalance(
   }
 
   const walletBalance = typeof data.usdcBalance === "number" ? data.usdcBalance : 0
+  const sorobanSacBalance =
+    typeof data.sorobanSacUsdcBalance === "number" ? data.sorobanSacUsdcBalance : 0
   const strategyBalance = typeof data.defindexBalance === "number" ? data.defindexBalance : 0
-  const displayWalletUsdc =
-    typeof data.displayWalletUsdc === "number" ? data.displayWalletUsdc : walletBalance
   const classicOnSigner =
     typeof data.classicUsdcOnSigner === "number" ? data.classicUsdcOnSigner : 0
+
+  const displayWalletUsdc =
+    typeof data.displayWalletUsdc === "number"
+      ? data.displayWalletUsdc
+      : walletBalance + sorobanSacBalance + classicOnSigner
+
   const displayBalance =
     typeof data.totalDisplayUsdcBalance === "number"
       ? data.totalDisplayUsdcBalance
@@ -54,11 +64,12 @@ export async function fetchUnifiedUsdcBalance(
 
   return {
     walletBalance,
+    sorobanSacBalance,
     strategyBalance,
-    totalBalance: walletBalance + strategyBalance,
+    displayWalletUsdc,
     displayBalance,
     classicOnSigner,
     spendableAssetLabel: data.spendableAssetLabel ?? "USDC",
-    walletAddress: data.publicKey ?? publicKey ?? "",
+    walletAddress: (data.publicKey ?? publicKey ?? "").trim().toUpperCase(),
   }
 }

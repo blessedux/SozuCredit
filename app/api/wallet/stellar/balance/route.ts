@@ -140,6 +140,14 @@ export async function GET(request: NextRequest) {
       console.warn(
         "[Stellar Balance API] C wallet shows 0 Soroban USDC — verify BlendUSDC was sent to this exact address and STELLAR_FUNDER_SECRET + SOROBAN_RPC_URL are set on the server.",
       )
+    } else if (
+      publicKeyToUse.startsWith("C") &&
+      usdcBreakdown.sorobanOnWallet === 0 &&
+      usdcBreakdown.sorobanSacOnWallet > 0
+    ) {
+      console.log(
+        "[Stellar Balance API] C wallet holds Circle SAC USDC (visible on Stellar Expert); BlendUSDC is 0 — sends still require Blend on C.",
+      )
     }
     
     // Check DeFindex position if we have a userId

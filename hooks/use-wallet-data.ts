@@ -21,8 +21,12 @@ export interface TrustPoints {
 }
 
 export interface DefindexBalance {
+  /** BlendUSDC on C — used for Soroban sends. */
   walletBalance: number
+  /** Circle USDC SAC on C (testnet) — shown on Stellar Expert. */
+  sorobanSacBalance: number
   strategyBalance: number
+  /** @deprecated Use displayBalance — kept for audit panel total row migration. */
   totalBalance: number
   /** Primary balance card figure (wallet + strategy + classic on G signer when applicable). */
   displayBalance: number
@@ -105,23 +109,37 @@ export function useWalletData() {
   const refreshUnifiedBalance = useCallback(async (userId: string, publicKey?: string) => {
     try {
       const { fetchUnifiedUsdcBalance } = await import("@/lib/wallet/unified-usdc-balance")
-      const unified = await fetchUnifiedUsdcBalance(userId, publicKey)
+      const pk =
+        publicKey?.trim().toUpperCase() ||
+        (typeof window !== "undefined"
+          ? localStorage.getItem("stellar_public_key") ??
+            sessionStorage.getItem("stellar_public_key") ??
+            ""
+          : "")
+
+      const unified = await fetchUnifiedUsdcBalance(userId, pk || undefined)
       if (!unified) {
+        console.warn("[Wallet] Unified balance fetch failed for", pk?.slice(0, 12) || userId)
         setIsBalanceLoading(false)
         return
       }
       console.log("[Wallet] ✅ Unified USDC balance:", unified)
       setDefindexBalance((prev) => ({
         walletBalance: unified.walletBalance,
+        sorobanSacBalance: unified.sorobanSacBalance,
         strategyBalance: unified.strategyBalance,
-        totalBalance: unified.totalBalance,
+        totalBalance: unified.displayBalance,
         displayBalance: unified.displayBalance,
         classicOnSigner: unified.classicOnSigner,
         strategyShares: prev?.strategyShares ?? 0,
         apy: prev?.apy ?? 15.5,
       }))
-      if (unified.walletAddress && unified.walletAddress !== publicKey) {
+      if (unified.walletAddress && unified.walletAddress.length === 56) {
         setWalletAddress(unified.walletAddress)
+        if (typeof window !== "undefined") {
+          localStorage.setItem("stellar_public_key", unified.walletAddress)
+          sessionStorage.setItem("stellar_public_key", unified.walletAddress)
+        }
       }
     } catch (error) {
       console.error("[Wallet] ❌ Error fetching unified balance:", error)
@@ -243,13 +261,12 @@ export function useWalletData() {
             const strategyBalance = defindexData.strategyBalance || 0
             const walletBalance = prev?.walletBalance ?? 0
             const classicOnSigner = prev?.classicOnSigner ?? 0
-            const displayBalance =
-              prev?.displayBalance ??
-              walletBalance + classicOnSigner + strategyBalance
+            const displayBalance = prev?.displayBalance ?? prev?.totalBalance ?? 0
             return {
               walletBalance,
+              sorobanSacBalance: prev?.sorobanSacBalance ?? 0,
               strategyBalance,
-              totalBalance: walletBalance + strategyBalance,
+              totalBalance: displayBalance,
               displayBalance,
               classicOnSigner,
               strategyShares: defindexData.strategyShares || 0,

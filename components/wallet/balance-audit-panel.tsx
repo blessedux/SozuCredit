@@ -77,6 +77,8 @@ export const BalanceAuditPanel = memo(function BalanceAuditPanel({
 
   const strategyBalance = defindexBalance?.strategyBalance ?? 0
   const walletBalance = defindexBalance?.walletBalance ?? 0
+  const sorobanSacBalance = defindexBalance?.sorobanSacBalance ?? 0
+  const displayTotal = defindexBalance?.displayBalance ?? 0
 
   const MIN_DEPOSIT = Number(process.env.NEXT_PUBLIC_VAULT_MIN_DEPOSIT || "10") || 10
   const FEE_BUFFER = Number(process.env.NEXT_PUBLIC_VAULT_FEE_BUFFER || "0.4") || 0.4
@@ -120,12 +122,30 @@ export const BalanceAuditPanel = memo(function BalanceAuditPanel({
         <p className="text-[10px] uppercase tracking-widest text-white/40">{t.usdcBalanceSection}</p>
         {defindexBalance ? (
           <div className="space-y-2">
-            <div className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/10">
-              <span className="text-white/80 text-sm">{t.walletBalanceLabel}</span>
-              <span className="text-white font-medium tabular-nums">
-                ${defindexBalance.walletBalance === 0 ? "0" : defindexBalance.walletBalance.toFixed(2)} USD
-              </span>
-            </div>
+            {walletBalance > 0 ? (
+              <div className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/10">
+                <span className="text-white/80 text-sm">{t.walletBlendBalanceLabel}</span>
+                <span className="text-white font-medium tabular-nums">
+                  ${walletBalance.toFixed(2)} USD
+                </span>
+              </div>
+            ) : null}
+            {sorobanSacBalance > 0 ? (
+              <div className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/10">
+                <span className="text-white/80 text-sm">{t.walletSacBalanceLabel}</span>
+                <span className="text-white font-medium tabular-nums">
+                  ${sorobanSacBalance.toFixed(2)} USD
+                </span>
+              </div>
+            ) : null}
+            {defindexBalance.classicOnSigner > 0 ? (
+              <div className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/10">
+                <span className="text-white/80 text-sm">{t.walletSignerBalanceLabel}</span>
+                <span className="text-white/70 font-medium tabular-nums">
+                  ${defindexBalance.classicOnSigner.toFixed(2)} USD
+                </span>
+              </div>
+            ) : null}
             <div className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/10">
               <span className="text-white/80 text-sm">{t.defiStrategyLabel}</span>
               <span className="text-green-400 font-medium tabular-nums">
@@ -135,9 +155,12 @@ export const BalanceAuditPanel = memo(function BalanceAuditPanel({
             <div className="flex justify-between items-center p-3 bg-white/10 rounded-lg border-2 border-white/20">
               <span className="text-white font-semibold text-sm">{t.totalLabel}</span>
               <span className="text-white font-bold tabular-nums">
-                ${defindexBalance.totalBalance === 0 ? "0" : defindexBalance.totalBalance.toFixed(2)} USD
+                ${displayTotal === 0 ? "0" : displayTotal.toFixed(2)} USD
               </span>
             </div>
+            {walletBalance === 0 && sorobanSacBalance > 0 ? (
+              <p className="text-[10px] leading-snug text-amber-200/80 px-1">{t.walletSacSendHint}</p>
+            ) : null}
             {defindexBalance.strategyShares > 0 && (
               <div className="flex justify-between items-center px-3 py-2">
                 <span className="text-white/50 text-xs">{t.defindexSharesLabel}</span>

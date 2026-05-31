@@ -211,7 +211,12 @@ function getBlendUsdcContractId(network: "testnet" | "mainnet"): string {
   )
 }
 
-function getCircleTestnetUsdcSacContractId(): string | null {
+/** Circle testnet USDC Stellar Asset Contract — what Stellar Expert often shows on C wallets. */
+export function getCircleTestnetUsdcSacContractId(): string | null {
+  const override = process.env.TESTNET_CIRCLE_USDC_SAC_CONTRACT_ADDRESS?.trim()
+  if (override?.startsWith("C") && override.length === 56) {
+    return override.toUpperCase()
+  }
   try {
     const issuer =
       process.env.CIRCLE_TESTNET_USDC_ISSUER?.trim() ||
@@ -242,9 +247,11 @@ export async function getSorobanUsdcOnContractWallet(
 
   if (blend > 0 || circleSac > 0) {
     console.log("[SorobanToken] C wallet USDC:", {
-      wallet: `${wallet.slice(0, 8)}…`,
+      wallet,
       blend,
       circleSac,
+      blendContract: getBlendUsdcContractId(network),
+      sacContract: getCircleTestnetUsdcSacContractId(),
     })
   }
 

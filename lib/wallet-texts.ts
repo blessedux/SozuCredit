@@ -255,6 +255,10 @@ export type WalletTexts = {
   close: string;
   usdcBalanceSection: string;
   walletBalanceLabel: string;
+  walletBlendBalanceLabel: string;
+  walletSacBalanceLabel: string;
+  walletSignerBalanceLabel: string;
+  walletSacSendHint: string;
   defiStrategyLabel: string;
   totalLabel: string;
   defindexSharesLabel: string;
@@ -634,6 +638,11 @@ export const walletTexts = {
     close: "Cerrar",
     usdcBalanceSection: "Saldo USDC",
     walletBalanceLabel: "Billetera",
+    walletBlendBalanceLabel: "BlendUSDC (envíos)",
+    walletSacBalanceLabel: "USDC Circle (SAC en C)",
+    walletSignerBalanceLabel: "USDC en cuenta G (firmante)",
+    walletSacSendHint:
+      "Tienes USDC en el contrato SAC de Circle en tu C. Los envíos en la app usan BlendUSDC — obtén Blend en testnet.blend.capital o convierte según el pool.",
     defiStrategyLabel: "Estrategia DeFi",
     totalLabel: "Total",
     defindexSharesLabel: "Shares DeFindex",
@@ -980,6 +989,11 @@ export const walletTexts = {
     close: "Close",
     usdcBalanceSection: "USDC balance",
     walletBalanceLabel: "Wallet",
+    walletBlendBalanceLabel: "BlendUSDC (sends)",
+    walletSacBalanceLabel: "Circle USDC (SAC on C)",
+    walletSignerBalanceLabel: "USDC on G signer",
+    walletSacSendHint:
+      "You hold Circle USDC SAC on your C smart account. In-app sends use BlendUSDC — mint Blend at testnet.blend.capital to pay.",
     defiStrategyLabel: "DeFi strategy",
     totalLabel: "Total",
     defindexSharesLabel: "DeFindex shares",

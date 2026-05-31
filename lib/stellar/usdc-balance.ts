@@ -57,6 +57,14 @@ export async function getUsdcBalanceBreakdown(params: {
     const classicOnSigner =
       signer && signer !== wallet ? await getClassicUsdcOnG(signer) : 0
     const displayOnWallet = soroban.total + classicOnSigner
+    const spendableAssetLabel =
+      network === "testnet"
+        ? soroban.blend > 0
+          ? "BlendUSDC"
+          : soroban.circleSac > 0
+            ? "USDC (SAC)"
+            : "BlendUSDC"
+        : "USDC"
 
     return {
       sorobanOnWallet: soroban.blend,
@@ -65,7 +73,7 @@ export async function getUsdcBalanceBreakdown(params: {
       classicOnSigner,
       spendable: soroban.blend,
       displayOnWallet,
-      spendableAssetLabel: network === "testnet" ? "BlendUSDC" : "USDC",
+      spendableAssetLabel,
       walletAddress: wallet,
       signerPublicKey: signer,
       network,
