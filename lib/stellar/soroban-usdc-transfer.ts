@@ -99,52 +99,30 @@ export async function buildSorobanUsdcTransferXdr(params: {
 }
 
 /**
- * OZ passkey smart account (C) as source — returns envelope for WebAuthn auth signing.
+ * OZ passkey smart account (C) as token holder — fee payer must be classic G signer.
+ * Soroban RPC cannot use C as transaction source (StrKey ed25519 decode).
  */
 export async function buildOzSmartUsdcTransferEnvelope(params: {
   fromContractId: string
   toAddress: string
   amount: string
+  signerPublicKey: string
   network?: "testnet" | "mainnet"
-}): Promise<{ envelopeXdr: string; paymentRail: "smart"; signMethod: "oz_passkey" }> {
-  const cfg = getStellarConfig()
-  const network = params.network ?? cfg.network
+}): Promise<{ unsignedXdr: string; paymentRail: "smart"; signMethod: "oz_passkey" }> {
   const from = params.fromContractId.trim().toUpperCase()
-  const to = params.toAddress.trim().toUpperCase()
-
   if (!from.startsWith("C")) {
     throw new Error("fromContractId must be a smart account (C…).")
   }
 
-  const rpcUrl = getSorobanRpcUrl(network)
-  const server = new rpc.Server(rpcUrl, { allowHttp: network === "testnet" })
-  const networkPassphrase = getNetworkPassphrase(network)
-  const token = new Contract(getUsdcTokenContractId(network))
-
-  const account = await server.getAccount(from)
-  const amountScVal = amountToI128ScVal(params.amount)
-
-  const rawTx = new TransactionBuilder(account, {
-    fee: "100000",
-    networkPassphrase,
+  const { unsignedXdr, paymentRail } = await buildSorobanUsdcTransferXdr({
+    signerPublicKey: params.signerPublicKey,
+    fromAddress: from,
+    toAddress: params.toAddress,
+    amount: params.amount,
+    network: params.network,
   })
-    .addOperation(
-      token.call(
-        "transfer",
-        Address.fromString(from).toScVal(),
-        Address.fromString(to).toScVal(),
-        amountScVal
-      )
-    )
-    .setTimeout(60)
-    .build()
 
-  const prepared = await server.prepareTransaction(rawTx)
-  return {
-    envelopeXdr: prepared.toEnvelope().toXDR("base64"),
-    paymentRail: "smart",
-    signMethod: "oz_passkey",
-  }
+  return { unsignedXdr, paymentRail, signMethod: "oz_passkey" }
 }
 
 export async function submitSignedSorobanEnvelope(signedEnvelopeXdr: string): Promise<string> {

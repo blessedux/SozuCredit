@@ -3,15 +3,26 @@
 import type { SmartAccountKit } from "smart-account-kit"
 import type { xdr } from "@stellar/stellar-sdk"
 
-export async function signSorobanEnvelopeWithPasskey(params: {
+/**
+ * Sign Soroban USDC transfer auth entries for a passkey smart account (C).
+ *
+ * The prepared transaction must use a classic G address as `source` (fee payer).
+ * The C smart account only appears in the token transfer args + auth entries.
+ */
+export async function signSorobanPreparedTxWithPasskey(params: {
   kit: SmartAccountKit
-  envelopeXdr: string
+  unsignedXdr: string
   networkPassphrase: string
   credentialId?: string | null
 }): Promise<string> {
-  const { Transaction, TransactionBuilder, Operation } = await import("@stellar/stellar-sdk")
+  const { TransactionBuilder, Operation, Transaction } = await import("@stellar/stellar-sdk")
 
-  const tx = new Transaction(params.envelopeXdr, params.networkPassphrase)
+  const parsed = TransactionBuilder.fromXDR(params.unsignedXdr, params.networkPassphrase)
+  if (!(parsed instanceof Transaction)) {
+    throw new Error("Fee bump transactions are not supported")
+  }
+  const tx = parsed
+
   if (tx.operations.length !== 1) {
     throw new Error("Expected a single Soroban operation.")
   }
@@ -19,6 +30,12 @@ export async function signSorobanEnvelopeWithPasskey(params: {
   const op = tx.operations[0]
   if (op.type !== "invokeHostFunction") {
     throw new Error("Expected invokeHostFunction operation.")
+  }
+
+  if (!tx.source.startsWith("G")) {
+    throw new Error(
+      "Invalid prepared transaction: fee payer must be a classic G address, not a C smart account.",
+    )
   }
 
   const invokeOp = op as {
@@ -32,7 +49,7 @@ export async function signSorobanEnvelopeWithPasskey(params: {
     signedAuth.push(
       await params.kit.signAuthEntry(entry, {
         credentialId: params.credentialId ?? undefined,
-      })
+      }),
     )
   }
 
@@ -45,11 +62,26 @@ export async function signSorobanEnvelopeWithPasskey(params: {
       Operation.invokeHostFunction({
         func: invokeOp.func,
         auth: signedAuth,
-      })
+      }),
     )
     .setTimeout(60)
     .build()
 
   const prepared = await params.kit.rpc.prepareTransaction(rebuilt)
   return prepared.toEnvelope().toXDR("base64")
+}
+
+/** @deprecated Use signSorobanPreparedTxWithPasskey with unsignedXdr from buildSorobanUsdcTransferXdr */
+export async function signSorobanEnvelopeWithPasskey(params: {
+  kit: SmartAccountKit
+  envelopeXdr: string
+  networkPassphrase: string
+  credentialId?: string | null
+}): Promise<string> {
+  return signSorobanPreparedTxWithPasskey({
+    kit: params.kit,
+    unsignedXdr: params.envelopeXdr,
+    networkPassphrase: params.networkPassphrase,
+    credentialId: params.credentialId,
+  })
 }

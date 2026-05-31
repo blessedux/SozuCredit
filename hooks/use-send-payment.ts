@@ -249,6 +249,20 @@ export function useSendPayment(
 
     setIsSending(true)
     try {
+      let passkeySignerG: string | undefined
+      try {
+        const { getCurrentCredentialId } = await import("@/lib/storage/key-utils")
+        const { deriveAndStoreKey } = await import("@/lib/storage/browser-keys")
+        const credId = await getCurrentCredentialId(walletAddress)
+        if (credId) {
+          const { publicKey } = await deriveAndStoreKey(credId, userId)
+          const g = publicKey.trim().toUpperCase()
+          if (g.startsWith("G") && g.length === 56) passkeySignerG = g
+        }
+      } catch {
+        // Server may still have signer_public_key on file
+      }
+
       const buildResponse = await fetch("/api/wallet/stellar/payment", {
         method: "POST",
         headers: {
@@ -259,6 +273,7 @@ export function useSendPayment(
           destination: resolvedRecipientAddress,
           amount: amount.toString(),
           sender: walletAddress,
+          ...(passkeySignerG ? { signer: passkeySignerG } : {}),
           memo: sendMemo.trim() || undefined,
         }),
       })
@@ -273,20 +288,31 @@ export function useSendPayment(
 
       let submitBody: { signedTransactionXdr?: string; signedEnvelopeXdr?: string }
 
-      if (signMethod === "oz_passkey" && typeof build.envelopeXdr === "string") {
+      const ozUnsignedXdr =
+        typeof build.unsignedXdr === "string"
+          ? build.unsignedXdr
+          : typeof build.envelopeXdr === "string"
+            ? build.envelopeXdr
+            : null
+
+      if (signMethod === "oz_passkey" && ozUnsignedXdr) {
         const { getSmartAccountKit } = await import("@/lib/stellar/smartAccounts/client")
-        const { signSorobanEnvelopeWithPasskey } = await import("@/lib/stellar/smartAccounts/signSorobanUsdc")
+        const { signSorobanPreparedTxWithPasskey } = await import(
+          "@/lib/stellar/smartAccounts/signSorobanUsdc"
+        )
         const { getCurrentCredentialId } = await import("@/lib/storage/key-utils")
         const { kit, config } = await getSmartAccountKit()
         const credentialId =
           (typeof build.ozCredentialId === "string" ? build.ozCredentialId : null) ||
-          (await getCurrentCredentialId(walletAddress))
+          (await getCurrentCredentialId(
+            typeof build.signerPublicKey === "string" ? build.signerPublicKey : walletAddress,
+          ))
         if (!credentialId) {
           throw new Error("Credential ID not found. Please log in again.")
         }
-        const signedEnvelopeXdr = await signSorobanEnvelopeWithPasskey({
+        const signedEnvelopeXdr = await signSorobanPreparedTxWithPasskey({
           kit,
-          envelopeXdr: build.envelopeXdr,
+          unsignedXdr: ozUnsignedXdr,
           networkPassphrase: config.networkPassphrase,
           credentialId,
         })

@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const userId = request.headers.get("x-user-id")
-    const { destination, amount, sender, memo } = body
+    const { destination, amount, sender, signer: signerFromBody, memo } = body
 
     if (!userId) {
       return NextResponse.json(
@@ -558,6 +558,11 @@ export async function POST(request: NextRequest) {
 
     const senderPk = wallet.publicKey.trim().toUpperCase()
     let signerPk = wallet.signerPublicKey?.trim().toUpperCase() || null
+    const bodySigner =
+      typeof signerFromBody === "string" ? signerFromBody.trim().toUpperCase() : ""
+    if (!signerPk && bodySigner.startsWith("G") && bodySigner.length === 56) {
+      signerPk = bodySigner
+    }
     if (!signerPk && senderPk.startsWith("G")) {
       signerPk = senderPk
     }
@@ -612,33 +617,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error }, { status: 400, headers: corsHeaders(request) })
     }
 
+    if (!signerPk || !signerPk.startsWith("G")) {
+      return NextResponse.json(
+        {
+          error:
+            "Smart wallet signer (G…) missing in our records. Sign out, sign in with passkey again, and retry — we need your classic signer to pay Soroban fees while your C account holds USDC.",
+          code: "SMART_SIGNER_REQUIRED",
+        },
+        { status: 422, headers: corsHeaders(request) }
+      )
+    }
+
     if (walletType === "oz") {
       const prepared = await buildOzSmartUsdcTransferEnvelope({
         fromContractId: senderPk,
         toAddress: destinationNorm,
         amount: String(amount),
+        signerPublicKey: signerPk,
         network: stellarConfig.network,
       })
       return NextResponse.json(
         {
-          envelopeXdr: prepared.envelopeXdr,
+          unsignedXdr: prepared.unsignedXdr,
           paymentRail: "smart",
           signMethod: "oz_passkey",
+          signerPublicKey: signerPk,
           walletAddress: senderPk,
           ozCredentialId: wallet.ozCredentialId ?? null,
         },
         { headers: corsHeaders(request) }
-      )
-    }
-
-    if (!signerPk || !signerPk.startsWith("G")) {
-      return NextResponse.json(
-        {
-          error:
-            "Smart wallet signer missing. Re-open the app to finish smart account setup.",
-          code: "SMART_SIGNER_REQUIRED",
-        },
-        { status: 422, headers: corsHeaders(request) }
       )
     }
 
