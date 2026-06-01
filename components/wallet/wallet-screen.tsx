@@ -17,7 +17,9 @@ import { getOrCreateRealWallet } from "@/lib/stellar/wallet-creator"
 import {
   isSmartContractWalletAddress,
   markWalletActivationComplete,
+  markWelcomeOnboardingComplete,
   needsWalletActivationOnboarding,
+  needsWelcomeOnboarding,
 } from "@/lib/wallet/needs-activation-onboarding"
 
 // Hooks
@@ -153,6 +155,7 @@ export function WalletScreen({
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [paymentReceipt, setPaymentReceipt] = useState<PaymentReceipt | null>(null)
   const [receiptModalVariant, setReceiptModalVariant] = useState<ReceiptModalVariant>("success")
+  const [welcomeNeeded, setWelcomeNeeded] = useState(false)
   const [activationNeeded, setActivationNeeded] = useState(false)
   const [isActivating, setIsActivating] = useState(false)
   const [activationMessage, setActivationMessage] = useState<string | null>(null)
@@ -174,15 +177,12 @@ export function WalletScreen({
   // Get base balance
   const baseBalance = useMemo(() => {
     if (defindexBalance) {
-      const display =
-        defindexBalance.displayBalance ?? defindexBalance.totalBalance ?? 0
-      if (display > 0) return display
       const parts =
         (defindexBalance.walletBalance ?? 0) +
         (defindexBalance.sorobanSacBalance ?? 0) +
-        (defindexBalance.classicOnSigner ?? 0) +
         (defindexBalance.strategyBalance ?? 0)
-      return parts > 0 ? parts : display
+      if (parts > 0) return parts
+      return defindexBalance.displayBalance ?? defindexBalance.totalBalance ?? 0
     }
     return Number(vault?.balance || 0)
   }, [defindexBalance, vault?.balance])
@@ -261,15 +261,37 @@ export function WalletScreen({
     }
   }, [])
 
-  // Refresh handler
-  const handleRefresh = useCallback(() => {
-    if (walletAddress) {
+  /** Reload balances + tx list; Soroban SAC can lag 2–15s after a successful send. */
+  const refreshWalletData = useCallback(
+    async (opts?: { pollSoroban?: boolean }) => {
+      if (!walletAddress) return
       const uid = getUserId()
-      if (uid) fetchXLMBalance(walletAddress, uid, { gateBalance: true })
-      fetchWalletUSDCBalance(walletAddress)
-      fetchTransactionHistory(walletAddress)
-    }
-  }, [walletAddress, fetchXLMBalance, fetchWalletUSDCBalance, fetchTransactionHistory])
+      const run = async () => {
+        if (uid) void fetchXLMBalance(walletAddress, uid, { gateBalance: true })
+        await fetchWalletUSDCBalance(walletAddress)
+        if (uid) void fetchDefindexBalance(uid, walletAddress)
+        void fetchTransactionHistory(walletAddress)
+      }
+      await run()
+      if (opts?.pollSoroban && walletAddress.startsWith("C")) {
+        for (const ms of [4000, 10000]) {
+          await new Promise((resolve) => setTimeout(resolve, ms))
+          await run()
+        }
+      }
+    },
+    [
+      walletAddress,
+      fetchXLMBalance,
+      fetchWalletUSDCBalance,
+      fetchDefindexBalance,
+      fetchTransactionHistory,
+    ],
+  )
+
+  const handleRefresh = useCallback(() => {
+    void refreshWalletData()
+  }, [refreshWalletData])
 
   const handleBalanceRefresh = useCallback(async () => {
     if (!walletAddress) return
@@ -289,6 +311,11 @@ export function WalletScreen({
       fetchAPY(uid)
     }
   }, [walletAddress, fetchWalletUSDCBalance, fetchDefindexBalance, fetchAPY])
+
+  /** Stable callback — inline arrows in SendPaymentModal caused a balance-fetch loop. */
+  const handleSendModalRefresh = useCallback(async () => {
+    await refreshWalletData({ pollSoroban: false })
+  }, [refreshWalletData])
 
   const { pull, progress, refreshing, isPulling, handlers: pullHandlers } = usePullToRefresh({
     onRefresh: handleBalanceRefresh,
@@ -315,13 +342,17 @@ export function WalletScreen({
     return () => el.removeEventListener("touchmove", blockScroll)
   }, [shellLayout, isPulling, pull])
 
-  // Success handler
-  const handleSendSuccess = useCallback((receipt: PaymentReceipt) => {
-    setPaymentReceipt(receipt)
-    setReceiptModalVariant("success")
-    setShowSuccessModal(true)
-    setSendModalOpen(false)
-  }, [setSendModalOpen])
+  // Success handler — poll Soroban balance (RPC/indexing lags behind confirmation UI)
+  const handleSendSuccess = useCallback(
+    (receipt: PaymentReceipt) => {
+      setPaymentReceipt(receipt)
+      setReceiptModalVariant("success")
+      setShowSuccessModal(true)
+      setSendModalOpen(false)
+      void refreshWalletData({ pollSoroban: true })
+    },
+    [setSendModalOpen, refreshWalletData],
+  )
 
   const handleTransactionSelect = useCallback(
     (tx: Transaction) => {
@@ -339,43 +370,42 @@ export function WalletScreen({
     [walletAddress, walletNetwork, addressToTagMap],
   )
 
-  const refreshActivationState = useCallback(async () => {
-    if (!walletAddress || walletNetwork !== "testnet") {
+  const refreshOnboardingState = useCallback(async () => {
+    if (walletNetwork !== "testnet") {
+      setWelcomeNeeded(false)
       setActivationNeeded(false)
       return
     }
-    const needed = await needsWalletActivationOnboarding({
+    const userId = getUserId()
+    const welcome = needsWelcomeOnboarding({ walletNetwork, userId })
+    setWelcomeNeeded(welcome)
+
+    if (welcome || !walletAddress) {
+      setActivationNeeded(false)
+      return
+    }
+
+    const legacyG = await needsWalletActivationOnboarding({
       walletAddress,
       walletNetwork,
-      userId: getUserId(),
+      userId,
     })
-    setActivationNeeded(needed)
+    setActivationNeeded(legacyG)
   }, [walletAddress, walletNetwork])
 
   useEffect(() => {
-    void refreshActivationState()
-  }, [refreshActivationState])
-
-  // Canonical C loaded after a brief G in session — dismiss onboarding immediately.
-  useEffect(() => {
-    if (!isSmartContractWalletAddress(walletAddress)) return
-    setActivationNeeded(false)
-    if (showActivationOnboarding) {
-      setShowActivationOnboarding(false)
-      setWalletRevealed(true)
-      setActivationSettled(false)
-      setIsActivating(false)
-    }
-    autoActivationStartedRef.current = true
-  }, [walletAddress, showActivationOnboarding])
+    void refreshOnboardingState()
+  }, [refreshOnboardingState])
 
   const handleActivationOnboardingExit = useCallback(async () => {
+    markWelcomeOnboardingComplete(getUserId())
     markWalletActivationComplete()
     setShowActivationOnboarding(false)
     setWalletRevealed(true)
     setActivationSettled(false)
-    await refreshActivationState()
-  }, [refreshActivationState])
+    setWelcomeNeeded(false)
+    await refreshOnboardingState()
+  }, [refreshOnboardingState])
 
   const runActivationWithOnboarding = useCallback(async () => {
     if (!walletAddress || walletNetwork !== "testnet" || isActivating) return
@@ -414,20 +444,81 @@ export function WalletScreen({
     fetchTransactionHistory,
   ])
 
+  const runWelcomeOnboarding = useCallback(async () => {
+    if (walletNetwork !== "testnet") return
+
+    setShowActivationOnboarding(true)
+    setWalletRevealed(false)
+    setActivationMessage(null)
+
+    const isLegacyG =
+      walletAddress?.startsWith("G") &&
+      walletAddress.length === 56 &&
+      !isSmartContractWalletAddress(walletAddress)
+
+    if (isLegacyG && activationNeeded) {
+      setIsActivating(true)
+      setActivationSettled(false)
+      try {
+        const userId = getUserId()
+        const result = await getOrCreateRealWallet(userId || undefined, {
+          onStatusUpdate: (s) => setActivationMessage(s.message),
+        })
+        if (result.status === "error") throw new Error(result.error || result.message)
+        markWalletActivationComplete()
+        const uid = typeof window !== "undefined" ? sessionStorage.getItem("dev_username") : null
+        if (uid && walletAddress) fetchXLMBalance(walletAddress, uid, { gateBalance: true })
+        fetchWalletUSDCBalance(walletAddress)
+        fetchTransactionHistory(walletAddress)
+      } catch (e) {
+        setActivationMessage(e instanceof Error ? e.message : String(e))
+        autoActivationStartedRef.current = false
+      } finally {
+        setActivationSettled(true)
+        setIsActivating(false)
+      }
+      return
+    }
+
+    setActivationSettled(true)
+    setIsActivating(false)
+  }, [
+    walletNetwork,
+    walletAddress,
+    activationNeeded,
+    fetchXLMBalance,
+    fetchWalletUSDCBalance,
+    fetchTransactionHistory,
+  ])
+
   useEffect(() => {
     if (isLoading) return
-    if (!walletAddress || walletNetwork !== "testnet" || !activationNeeded) return
-    if (isSmartContractWalletAddress(walletAddress)) return
+    if (walletNetwork !== "testnet") return
     if (autoActivationStartedRef.current || isActivating || showActivationOnboarding) return
+
+    const userId = getUserId()
+    if (!userId) return
+
+    if (welcomeNeeded || needsWelcomeOnboarding({ walletNetwork, userId })) {
+      autoActivationStartedRef.current = true
+      void runWelcomeOnboarding()
+      return
+    }
+
+    if (!walletAddress || !activationNeeded) return
+    if (isSmartContractWalletAddress(walletAddress)) return
+
     autoActivationStartedRef.current = true
     void runActivationWithOnboarding()
   }, [
     isLoading,
     walletAddress,
     walletNetwork,
+    welcomeNeeded,
     activationNeeded,
     isActivating,
     showActivationOnboarding,
+    runWelcomeOnboarding,
     runActivationWithOnboarding,
   ])
 
@@ -460,8 +551,8 @@ export function WalletScreen({
         console.error("[Wallet] Error fetching balance after wallet creation:", error)
       }
     }
-    await refreshActivationState()
-  }, [setWalletAddress, setWalletNetwork, refreshActivationState])
+    await refreshOnboardingState()
+  }, [setWalletAddress, setWalletNetwork, refreshOnboardingState])
 
   const walletContentClass = cn(
     "transition-opacity duration-700 ease-out",
@@ -514,7 +605,7 @@ export function WalletScreen({
           defindexBalance={defindexBalance}
           referenceFiat={treasuryData.prefs.referenceFiat}
           onSuccess={handleSendSuccess}
-          onRefresh={handleRefresh}
+          onRefresh={handleSendModalRefresh}
         />
       </Suspense>
 

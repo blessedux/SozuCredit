@@ -97,6 +97,23 @@ export function credentialIdToBuffer(credentialId: string): Buffer {
   return Buffer.from(padded + pad, "base64")
 }
 
+/**
+ * Credential id bytes for on-chain keyData suffix — prefer WebAuthn rawId when stored at login/register.
+ */
+export function resolveCredentialIdBytes(credentialId: string): Buffer {
+  if (typeof window !== "undefined") {
+    const raw = sessionStorage.getItem("credential_raw_id")?.trim()
+    if (raw) {
+      try {
+        return credentialIdToBuffer(raw)
+      } catch {
+        /* fall through */
+      }
+    }
+  }
+  return credentialIdToBuffer(credentialId)
+}
+
 /** OZ External signer key blob: 65-byte uncompressed pubkey + raw WebAuthn credential id. */
 export function buildExternalSignerKeyData(
   publicKey65: Uint8Array,

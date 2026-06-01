@@ -10,8 +10,12 @@ import { persistCanonicalWalletSession } from "@/lib/wallet/persist-wallet-sessi
 export async function relinkSmartWalletForPayments(
   userId: string,
   loginCredentialId?: string,
-): Promise<{ contractId: string; walletType: "oz" | "factory" }> {
+): Promise<{ contractId: string; walletType: "oz" | "factory"; credentialId?: string }> {
   const result = await ensureSmartWallet(userId, loginCredentialId)
   persistCanonicalWalletSession(result.publicKey, result.walletType, result.credentialId)
-  return { contractId: result.publicKey, walletType: result.walletType }
+  return {
+    contractId: result.publicKey,
+    walletType: result.walletType,
+    credentialId: result.credentialId,
+  }
 }

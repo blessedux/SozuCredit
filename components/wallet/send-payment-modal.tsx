@@ -40,10 +40,17 @@ interface SendPaymentModalProps {
   onClose: () => void
   walletAddress: string
   walletNetwork: "testnet" | "mainnet"
-  defindexBalance: { walletBalance: number; strategyBalance: number; totalBalance: number } | null
+  defindexBalance: {
+    walletBalance: number
+    sorobanSacBalance?: number
+    spendableOnC?: number
+    strategyBalance: number
+    totalBalance: number
+    displayBalance?: number
+  } | null
   referenceFiat: ReferenceFiat
   onSuccess: (receipt: PaymentReceipt) => void
-  onRefresh: () => void
+  onRefresh: () => void | Promise<void>
 }
 
 export const SendPaymentModal = memo(function SendPaymentModal({
@@ -56,16 +63,20 @@ export const SendPaymentModal = memo(function SendPaymentModal({
   onSuccess,
   onRefresh,
 }: SendPaymentModalProps) {
+  const { t } = useWalletLanguage()
+
   const {
     sendRecipient,
     sendAmount,
     amountInputCurrency,
     isSending,
+    sendPhase,
     sendStep,
     isResolvingRecipient,
     isManualMode,
     sendMemo,
     recipientError,
+    amountError,
     isVibrating,
     legacyPaymentNotice,
     setSendRecipient,
@@ -73,10 +84,13 @@ export const SendPaymentModal = memo(function SendPaymentModal({
     setIsManualMode,
     setSendMemo,
     setRecipientError,
+    setAmountError,
     toggleAmountCurrency,
     handleResolveRecipient,
     handleSendPayment,
     resetSendPayment,
+    goBackToRecipient,
+    cacheRecipientResolution,
   } = useSendPayment(
     walletAddress,
     walletNetwork,
@@ -84,9 +98,9 @@ export const SendPaymentModal = memo(function SendPaymentModal({
     referenceFiat,
     onSuccess,
     onRefresh,
+    t.sendInsufficientBalance,
   )
 
-  const { t } = useWalletLanguage()
   const [isScannerOpen, setIsScannerOpen] = useState(false)
   const [pendingAutoResolve, setPendingAutoResolve] = useState(false)
   const [portalReady, setPortalReady] = useState(false)
@@ -94,6 +108,36 @@ export const SendPaymentModal = memo(function SendPaymentModal({
   useEffect(() => {
     setPortalReady(true)
   }, [])
+
+  const refreshOnOpenRef = useRef(false)
+  useEffect(() => {
+    if (!isOpen) {
+      refreshOnOpenRef.current = false
+      return
+    }
+    if (refreshOnOpenRef.current) return
+    refreshOnOpenRef.current = true
+    void Promise.resolve(onRefresh())
+  }, [isOpen, onRefresh])
+
+  // Warm up kit + credential storage as soon as modal opens so the passkey
+  // prompt can appear quickly when the user taps Send.
+  useEffect(() => {
+    if (!isOpen || !walletAddress.startsWith("C")) return
+    void (async () => {
+      try {
+        const { getSmartAccountKit } = await import("@/lib/stellar/smartAccounts/client")
+        const { ensureKitConnectedForSend } = await import("@/lib/stellar/smartAccounts/ensureKitConnected")
+        const { getCurrentCredentialId } = await import("@/lib/storage/key-utils")
+        const credentialId = await getCurrentCredentialId(walletAddress)
+        if (!credentialId) return
+        const { kit } = await getSmartAccountKit()
+        await ensureKitConnectedForSend(kit, credentialId, walletAddress.trim().toUpperCase())
+      } catch {
+        /* non-fatal warm-up */
+      }
+    })()
+  }, [isOpen, walletAddress])
 
   // Real-time recipient validation
   type ValidationState = "idle" | "checking" | "valid" | "invalid"
@@ -205,6 +249,12 @@ export const SendPaymentModal = memo(function SendPaymentModal({
           setValidationLabel(
             data.paymentRail === "legacy" ? `${tagLabel} · legacy` : tagLabel,
           )
+          cacheRecipientResolution(
+            normalizedTag,
+            data.walletAddress as string,
+            data.paymentRail === "legacy" ? "legacy" : "smart",
+            typeof data.legacyNotice === "string" ? data.legacyNotice : null,
+          )
         } else {
           setValidationState("invalid")
           setValidationLabel("Tag no encontrado")
@@ -216,7 +266,7 @@ export const SendPaymentModal = memo(function SendPaymentModal({
     } catch {
       setValidationState("idle")
     }
-  }, [])
+  }, [cacheRecipientResolution])
 
   // Debounce validation on input change
   useEffect(() => {
@@ -227,7 +277,7 @@ export const SendPaymentModal = memo(function SendPaymentModal({
     }
     debounceRef.current = setTimeout(() => {
       void validateRecipient(sendRecipient)
-    }, 550)
+    }, 350)
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
   }, [sendRecipient, isManualMode, validateRecipient])
 
@@ -246,6 +296,7 @@ export const SendPaymentModal = memo(function SendPaymentModal({
 
   const handleAmountChange = useCallback(
     (raw: string) => {
+      setAmountError(null)
       if (amountUsesIntegerPad) {
         setSendAmount(raw.replace(/\D/g, ""))
         return
@@ -259,7 +310,7 @@ export const SendPaymentModal = memo(function SendPaymentModal({
           : `${sanitized.slice(0, dotIndex + 1)}${sanitized.slice(dotIndex + 1).replace(/\./g, "")}`,
       )
     },
-    [amountUsesIntegerPad, setSendAmount],
+    [amountUsesIntegerPad, setSendAmount, setAmountError],
   )
 
   const balanceSizeClass =
@@ -270,8 +321,10 @@ export const SendPaymentModal = memo(function SendPaymentModal({
     return referenceFiat === "CLP" || referenceFiat === "ARS" ? Math.round(local) : local
   }
 
-  /** Sends use spendable USDC on the canonical C wallet only (not DeFindex strategy). */
-  const availableBalance = defindexBalance?.walletBalance ?? 0
+  /** Spendable USDC on C (Blend + Circle SAC); excludes DeFindex strategy. */
+  const availableBalance =
+    defindexBalance?.spendableOnC ??
+    (defindexBalance?.walletBalance ?? 0) + (defindexBalance?.sorobanSacBalance ?? 0)
   const availableFiatFormatted = formatReferenceAmount(
     referenceDisplayValue(availableBalance),
     referenceFiat,
@@ -349,6 +402,26 @@ export const SendPaymentModal = memo(function SendPaymentModal({
     resetSendPayment()
     onClose()
   }
+
+  // Keyboard UX: Escape goes back (amount → recipient) or closes (recipient → close).
+  useEffect(() => {
+    if (!isOpen) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return
+      e.preventDefault()
+      e.stopPropagation()
+      if (sendStep === "amount") {
+        goBackToRecipient()
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => recipientInputRef.current?.focus({ preventScroll: true }))
+        })
+      } else {
+        handleClose()
+      }
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [isOpen, sendStep, goBackToRecipient])
 
   if (!portalReady) return null
 
@@ -523,7 +596,12 @@ export const SendPaymentModal = memo(function SendPaymentModal({
 
                 <Button
                   onClick={handleResolveRecipient}
-                  disabled={!sendRecipient.trim() || isResolvingRecipient}
+                  disabled={
+                    !sendRecipient.trim() ||
+                    isResolvingRecipient ||
+                    validationState === "checking" ||
+                    validationState === "invalid"
+                  }
                   className="w-full bg-white text-black hover:bg-white/90 font-semibold disabled:opacity-50 disabled:cursor-not-allowed h-14 text-lg"
                 >
                   {isResolvingRecipient ? (
@@ -549,21 +627,46 @@ export const SendPaymentModal = memo(function SendPaymentModal({
               </>
             ) : (
               <>
-                <Input
-                  ref={manualRecipientInputRef}
-                  type="text"
-                  value={sendRecipient}
-                  onChange={(e) => setSendRecipient(e.target.value)}
-                  onFocus={resetModalScroll}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && sendRecipient.trim()) {
-                      handleResolveRecipient()
-                    }
-                  }}
-                  placeholder="Stellar Wallet Address"
-                  className="bg-white/5 border-white/20 text-white placeholder:text-white/40 text-lg h-14"
-                  enterKeyHint="next"
-                />
+                <motion.div
+                  animate={isVibrating ? { x: [0, -10, 10, -10, 10, 0] } : {}}
+                  transition={{ duration: 0.5 }}
+                  className="space-y-2"
+                >
+                  <Input
+                    ref={manualRecipientInputRef}
+                    type="text"
+                    value={sendRecipient}
+                    onChange={(e) => {
+                      setSendRecipient(e.target.value)
+                      setRecipientError(null)
+                    }}
+                    onFocus={resetModalScroll}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && sendRecipient.trim()) {
+                        handleResolveRecipient()
+                      }
+                    }}
+                    placeholder="Stellar Wallet Address"
+                    className={`bg-white/5 text-white placeholder:text-white/40 text-lg h-14 transition-colors ${
+                      recipientError ? "border-red-500/60" : "border-white/20"
+                    }`}
+                    enterKeyHint="next"
+                  />
+                  <AnimatePresence>
+                    {recipientError && (
+                      <motion.p
+                        key={recipientError}
+                        initial={{ opacity: 0, y: -6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        transition={{ duration: 0.15 }}
+                        className="text-[12px] px-1 text-red-400"
+                      >
+                        {recipientError}
+                      </motion.p>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
 
                 <Input
                   type="text"
@@ -604,8 +707,19 @@ export const SendPaymentModal = memo(function SendPaymentModal({
           </div>
         ) : (
           <div className="space-y-4 pt-3 pb-2">
-              {/* Recipient confirmation row */}
-              <div className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2">
+              {/* Recipient confirmation row (click to edit recipient). */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (isSending) return
+                  goBackToRecipient()
+                  requestAnimationFrame(() => {
+                    requestAnimationFrame(() => recipientInputRef.current?.focus({ preventScroll: true }))
+                  })
+                }}
+                className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 transition-colors hover:bg-white/[0.06]"
+                aria-label="Edit recipient"
+              >
                 <span className="text-white/40 text-xs uppercase tracking-widest">To</span>
                 <span className="text-white/90 text-sm font-mono truncate max-w-[220px]">
                   {sendRecipient.startsWith("$")
@@ -614,7 +728,7 @@ export const SendPaymentModal = memo(function SendPaymentModal({
                       ? `${sendRecipient.slice(0, 6)}…${sendRecipient.slice(-4)}`
                       : sendRecipient}
                 </span>
-              </div>
+              </button>
               {legacyPaymentNotice ? (
                 <p className="text-amber-200/90 text-xs text-center px-2 leading-snug">
                   {legacyPaymentNotice}
@@ -638,25 +752,48 @@ export const SendPaymentModal = memo(function SendPaymentModal({
                 <p className="text-white/35 text-xs mt-2">{t.sendTapToSwitchCurrency}</p>
               </button>
 
-            <Input
-              ref={amountInputRef}
-              type="text"
-              inputMode={amountInputMode}
-              pattern={amountUsesIntegerPad ? "[0-9]*" : "[0-9.,]*"}
-              autoComplete="off"
-              value={sendAmount}
-              onChange={(e) => handleAmountChange(e.target.value)}
-              onFocus={resetModalScroll}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && hasValidAmount && !isSending) {
-                  e.preventDefault()
-                  handleSendPayment()
-                }
-              }}
-              placeholder={amountPlaceholder}
-              className="bg-white/5 border-white/20 text-white placeholder:text-white/40 text-2xl text-center h-16 font-semibold tabular-nums"
-              enterKeyHint="done"
-            />
+            <motion.div
+              animate={isVibrating ? { x: [0, -10, 10, -10, 10, 0] } : {}}
+              transition={{ duration: 0.5 }}
+              className="space-y-2"
+            >
+              <Input
+                ref={amountInputRef}
+                type="text"
+                inputMode={amountInputMode}
+                pattern={amountUsesIntegerPad ? "[0-9]*" : "[0-9.,]*"}
+                autoComplete="off"
+                value={sendAmount}
+                onChange={(e) => handleAmountChange(e.target.value)}
+                onFocus={resetModalScroll}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && hasValidAmount && !isSending) {
+                    e.preventDefault()
+                    handleSendPayment()
+                  }
+                }}
+                placeholder={amountPlaceholder}
+                className={`bg-white/5 text-white placeholder:text-white/40 text-2xl text-center h-16 font-semibold tabular-nums transition-colors ${
+                  amountError ? "border-red-500/60" : "border-white/20"
+                }`}
+                enterKeyHint="done"
+              />
+
+              <AnimatePresence>
+                {amountError && (
+                  <motion.p
+                    key={amountError}
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.15 }}
+                    className="text-[12px] px-1 text-center text-red-400"
+                  >
+                    {amountError}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+            </motion.div>
 
             <Button
               onClick={handleSendPayment}
@@ -666,7 +803,11 @@ export const SendPaymentModal = memo(function SendPaymentModal({
               {isSending ? (
                 <>
                   <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin mr-2" />
-                  {t.sending}
+                  {sendPhase === "signing"
+                    ? t.confirmWithPasskey
+                    : sendPhase === "submitting"
+                      ? t.submitting
+                      : t.sending}
                 </>
               ) : (
                 <>

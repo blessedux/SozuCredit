@@ -76,18 +76,21 @@ export const BalanceAuditPanel = memo(function BalanceAuditPanel({
     proj && proj.merchantApy > 0 && proj.merchantApy !== proj.protocolApy ? proj.merchantApy : null
 
   const strategyBalance = defindexBalance?.strategyBalance ?? 0
-  const walletBalance = defindexBalance?.walletBalance ?? 0
+  const blendBalance = defindexBalance?.walletBalance ?? 0
   const sorobanSacBalance = defindexBalance?.sorobanSacBalance ?? 0
-  const classicOnSigner = defindexBalance?.classicOnSigner ?? 0
-  const displayTotal =
-    (defindexBalance?.displayBalance ?? 0) > 0
-      ? (defindexBalance?.displayBalance ?? 0)
-      : walletBalance + sorobanSacBalance + classicOnSigner + strategyBalance
+  const legacyUsdcOnSigner = defindexBalance?.legacyUsdcOnSigner ?? 0
+  const spendableOnC = defindexBalance?.spendableOnC ?? blendBalance + sorobanSacBalance
+  const lineTotal = blendBalance + sorobanSacBalance + strategyBalance
+  const displayTotal = lineTotal > 0 ? lineTotal : defindexBalance?.displayBalance ?? 0
+  const contractIds = defindexBalance?.contractIds
   const showTestnetAssetRows = walletNetwork === "testnet"
+
+  const shortenContract = (id: string | null | undefined) =>
+    id && id.length >= 12 ? `${id.slice(0, 6)}…${id.slice(-4)}` : null
 
   const MIN_DEPOSIT = Number(process.env.NEXT_PUBLIC_VAULT_MIN_DEPOSIT || "10") || 10
   const FEE_BUFFER = Number(process.env.NEXT_PUBLIC_VAULT_FEE_BUFFER || "0.4") || 0.4
-  const maxDepositable = Math.max(0, walletBalance - FEE_BUFFER)
+  const maxDepositable = Math.max(0, spendableOnC - FEE_BUFFER)
 
   const canDeposit = maxDepositable >= MIN_DEPOSIT
   const earnBusy = earnState.status === "signing" || earnState.status === "submitting"
@@ -127,23 +130,37 @@ export const BalanceAuditPanel = memo(function BalanceAuditPanel({
         <p className="text-[10px] uppercase tracking-widest text-white/40">{t.usdcBalanceSection}</p>
         {defindexBalance ? (
           <div className="space-y-2">
-            {showTestnetAssetRows || walletBalance > 0 ? (
+            {showTestnetAssetRows || blendBalance > 0 ? (
               <div className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/10">
-                <span className="text-white/80 text-sm">{t.walletBlendBalanceLabel}</span>
+                <div className="min-w-0">
+                  <span className="text-white/80 text-sm">{t.walletBlendBalanceLabel}</span>
+                  {shortenContract(contractIds?.blend) ? (
+                    <p className="text-[10px] text-white/35 font-mono truncate">
+                      {shortenContract(contractIds?.blend)}
+                    </p>
+                  ) : null}
+                </div>
                 <span
-                  className={`font-medium tabular-nums ${
-                    walletBalance > 0 ? "text-white" : "text-white/45"
+                  className={`font-medium tabular-nums shrink-0 ${
+                    blendBalance > 0 ? "text-white" : "text-white/45"
                   }`}
                 >
-                  ${walletBalance.toFixed(2)} USD
+                  ${blendBalance.toFixed(2)} USD
                 </span>
               </div>
             ) : null}
             {showTestnetAssetRows || sorobanSacBalance > 0 ? (
               <div className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/10">
-                <span className="text-white/80 text-sm">{t.walletSacBalanceLabel}</span>
+                <div className="min-w-0">
+                  <span className="text-white/80 text-sm">{t.walletSacBalanceLabel}</span>
+                  {shortenContract(contractIds?.circleSac) ? (
+                    <p className="text-[10px] text-white/35 font-mono truncate">
+                      {shortenContract(contractIds?.circleSac)}
+                    </p>
+                  ) : null}
+                </div>
                 <span
-                  className={`font-medium tabular-nums ${
+                  className={`font-medium tabular-nums shrink-0 ${
                     sorobanSacBalance > 0 ? "text-white" : "text-white/45"
                   }`}
                 >
@@ -151,13 +168,11 @@ export const BalanceAuditPanel = memo(function BalanceAuditPanel({
                 </span>
               </div>
             ) : null}
-            {classicOnSigner > 0 ? (
-              <div className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/10">
-                <span className="text-white/80 text-sm">{t.walletSignerBalanceLabel}</span>
-                <span className="text-white/70 font-medium tabular-nums">
-                  ${classicOnSigner.toFixed(2)} USD
-                </span>
-              </div>
+            {legacyUsdcOnSigner > 0 ? (
+              <p className="text-[10px] leading-snug text-amber-200/80 px-1">
+                Hay ${legacyUsdcOnSigner.toFixed(2)} USDC en tu G firmante — transfiérelo a tu C. G solo
+                debe tener XLM para comisiones.
+              </p>
             ) : null}
             {displayTotal === 0 && showTestnetAssetRows ? (
               <p className="text-[10px] leading-snug text-white/45 px-1">{t.balanceAuditZeroHint}</p>
@@ -174,7 +189,12 @@ export const BalanceAuditPanel = memo(function BalanceAuditPanel({
                 ${displayTotal === 0 ? "0" : displayTotal.toFixed(2)} USD
               </span>
             </div>
-            {walletBalance === 0 && sorobanSacBalance > 0 ? (
+            {spendableOnC > 0 && showTestnetAssetRows ? (
+              <p className="text-[10px] leading-snug text-white/40 px-1">
+                Enviable en C (Soroban): ${spendableOnC.toFixed(2)} USD
+              </p>
+            ) : null}
+            {blendBalance === 0 && sorobanSacBalance > 0 ? (
               <p className="text-[10px] leading-snug text-amber-200/80 px-1">{t.walletSacSendHint}</p>
             ) : null}
             {defindexBalance.strategyShares > 0 && (

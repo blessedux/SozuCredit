@@ -38,10 +38,13 @@ export type WalletTexts = {
   useSozuTag: string;
   resolving: string;
   sending: string;
+  confirmWithPasskey: string;
+  submitting: string;
   send: string;
   sendTapToSwitchCurrency: string;
   sendApproxUsdc: string;
   sendApproxFiat: string;
+  sendInsufficientBalance: string;
   // Success Modal
   transactionSuccessful: string;
   transactionSuccessfulDesc: string;
@@ -234,6 +237,9 @@ export type WalletTexts = {
   depositCopied: string;
   depositNoWallet: string;
   depositUsdcOnly: string;
+  depositLegacyGWarning: string;
+  depositSmartAccountHint: string;
+  depositResolvingWallet: string;
   depositTagCaption: string;
   depositAddressCaption: string;
   depositConnectWallet: string;
@@ -418,10 +424,13 @@ export const walletTexts = {
     useSozuTag: "Usar Sozu en su lugar",
     resolving: "Resolviendo...",
     sending: "Enviando...",
+    confirmWithPasskey: "Confirmar con passkey...",
+    submitting: "Enviando transacción...",
     send: "Enviar",
     sendTapToSwitchCurrency: "Toca la moneda para cambiar",
     sendApproxUsdc: "≈ {amount} USDC",
     sendApproxFiat: "≈ {amount} {fiat}",
+    sendInsufficientBalance: "Monto mayor al disponible",
     // Success Modal
     transactionSuccessful: "Transacción Exitosa",
     transactionSuccessfulDesc: "Tu pago fue enviado exitosamente",
@@ -619,8 +628,12 @@ export const walletTexts = {
     depositCopied: "Copiado",
     depositNoWallet: "Sin billetera conectada",
     depositUsdcOnly: "Envía solo USDC en la red Stellar",
+    depositLegacyGWarning:
+      "Esta es una cuenta clásica (G…). Para USDC Soroban en tu billetera passkey, cierra sesión y vuelve a entrar para completar la cuenta inteligente (C…).",
+    depositSmartAccountHint: "Cuenta inteligente (C…) · USDC Soroban",
+    depositResolvingWallet: "Configurando cuenta inteligente…",
     depositTagCaption: "@{tag} · escanea para pagar con Sozu",
-    depositAddressCaption: "{addr} · dirección Stellar",
+    depositAddressCaption: "{addr} · cuenta inteligente Sozu",
     depositConnectWallet: "Conecta tu billetera",
     depositBlendTitle: "Testnet: BlendUSDC para enviar",
     depositBlendHint:
@@ -643,7 +656,7 @@ export const walletTexts = {
     walletSacBalanceLabel: "USDC Circle (SAC en C)",
     walletSignerBalanceLabel: "USDC en cuenta G (firmante)",
     walletSacSendHint:
-      "Tienes USDC en el contrato SAC de Circle en tu C. Los envíos en la app usan BlendUSDC — obtén Blend en testnet.blend.capital o convierte según el pool.",
+      "Tienes USDC SAC de Circle en tu C. Los envíos usan Blend primero; si no alcanza, usan SAC (compatible con cuentas SozuPay en testnet).",
     balanceAuditZeroHint:
       "Si Stellar Expert muestra saldo pero aquí ves $0, confirma que Depositar usa la misma dirección C y que Vercel tiene TESTNET_USDC_CONTRACT_ADDRESS (Blend), SOROBAN_RPC_URL y STELLAR_FUNDER_SECRET.",
     defiStrategyLabel: "Estrategia DeFi",
@@ -775,10 +788,13 @@ export const walletTexts = {
     useSozuTag: "Use Sozu instead",
     resolving: "Resolving...",
     sending: "Sending...",
+    confirmWithPasskey: "Confirm with passkey...",
+    submitting: "Submitting...",
     send: "Send",
     sendTapToSwitchCurrency: "Tap currency to switch",
     sendApproxUsdc: "≈ {amount} USDC",
     sendApproxFiat: "≈ {amount} {fiat}",
+    sendInsufficientBalance: "Amount exceeds available balance",
     // Success Modal
     transactionSuccessful: "Transaction Successful",
     transactionSuccessfulDesc: "Your payment was sent successfully",
@@ -972,8 +988,12 @@ export const walletTexts = {
     depositCopied: "Copied",
     depositNoWallet: "No wallet connected",
     depositUsdcOnly: "Send USDC on Stellar network only",
+    depositLegacyGWarning:
+      "This is a classic G address. Soroban USDC belongs on your passkey smart account (C…). Sign out and sign in again to finish smart wallet setup.",
+    depositSmartAccountHint: "Smart account (C…) · Soroban USDC",
+    depositResolvingWallet: "Setting up smart account…",
     depositTagCaption: "@{tag} · scan to pay with Sozu",
-    depositAddressCaption: "{addr} · Stellar address",
+    depositAddressCaption: "{addr} · Sozu smart account",
     depositConnectWallet: "Connect your wallet",
     depositBlendTitle: "Testnet: BlendUSDC for sends",
     depositBlendHint:
@@ -996,7 +1016,7 @@ export const walletTexts = {
     walletSacBalanceLabel: "Circle USDC (SAC on C)",
     walletSignerBalanceLabel: "USDC on G signer",
     walletSacSendHint:
-      "You hold Circle USDC SAC on your C smart account. In-app sends use BlendUSDC — mint Blend at testnet.blend.capital to pay.",
+      "You hold Circle USDC SAC on your C smart account. Sends prefer BlendUSDC; if that balance is too low, we send SAC USDC (same token SozuPay org treasuries use on testnet).",
     balanceAuditZeroHint:
       "If Stellar Expert shows a balance but this reads $0, confirm Depositar matches your funded C address and Vercel has TESTNET_USDC_CONTRACT_ADDRESS (Blend), SOROBAN_RPC_URL, and STELLAR_FUNDER_SECRET.",
     defiStrategyLabel: "DeFi strategy",

@@ -9,3 +9,7 @@ Earlier iterations of this repository accumulated phase summaries, branch compar
 - **Defindex plans and deposit next-steps** — folded into [`wallet-stellar-defindex.md`](./wallet-stellar-defindex.md) and live routes under `app/` / `api/wallet/defindex/`.
 
 When you complete a major milestone, append a short dated bullet here rather than adding a new standalone markdown file.
+
+## Milestones
+
+- **2026-05-31** — Added canonical [privacy-wallet-roadmap.md](./privacy-wallet-roadmap.md) (Phases 1–10) and [docs/README.md](./README.md) index; distinguished from product roadmap in root README.

@@ -110,9 +110,11 @@ export async function generateAuthChallenge(username?: string): Promise<PasskeyC
 
     const data = await response.json()
     
-    // Use rpId from the server response (correct for Vercel deployment)
-    // Fallback to window.location.hostname for client-side compatibility
-    const rpId = data.rp?.id || (typeof window !== "undefined" ? window.location.hostname : "localhost")
+    // Prefer server rpId (matches registration); fall back to env / hostname.
+    const rpId =
+      data.rp?.id ||
+      (typeof process !== "undefined" && process.env.NEXT_PUBLIC_RP_ID?.trim()) ||
+      (typeof window !== "undefined" ? window.location.hostname : "localhost")
     
     return {
       challenge: data.challenge,
@@ -137,9 +139,15 @@ export async function verifyRegistration(
   referralCode?: string | null
 ): Promise<{ success: boolean; userId?: string; username?: string }> {
   try {
-    // Extract public key from attestation object (simplified for now)
-    // In production, you'd need to parse the CBOR attestation object
-    const publicKey = credential.response.attestationObject || credential.id
+    let clientPublicKey65b: string | undefined
+    try {
+      const { extractPasskeyPublicKey65ForStorage } = await import(
+        "@/lib/webauthn/extract-attestation-pubkey"
+      )
+      clientPublicKey65b = extractPasskeyPublicKey65ForStorage(credential)
+    } catch (extractErr) {
+      console.warn("[verifyRegistration] Could not extract pubkey client-side:", extractErr)
+    }
 
     const response = await fetch("/api/auth/register/verify", {
       method: "POST",
@@ -150,13 +158,8 @@ export async function verifyRegistration(
         username,
         challenge, // Pass challenge in case store doesn't have it
         referralCode: referralCode || null, // Pass referral code if provided
-        credential: {
-          ...credential,
-          response: {
-            ...credential.response,
-            publicKey,
-          },
-        },
+        clientPublicKey65b,
+        credential,
       }),
     })
 
@@ -312,6 +315,14 @@ export async function createPasskey(
         ? (response.getTransports() as AuthenticatorTransport[])
         : ([] as AuthenticatorTransport[])
 
+    let publicKeyB64: string | undefined
+    if (typeof response.getPublicKey === "function") {
+      const pk = response.getPublicKey()
+      if (pk && pk.byteLength > 0) {
+        publicKeyB64 = arrayBufferToBase64URL(pk)
+      }
+    }
+
     return {
       id: credential.id,
       rawId: arrayBufferToBase64URL(credential.rawId),
@@ -319,6 +330,8 @@ export async function createPasskey(
       response: {
         clientDataJSON: arrayBufferToBase64URL(response.clientDataJSON),
         attestationObject: arrayBufferToBase64URL(response.attestationObject),
+        authenticatorData: arrayBufferToBase64URL(response.getAuthenticatorData()),
+        ...(publicKeyB64 ? { publicKey: publicKeyB64 } : {}),
         userHandle: userHandle,
         ...(transports.length > 0 ? { transports } : {}),
       },
@@ -390,9 +403,14 @@ export async function getPasskey(challenge: PasskeyChallenge): Promise<PasskeyCr
       throw new Error("WebAuthn is not supported in this browser")
     }
 
+    const rpId =
+      challenge.rpId ||
+      (typeof process !== "undefined" && process.env.NEXT_PUBLIC_RP_ID?.trim()) ||
+      window.location.hostname
+
     const publicKeyOptions: PublicKeyCredentialRequestOptions = {
       challenge: base64URLToArrayBuffer(challenge.challenge),
-      rpId: challenge.rpId,
+      rpId,
       allowCredentials: challenge.allowCredentials?.map((cred) => ({
         id: base64URLToArrayBuffer(cred.id),
         type: cred.type as PublicKeyCredentialType,
@@ -572,7 +590,16 @@ export async function verifyAddPasskey(
   if (!options.pairingCode) {
     Object.assign(headers, addPasskeyHeaders())
   }
-  const publicKey = credential.response.attestationObject || credential.id
+  let clientPublicKey65b: string | undefined
+  try {
+    const { extractPasskeyPublicKey65ForStorage } = await import(
+      "@/lib/webauthn/extract-attestation-pubkey"
+    )
+    clientPublicKey65b = extractPasskeyPublicKey65ForStorage(credential)
+  } catch {
+    /* server may extract */
+  }
+
   const res = await fetch("/api/auth/passkeys/add/verify", {
     method: "POST",
     headers,
@@ -580,13 +607,8 @@ export async function verifyAddPasskey(
       pairingCode: options.pairingCode,
       username: options.username,
       challenge,
-      credential: {
-        ...credential,
-        response: {
-          ...credential.response,
-          publicKey,
-        },
-      },
+      clientPublicKey65b,
+      credential,
     }),
   })
   const data = await res.json().catch(() => ({}))

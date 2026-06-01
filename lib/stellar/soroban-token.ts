@@ -18,10 +18,7 @@ import {
 } from "@stellar/stellar-sdk"
 import * as rpc from "@stellar/stellar-sdk/rpc"
 import { Api } from "@stellar/stellar-sdk/rpc"
-import {
-  getDefaultTestnetBlendUsdcId,
-  normalizeStellarContractId,
-} from "@/lib/stellar/contract-id"
+import { getBlendUsdcAsset } from "@/lib/stellar/asset-registry"
 
 const DUMMY_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
 const STROOPS_PER_UNIT = 10_000_000
@@ -209,18 +206,7 @@ export async function getSorobanTokenBalance(
 }
 
 export function getBlendUsdcContractId(network: "testnet" | "mainnet"): string {
-  if (network === "mainnet") {
-    return normalizeStellarContractId(
-      process.env.MAINNET_USDC_CONTRACT_ADDRESS,
-      "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75",
-      "MAINNET_USDC_CONTRACT_ADDRESS",
-    )
-  }
-  return normalizeStellarContractId(
-    process.env.TESTNET_USDC_CONTRACT_ADDRESS,
-    getDefaultTestnetBlendUsdcId(),
-    "TESTNET_USDC_CONTRACT_ADDRESS",
-  )
+  return getBlendUsdcAsset(network).contractId
 }
 
 /** Circle testnet USDC Stellar Asset Contract — what Stellar Expert often shows on C wallets. */

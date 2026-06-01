@@ -50,11 +50,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           ok: true,
-          contractId: existing.public_key,
+          contractId: existing.public_key.trim().toUpperCase(),
           signerPublicKey: existing.signer_public_key ?? signerPublicKey,
           alreadyProvisioned: true,
         },
-        { headers }
+        { headers },
       )
     }
 
@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
       user_id: userId,
       public_key: provisioned.contractId,
       signer_public_key: provisioned.signerPublicKey,
+      wallet_type: "factory",
       turnkey_wallet_id: null,
       network: stellarConfig.network,
       updated_at: new Date().toISOString(),

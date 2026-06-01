@@ -1,18 +1,49 @@
 "use client"
 
+export type TokenBalanceRow = {
+  assetId: string
+  contractId: string
+  symbol: string
+  displayName: string
+  balance: number
+}
+
 export type UnifiedUsdcBalance = {
-  /** Spendable for sends (BlendUSDC on C testnet). */
+  /** BlendUSDC on C (TESTNET_USDC_CONTRACT_ADDRESS). */
+  blendBalance: number
+  /** @deprecated Alias for blendBalance — used by send modal / earn. */
   walletBalance: number
-  /** Circle USDC SAC on C (testnet) — visible on Stellar Expert, not used for sends yet. */
+  /** Spendable on C across unique Soroban contracts (one contract per send). */
+  spendableOnC: number
+  /** Circle USDC SAC on C (testnet). */
   sorobanSacBalance: number
+  tokenBalances: TokenBalanceRow[]
   strategyBalance: number
   /** Visible wallet USDC (Blend + SAC + classic on G signer). */
   displayWalletUsdc: number
   /** Balance card primary figure (display wallet + DeFindex strategy). */
   displayBalance: number
   classicOnSigner: number
+  legacyUsdcOnSigner: number
   spendableAssetLabel: string
   walletAddress: string
+  contractIds?: {
+    blend?: string | null
+    circleSac?: string | null
+  }
+}
+
+function uniqueTokenSum(rows: TokenBalanceRow[]): number {
+  const byContract = new Map<string, number>()
+  for (const row of rows) {
+    const key = (row.contractId || row.assetId).trim().toUpperCase()
+    byContract.set(key, Math.max(byContract.get(key) ?? 0, Number(row.balance) || 0))
+  }
+  return [...byContract.values()].reduce((s, n) => s + n, 0)
+}
+
+function balanceForAsset(rows: TokenBalanceRow[], assetId: string): number {
+  return rows.find((r) => r.assetId === assetId)?.balance ?? 0
 }
 
 /**
@@ -24,7 +55,7 @@ export async function fetchUnifiedUsdcBalance(
   publicKey?: string
 ): Promise<UnifiedUsdcBalance | null> {
   const qs =
-    publicKey && /^[GC][A-Z0-9]{55}$/.test(publicKey)
+    publicKey && /^(C|G)[A-Z0-9]{55}$/.test(publicKey)
       ? `?publicKey=${encodeURIComponent(publicKey)}`
       : ""
 
@@ -48,24 +79,53 @@ export async function fetchUnifiedUsdcBalance(
     spendableAssetLabel?: string
     publicKey?: string
     classicUsdcOnSigner?: number
+    legacyUsdcOnSigner?: number
+    tokenBalances?: TokenBalanceRow[]
+    maxSingleTokenBalance?: number
+    diagnostics?: {
+      blendContractId?: string | null
+      circleSacContractId?: string | null
+    }
   }
 
-  const walletBalance = typeof data.usdcBalance === "number" ? data.usdcBalance : 0
-  const sorobanSacBalance =
-    typeof data.sorobanSacUsdcBalance === "number" ? data.sorobanSacUsdcBalance : 0
-  const strategyBalance = typeof data.defindexBalance === "number" ? data.defindexBalance : 0
-  const classicOnSigner =
-    typeof data.classicUsdcOnSigner === "number" ? data.classicUsdcOnSigner : 0
+  const tokenRows = Array.isArray(data.tokenBalances) ? data.tokenBalances : []
+  const tokenSum = uniqueTokenSum(tokenRows)
 
+  const blendBalance =
+    typeof data.sorobanUsdcBalance === "number"
+      ? data.sorobanUsdcBalance
+      : balanceForAsset(tokenRows, "blend_usdc")
+
+  const sorobanSacBalance =
+    typeof data.sorobanSacUsdcBalance === "number"
+      ? data.sorobanSacUsdcBalance
+      : balanceForAsset(tokenRows, "circle_usdc_sac")
+
+  const spendableOnC =
+    typeof data.usdcBalance === "number" && data.usdcBalance > 0
+      ? data.usdcBalance
+      : Math.max(tokenSum, blendBalance + sorobanSacBalance)
+
+  const strategyBalance = typeof data.defindexBalance === "number" ? data.defindexBalance : 0
+  const legacyUsdcOnSigner =
+    typeof data.legacyUsdcOnSigner === "number"
+      ? data.legacyUsdcOnSigner
+      : typeof data.classicUsdcOnSigner === "number"
+        ? data.classicUsdcOnSigner
+        : 0
+  const classicOnSigner = 0
+
+  const walletUsdcFromLines = blendBalance + sorobanSacBalance
   const displayWalletUsdc =
     typeof data.displayWalletUsdc === "number"
       ? data.displayWalletUsdc
-      : walletBalance + sorobanSacBalance + classicOnSigner
+      : Math.max(spendableOnC, walletUsdcFromLines)
 
+  const lineTotal = displayWalletUsdc + strategyBalance
   const displayBalance =
     typeof data.totalDisplayUsdcBalance === "number"
-      ? data.totalDisplayUsdcBalance
-      : displayWalletUsdc + strategyBalance
+      ? Math.max(data.totalDisplayUsdcBalance, lineTotal)
+      : lineTotal
 
   if (
     publicKey?.startsWith("C") &&
@@ -74,18 +134,32 @@ export async function fetchUnifiedUsdcBalance(
   ) {
     console.warn("[UnifiedBalance] C wallet returned 0 USDC", {
       publicKey: publicKey.slice(0, 12) + "…",
-      diagnostics: (data as { diagnostics?: unknown }).diagnostics,
+      diagnostics: data.diagnostics,
     })
   }
 
   return {
-    walletBalance,
+    blendBalance,
+    walletBalance: blendBalance,
+    spendableOnC,
     sorobanSacBalance,
+    tokenBalances: tokenRows,
     strategyBalance,
     displayWalletUsdc,
     displayBalance,
     classicOnSigner,
+    legacyUsdcOnSigner,
     spendableAssetLabel: data.spendableAssetLabel ?? "USDC",
     walletAddress: (data.publicKey ?? publicKey ?? "").trim().toUpperCase(),
+    contractIds: {
+      blend:
+        data.diagnostics?.blendContractId ??
+        tokenRows.find((r) => r.assetId === "blend_usdc")?.contractId ??
+        null,
+      circleSac:
+        data.diagnostics?.circleSacContractId ??
+        tokenRows.find((r) => r.assetId === "circle_usdc_sac")?.contractId ??
+        null,
+    },
   }
 }

@@ -197,7 +197,13 @@ export async function POST(request: Request) {
         user_id: userId,
         public_key: publicKey,
         signer_public_key: signerPublicKey,
-        wallet_type: publicKey.startsWith("C") ? "oz" : null,
+        wallet_type: smartAccountProvisioned
+          ? "factory"
+          : publicKey.startsWith("C")
+            ? existingWallet?.wallet_type === "oz"
+              ? "oz"
+              : "factory"
+            : null,
         turnkey_wallet_id: null,
         network: stellarConfig.network,
         updated_at: new Date().toISOString(),
@@ -242,17 +248,39 @@ export async function POST(request: Request) {
       )
     }
 
-    // Path 2: No publicKey in body → return existing wallet if any; otherwise 400
+    // Path 2: No publicKey in body → return existing wallet (migrate G → factory C first)
     const existingWallet = await getStellarWallet(userId, useServiceClient)
-    if (existingWallet && existingWallet.publicKey && existingWallet.publicKey.trim().length > 0) {
-      console.log("[Stellar Wallet API] Returning existing wallet:", existingWallet.publicKey.substring(0, 10) + "...")
+    if (existingWallet?.publicKey?.trim()) {
+      let pk = existingWallet.publicKey.trim().toUpperCase()
+      let signer = existingWallet.signerPublicKey?.trim().toUpperCase() ?? null
+      let walletType = existingWallet.walletType ?? null
+
+      if (pk.startsWith("G")) {
+        const { ensureFactorySmartWalletForUser } = await import(
+          "@/lib/stellar/migrate-legacy-wallet"
+        )
+        const migrated = await ensureFactorySmartWalletForUser(userId, pk)
+        if ("error" in migrated) {
+          return NextResponse.json(
+            { error: migrated.error, code: "SMART_ACCOUNT_PROVISION_FAILED" },
+            { status: 502, headers: corsHeaders(request as any) },
+          )
+        }
+        pk = migrated.publicKey
+        signer = migrated.signerPublicKey
+        walletType = migrated.walletType
+      }
+
+      console.log("[Stellar Wallet API] Returning wallet:", pk.substring(0, 10) + "...")
       return NextResponse.json(
         {
-          walletId: existingWallet.turnkeyWalletId || existingWallet.publicKey,
-          publicKey: existingWallet.publicKey,
+          walletId: existingWallet.turnkeyWalletId || pk,
+          publicKey: pk,
+          signerPublicKey: signer,
+          walletType,
           network: existingWallet.network,
         },
-        { headers: corsHeaders(request as any) }
+        { headers: corsHeaders(request as any) },
       )
     }
 

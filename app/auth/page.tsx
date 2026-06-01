@@ -25,6 +25,7 @@ import {
   persistAuthIdentitySession,
   persistClientWalletSession,
 } from "@/lib/client-wallet-session"
+import { signalBootstrapReady } from "@/lib/app-ready"
 
 function AuthPageContent() {
   const [isAuthenticating, setIsAuthenticating] = useState(false)
@@ -57,11 +58,17 @@ function AuthPageContent() {
     let cancelled = false
     void (async () => {
       const session = await loadClientWalletSession()
-      if (cancelled || !session.isAuthenticated || !session.userId) return
-      redirectingRef.current = true
-      const target =
-        searchParams.get("sdpInvite") === "1" ? "/sdp/register" : postAuthPath
-      router.replace(target)
+      if (cancelled) return
+      if (session.isAuthenticated && session.userId) {
+        redirectingRef.current = true
+        const target =
+          searchParams.get("sdpInvite") === "1" ? "/sdp/register" : postAuthPath
+        router.replace(target)
+        return
+      }
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => signalBootstrapReady())
+      })
     })()
 
     return () => {
@@ -77,6 +84,7 @@ function AuthPageContent() {
       persistAuthIdentitySession({
         userId,
         credentialId: credential.id,
+        credentialRawId: "rawId" in credential && typeof credential.rawId === "string" ? credential.rawId : undefined,
         username: displayUsername,
       })
 
@@ -493,8 +501,31 @@ function AuthPageContent() {
           persistAuthIdentitySession({
             userId: finalUserId,
             credentialId: credential.id,
+            credentialRawId:
+              "rawId" in credential && typeof credential.rawId === "string"
+                ? credential.rawId
+                : undefined,
             username: registeredUsername,
           })
+
+          try {
+            const { extractPasskeyPublicKey65ForStorage } = await import(
+              "@/lib/webauthn/extract-attestation-pubkey"
+            )
+            const { parsePasskeyPublicKey65 } = await import(
+              "@/lib/stellar/smartAccounts/passkeyPublicKey"
+            )
+            const { getSmartAccountKit } = await import("@/lib/stellar/smartAccounts/client")
+            const pub65b = extractPasskeyPublicKey65ForStorage(credential)
+            const { kit } = await getSmartAccountKit()
+            await kit.credentials.save({
+              credentialId: credential.id,
+              publicKey: parsePasskeyPublicKey65(pub65b),
+            })
+            console.log("[Auth] Saved passkey public key to smart-account-kit storage for deploy")
+          } catch (kitSaveErr) {
+            console.warn("[Auth] kit.credentials.save after register:", kitSaveErr)
+          }
 
           try {
             console.log("[Auth] Reg Step 6.5: Provisioning smart wallet (C…) for userId:", finalUserId)

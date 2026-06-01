@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 /**
- * Usage: node scripts/probe-wallet.mjs CBNHZ... GAQH...
+ * Probe a smart account contract to determine its type, signing path, and registered key data.
+ *
+ * Usage: node scripts/probe-wallet.mjs <C...> [G...]
  */
 import { readFileSync } from "fs"
 import { Client as SmartAccountClient } from "smart-account-kit-bindings"
-import { Networks } from "@stellar/stellar-sdk"
+import { Networks, xdr } from "@stellar/stellar-sdk"
 
 function loadEnv() {
   try {
@@ -13,9 +15,7 @@ function loadEnv() {
       const m = line.match(/^([A-Z0-9_]+)=(.*)$/)
       if (m) process.env[m[1]] = m[2].trim()
     }
-  } catch {
-    /* ignore */
-  }
+  } catch { /* ignore */ }
 }
 
 loadEnv()
@@ -35,12 +35,12 @@ const pp = process.env.STELLAR_NETWORK === "public" ? Networks.PUBLIC : Networks
 
 async function sim(label, fn) {
   try {
-    await (await fn()).simulate()
+    const assembled = await (await fn()).simulate()
     console.log(label, "OK")
-    return true
+    return { ok: true, assembled }
   } catch (e) {
     console.log(label, "FAIL", String(e).slice(0, 200))
-    return false
+    return { ok: false }
   }
 }
 
@@ -51,43 +51,52 @@ const client = new SmartAccountClient({
   allowHttp: true,
 })
 
-await sim("get_context_rules", () =>
+console.log("contract:", contractId)
+console.log("rpc:", rpc)
+console.log()
+
+const { ok: contextRulesOk } = await sim("get_context_rules", () =>
   client.get_context_rules({
     context_rule_type: { tag: "Default", values: undefined },
   }),
 )
 
-const rule0ok = await sim("get_context_rule(0)", () =>
+const { ok: rule0ok, assembled: rule0assembled } = await sim("get_context_rule(0)", () =>
   client.get_context_rule({ context_rule_id: 0 }),
 )
 
-if (rule0ok) {
-  try {
-    const tx = await client.get_context_rule({ context_rule_id: 0 })
-    await tx.simulate()
-    const rule = tx.result
-    const signers = rule?.signers ?? []
-    console.log("rule0 name", rule?.name)
-    for (const s of signers) {
-      if (s.tag === "External") {
-        const kd = s.values?.[1]
-        const len = kd?.length ?? 0
-        console.log(" External keyData len", len, "verifier", s.values?.[0])
-        if (len > 65) {
-          console.log("  pubkey hex", Buffer.from(kd.slice(0, 65)).toString("hex").slice(0, 20) + "...")
-          console.log("  cred suffix hex", Buffer.from(kd.slice(65)).toString("hex").slice(0, 40))
-        }
-      } else {
-        console.log(" signer", s.tag, s.values)
+console.log()
+console.log("recommendedPath:", contextRulesOk ? "oz_kit" : "factory_or_legacy")
+
+// Fetch key data from the resolve-key-data API if the app is running locally
+const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || "http://localhost:3001"
+try {
+  const kdRes = await fetch(`${appUrl}/api/smart-accounts/resolve-key-data?contractId=${contractId}`)
+  if (kdRes.ok) {
+    const kdBody = await kdRes.json()
+    if (kdBody.keyDataBase64) {
+      const bytes = Buffer.from(kdBody.keyDataBase64, "base64")
+      console.log("keyData length:", bytes.length, "bytes")
+      console.log("  pubkey hex (first 10b):", bytes.slice(0, 10).toString("hex") + "...")
+      if (bytes.length > 65) {
+        const credSuffix = bytes.slice(65)
+        console.log("  cred suffix (base64url):", credSuffix.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, ""))
       }
     }
-  } catch (e) {
-    console.log("rule0 read err", e)
   }
+} catch {
+  // App not running locally — skip key data resolution
 }
 
 if (signerG?.startsWith("G")) {
   const factoryId = process.env.SMART_ACCOUNT_FACTORY_ID?.trim()
   const view = process.env.SMART_ACCOUNT_GET_ADDRESS_VIEW?.trim()
-  console.log("factory configured", Boolean(factoryId && view))
+  console.log("\nfactory configured:", Boolean(factoryId && view))
+}
+
+console.log()
+if (contextRulesOk) {
+  console.log("✅ This is an OZ smart account. Use signMethod=oz_passkey (kit.signAuthEntry).")
+} else {
+  console.log("⚠️  get_context_rules not available. Check if this is a factory wallet.")
 }

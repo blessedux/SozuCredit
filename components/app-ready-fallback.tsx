@@ -2,20 +2,21 @@
 
 import { useEffect } from "react"
 import { usePathname } from "next/navigation"
-import { signalShellReady, signalAppReady } from "@/lib/app-ready"
+import { signalBootstrapReady, signalAppReady } from "@/lib/app-ready"
 
-/**
- * Signals shell-ready on routes that don't mount MobileAppShell.
- * /home dismisses the preloader via MobileAppShell's mount effect instead.
- */
+/** Routes without AppBootstrapGate / MobileAppShell still dismiss the preloader. */
+const BOOTSTRAP_HANDLED_PREFIXES = ["/home", "/wallet"]
+
 export function AppReadyFallback() {
   const pathname = usePathname()
 
   useEffect(() => {
-    if (pathname === "/home") return
+    if (BOOTSTRAP_HANDLED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+      return
+    }
 
     const timer = window.setTimeout(() => {
-      signalShellReady()
+      signalBootstrapReady()
       signalAppReady()
     }, 80)
     return () => window.clearTimeout(timer)

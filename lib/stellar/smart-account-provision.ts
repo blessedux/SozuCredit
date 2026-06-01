@@ -13,20 +13,15 @@ import {
   xdr,
 } from "@stellar/stellar-sdk"
 import { getStellarConfig } from "@/lib/turnkey/config"
+import { resolveSorobanRpcUrl } from "@/lib/stellar/soroban-env"
 
 function getNetworkPassphrase(): string {
   const cfg = getStellarConfig()
   return cfg.network === "mainnet" ? Networks.PUBLIC : Networks.TESTNET
 }
 
-function getSorobanRpcUrl(): string | null {
-  return (
-    process.env.SOROBAN_RPC_URL?.trim() ||
-    process.env.NEXT_PUBLIC_SOROBAN_RPC_URL?.trim() ||
-    (getStellarConfig().network === "testnet"
-      ? "https://soroban-testnet.stellar.org"
-      : "https://soroban.stellar.org")
-  )
+function getSorobanRpcUrl(): string {
+  return resolveSorobanRpcUrl()
 }
 
 function getFactoryId(): string | null {
@@ -77,10 +72,12 @@ export async function deploySmartAccountForSigner(
 
   const factoryId = getFactoryId()
   const rpcUrl = getSorobanRpcUrl()
-  if (!factoryId || !rpcUrl) {
+  if (!factoryId) {
+    const { describeMissingSmartWalletEnv } = await import("@/lib/stellar/soroban-env")
     return {
       error:
-        "Smart account factory not configured (SMART_ACCOUNT_FACTORY_ID, SOROBAN_RPC_URL).",
+        describeMissingSmartWalletEnv() ||
+        "Smart account factory not configured (SMART_ACCOUNT_FACTORY_ID).",
     }
   }
 

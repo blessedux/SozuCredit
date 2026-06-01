@@ -3,6 +3,7 @@
 import {
   getCurrentCredentialId,
   storeCredentialIdInSession,
+  storeCredentialRawIdInSession,
 } from "@/lib/storage/key-utils";
 
 export type ClientWalletSession = {
@@ -51,9 +52,10 @@ export async function loadClientWalletSession(): Promise<ClientWalletSession> {
 export function persistAuthIdentitySession(params: {
   userId: string;
   credentialId: string;
+  credentialRawId?: string;
   username?: string;
 }): void {
-  const { userId, credentialId, username } = params;
+  const { userId, credentialId, credentialRawId, username } = params;
 
   localStorage.setItem("dev_username", userId);
   localStorage.setItem("dev_authenticated", "true");
@@ -62,6 +64,9 @@ export function persistAuthIdentitySession(params: {
 
   if (credentialId) {
     storeCredentialIdInSession(credentialId);
+  }
+  if (credentialRawId) {
+    storeCredentialRawIdInSession(credentialRawId);
   }
 
   if (username) {

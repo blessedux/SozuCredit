@@ -22,7 +22,7 @@ function normalizeCredentialUsername(username: string): string {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}))
-    const { credential, challenge: providedChallenge } = body
+    const { credential, challenge: providedChallenge, clientPublicKey65b } = body
     const pairingCode =
       typeof body.pairingCode === "string" ? body.pairingCode.replace(/\s+/g, "").toUpperCase() : ""
     const usernameRaw = typeof body.username === "string" ? body.username.trim() : ""
@@ -113,14 +113,24 @@ export async function POST(request: NextRequest) {
     }
 
     let publicKey: string
+    const { extractPasskeyPublicKey65ForStorage } = await import(
+      "@/lib/webauthn/extract-attestation-pubkey"
+    )
+    const { parsePasskeyPublicKey65, publicKeyToBase64Url } = await import(
+      "@/lib/stellar/smartAccounts/passkeyPublicKey"
+    )
     try {
-      const { extractPasskeyPublicKey65ForStorage } = await import(
-        "@/lib/webauthn/extract-attestation-pubkey"
+      if (typeof clientPublicKey65b === "string" && clientPublicKey65b.trim()) {
+        publicKey = publicKeyToBase64Url(parsePasskeyPublicKey65(clientPublicKey65b.trim()))
+      } else {
+        publicKey = extractPasskeyPublicKey65ForStorage(credential)
+      }
+    } catch (extractErr) {
+      console.error("[Add passkey] Public key extraction failed:", extractErr)
+      return NextResponse.json(
+        { error: "Could not read passkey public key from registration." },
+        { status: 400, headers: corsHeaders(request) },
       )
-      publicKey = extractPasskeyPublicKey65ForStorage(credential)
-    } catch {
-      publicKey =
-        credential.response?.publicKey || credential.response?.attestationObject || credential.id
     }
 
     const { error: insertError } = await serviceClient.from("passkeys").insert({

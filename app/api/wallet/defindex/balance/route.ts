@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
     }
 
     const walletPk =
-      publicKeyParam && /^[GC][A-Z0-9]{55}$/.test(publicKeyParam)
+      publicKeyParam && /^(C|G)[A-Z0-9]{55}$/.test(publicKeyParam)
         ? publicKeyParam
         : wallet!.publicKey
 

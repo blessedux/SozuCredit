@@ -1,5 +1,5 @@
 /**
- * After passkey login/register, provision the canonical C smart wallet when possible.
+ * After passkey login/register, provision the canonical C smart wallet.
  * Auth identity is persisted separately so login never loops back to /auth.
  */
 
@@ -11,18 +11,9 @@ import { storeCredentialIdInSession } from "./key-utils"
 
 export async function alignWalletMaterialAfterLogin(
   userId: string,
-  credentialId: string
-): Promise<{ publicKey: string; needsWalletSync: boolean }> {
+  credentialId: string,
+): Promise<{ publicKey: string; needsWalletSync: boolean; setupError?: string }> {
   storeCredentialIdInSession(credentialId)
-
-  let signerG: string | null = null
-  try {
-    const { deriveAndStoreKey } = await import("./browser-keys")
-    const { publicKey } = await deriveAndStoreKey(credentialId, userId)
-    signerG = publicKey.trim().toUpperCase()
-  } catch (e) {
-    console.warn("[alignWalletMaterialAfterLogin] signer key derive failed:", e)
-  }
 
   try {
     const { publicKey, walletType } = await syncCanonicalWallet(userId, credentialId)
@@ -31,21 +22,23 @@ export async function alignWalletMaterialAfterLogin(
       if (typeof window !== "undefined") {
         sessionStorage.setItem("wallet_type", walletType)
         sessionStorage.removeItem("wallet_sync_pending")
+        sessionStorage.removeItem("wallet_setup_error")
       }
       return { publicKey, needsWalletSync: false }
     }
   } catch (e) {
-    console.warn("[alignWalletMaterialAfterLogin] smart wallet sync failed:", e)
-  }
-
-  if (signerG?.startsWith("G") && signerG.length === 56) {
-    persistWalletPublicKey(signerG)
+    const msg = e instanceof Error ? e.message : String(e)
+    console.warn("[alignWalletMaterialAfterLogin] sync failed:", msg)
     if (typeof window !== "undefined") {
+      sessionStorage.setItem("wallet_setup_error", msg)
       sessionStorage.setItem("wallet_sync_pending", "1")
-      sessionStorage.setItem("wallet_type", "legacy")
     }
-    return { publicKey: signerG, needsWalletSync: true }
+    return { publicKey: "", needsWalletSync: true, setupError: msg }
   }
 
-  throw new Error("Could not resolve wallet address after login.")
+  return {
+    publicKey: "",
+    needsWalletSync: true,
+    setupError: "Smart wallet address was not returned after sync.",
+  }
 }

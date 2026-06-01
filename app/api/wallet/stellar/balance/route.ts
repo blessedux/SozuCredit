@@ -109,19 +109,31 @@ export async function GET(request: NextRequest) {
     } catch (usdcErr) {
       console.error("[Stellar Balance API] USDC breakdown failed:", usdcErr)
       usdcBreakdown = {
+        tokenBalances: [],
         sorobanOnWallet: 0,
         sorobanSacOnWallet: 0,
+        sorobanSozuInternalOnWallet: 0,
         classicOnWallet: 0,
         classicOnSigner: 0,
+        legacyUsdcOnSigner: 0,
         spendable: 0,
         displayOnWallet: 0,
-        spendableAssetLabel: "BlendUSDC",
+        spendableAssetLabel: "Blend USDC",
         walletAddress: publicKeyToUse,
         signerPublicKey: signerForBreakdown,
         network: getStellarConfig().network,
       }
     }
-    const usdcBalance = usdcBreakdown.spendable
+    const tokenSumByContract = new Map<string, number>()
+    for (const row of usdcBreakdown.tokenBalances ?? []) {
+      const id = row.asset.contractId.trim().toUpperCase()
+      tokenSumByContract.set(
+        id,
+        Math.max(tokenSumByContract.get(id) ?? 0, row.balance),
+      )
+    }
+    const tokenSum = [...tokenSumByContract.values()].reduce((s, n) => s + n, 0)
+    const usdcBalance = Math.max(usdcBreakdown.spendable, tokenSum)
     const displayWalletUsdc = usdcBreakdown.displayOnWallet
 
     let allBalances: { asset_type: string; asset_code: string; asset_issuer?: string; balance: string }[] =
@@ -153,6 +165,7 @@ export async function GET(request: NextRequest) {
       sorobanOnWallet: usdcBreakdown.sorobanOnWallet,
       sorobanSacOnWallet: usdcBreakdown.sorobanSacOnWallet,
       classicOnSigner: usdcBreakdown.classicOnSigner,
+      legacyUsdcOnSigner: usdcBreakdown.legacyUsdcOnSigner,
       asset: usdcBreakdown.spendableAssetLabel,
       hasFunder: Boolean(process.env.STELLAR_FUNDER_SECRET?.trim()),
       rpcUrl: process.env.SOROBAN_RPC_URL?.trim() ? "SOROBAN_RPC_URL" : "default/public",
@@ -162,7 +175,7 @@ export async function GET(request: NextRequest) {
       publicKeyToUse.startsWith("C") &&
       usdcBreakdown.sorobanOnWallet === 0 &&
       usdcBreakdown.sorobanSacOnWallet === 0 &&
-      usdcBreakdown.classicOnSigner === 0
+      usdcBreakdown.legacyUsdcOnSigner === 0
     ) {
       console.warn(
         "[Stellar Balance API] C wallet shows 0 Soroban USDC — verify BlendUSDC was sent to this exact address and STELLAR_FUNDER_SECRET + SOROBAN_RPC_URL are set on the server.",
@@ -173,7 +186,7 @@ export async function GET(request: NextRequest) {
       usdcBreakdown.sorobanSacOnWallet > 0
     ) {
       console.log(
-        "[Stellar Balance API] C wallet holds Circle SAC USDC (visible on Stellar Expert); BlendUSDC is 0 — sends still require Blend on C.",
+        "[Stellar Balance API] C wallet holds Circle SAC USDC only — sends will use SAC (same token SozuPay treasury uses on testnet).",
       )
     }
     
@@ -227,7 +240,23 @@ export async function GET(request: NextRequest) {
         spendableAssetLabel: usdcBreakdown.spendableAssetLabel,
         sorobanUsdcBalance: usdcBreakdown.sorobanOnWallet,
         sorobanSacUsdcBalance: usdcBreakdown.sorobanSacOnWallet,
+        sorobanSozuInternalBalance: usdcBreakdown.sorobanSozuInternalOnWallet,
+        tokenBalances: (usdcBreakdown.tokenBalances ?? []).map((row) => ({
+          assetId: row.asset.id,
+          contractId: row.asset.contractId,
+          symbol: row.asset.symbol,
+          displayName: row.asset.displayName,
+          decimals: row.asset.decimals,
+          balance: row.balance,
+          category: row.asset.category,
+          sendPriority: row.asset.sendPriority,
+        })),
+        maxSingleTokenBalance: Math.max(
+          0,
+          ...(usdcBreakdown.tokenBalances ?? []).map((r) => r.balance),
+        ),
         classicUsdcOnSigner: usdcBreakdown.classicOnSigner,
+        legacyUsdcOnSigner: usdcBreakdown.legacyUsdcOnSigner,
         defindexBalance, // USDC locked in DeFindex strategy (not available for sending)
         defindexShares, // Strategy shares
         totalUsdcBalance: displayWalletUsdc + defindexBalance,
@@ -237,6 +266,14 @@ export async function GET(request: NextRequest) {
         publicKey: publicKeyToUse,
         network,
         autoDepositTriggered: autoDepositTriggered,
+        breakdown: {
+          blendOnC: usdcBreakdown.sorobanOnWallet,
+          sacOnC: usdcBreakdown.sorobanSacOnWallet,
+          classicOnSigner: usdcBreakdown.classicOnSigner,
+          legacyUsdcOnSigner: usdcBreakdown.legacyUsdcOnSigner,
+          spendableOnC: usdcBalance,
+          walletVisibleUsdc: displayWalletUsdc,
+        },
         diagnostics: {
           blendContractId: getBlendUsdcContractId(network),
           circleSacContractId:

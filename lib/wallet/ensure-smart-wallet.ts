@@ -14,7 +14,7 @@ export type EnsureSmartWalletResult = {
 
 async function resolveSignerPublicKey(
   userId: string,
-  loginCredentialId?: string
+  loginCredentialId?: string,
 ): Promise<string> {
   const fromSession =
     typeof window !== "undefined"
@@ -40,7 +40,7 @@ async function resolveSignerPublicKey(
 
 async function provisionFactorySmartAccount(
   userId: string,
-  signerPublicKey: string
+  signerPublicKey: string,
 ): Promise<{ contractId: string; walletType: "factory" }> {
   const g = signerPublicKey.trim().toUpperCase()
   const provRes = await fetch("/api/wallet/smart-account/provision", {
@@ -70,30 +70,77 @@ async function provisionFactorySmartAccount(
   const createData = (await createRes.json().catch(() => ({}))) as {
     publicKey?: string
     error?: string
-    smartAccountProvisioned?: boolean
   }
-  if (!createRes.ok) {
-    throw new Error(createData.error ?? "Failed to register smart wallet")
+  if (createRes.ok) {
+    const pk = typeof createData.publicKey === "string" ? createData.publicKey.trim().toUpperCase() : ""
+    if (pk.startsWith("C")) {
+      return { contractId: pk, walletType: "factory" }
+    }
   }
-  const pk = typeof createData.publicKey === "string" ? createData.publicKey.trim().toUpperCase() : ""
-  if (!pk.startsWith("C")) {
-    throw new Error(
-      createData.error ??
-        "Smart account (C…) is required. Configure OpenZeppelin (OZ_*) or SMART_ACCOUNT_FACTORY_ID on the server.",
-    )
+
+  throw new Error(
+    provData.error ?? createData.error ?? "Factory smart account provisioning failed",
+  )
+}
+
+async function provisionOzSmartAccount(
+  userId: string,
+  signerG: string,
+  credId?: string,
+): Promise<EnsureSmartWalletResult> {
+  const { kit } = await getSmartAccountKit()
+  const connect = async (opts?: {
+    prompt?: boolean
+    credentialId?: string
+    contractId?: string
+  }) => {
+    const res = await kit.connectWallet(opts)
+    if (!res?.contractId) {
+      return { contractId: null, credentialId: null, publicKey: null }
+    }
+    return {
+      contractId: res.contractId,
+      credentialId: res.credentialId ?? null,
+      publicKey: res.credential?.publicKey ?? null,
+    }
   }
+
+  const linked = await linkMemberWalletWithLoginPasskey({
+    kit,
+    connect,
+    loginCredentialId: credId ?? undefined,
+    userId,
+  })
+
+  await registerOzSmartAccount({
+    contractId: linked.contractId,
+    credentialId: linked.credentialId,
+    publicKey: linked.publicKey,
+    signerPublicKey: signerG,
+  })
+
+  const contractId = linked.contractId.trim().toUpperCase()
+  persistCanonicalWalletSession(contractId, "oz", linked.credentialId)
+
   return {
-    contractId: pk,
-    walletType: "factory",
+    publicKey: contractId,
+    walletType: "oz",
+    credentialId: linked.credentialId,
   }
 }
 
+function factoryPreferredOnClient(): boolean {
+  if (typeof window === "undefined") return false
+  return sessionStorage.getItem("sozu_prefer_factory_wallet") === "1"
+}
+
 /**
- * Provision or link OpenZeppelin passkey smart account (C). Never returns a G address.
+ * Provision passkey smart account (C). Uses factory when configured and preferred;
+ * otherwise OpenZeppelin passkey kit (same as SozuPay onboarding).
  */
 export async function ensureSmartWallet(
   userId: string,
-  loginCredentialId?: string
+  loginCredentialId?: string,
 ): Promise<EnsureSmartWalletResult> {
   const credId =
     loginCredentialId?.trim() ||
@@ -102,55 +149,47 @@ export async function ensureSmartWallet(
     undefined
 
   const signerG = await resolveSignerPublicKey(userId, credId)
+  const errors: string[] = []
 
-  try {
-    const { kit, config } = await getSmartAccountKit()
-    const connect = async (opts?: {
-      prompt?: boolean
-      credentialId?: string
-      contractId?: string
-    }) => {
-      const res = await kit.connectWallet(opts)
-      if (!res?.contractId) {
-        return { contractId: null, credentialId: null, publicKey: null }
-      }
-      return {
-        contractId: res.contractId,
-        credentialId: res.credentialId ?? null,
-        publicKey: res.credential?.publicKey ?? null,
-      }
-    }
+  const tryFactoryFirst = factoryPreferredOnClient()
 
-    const linked = await linkMemberWalletWithLoginPasskey({
-      kit,
-      connect,
-      loginCredentialId: credId ?? undefined,
-    })
-
-    await registerOzSmartAccount({
-      contractId: linked.contractId,
-      credentialId: linked.credentialId,
-      publicKey: linked.publicKey,
-      signerPublicKey: signerG,
-    })
-
-    persistCanonicalWalletSession(linked.contractId, "oz", linked.credentialId)
-
-    return {
-      publicKey: linked.contractId.trim().toUpperCase(),
-      walletType: "oz",
-      credentialId: linked.credentialId,
-    }
-  } catch (ozErr) {
-    console.warn("[ensureSmartWallet] OZ smart account path failed:", ozErr)
+  const runFactory = async () => {
+    const { contractId, walletType } = await provisionFactorySmartAccount(userId, signerG)
+    persistCanonicalWalletSession(contractId, walletType, credId)
+    return { publicKey: contractId, walletType, credentialId: credId }
   }
 
-  const { contractId, walletType } = await provisionFactorySmartAccount(userId, signerG)
-  persistCanonicalWalletSession(contractId, walletType, credId)
-
-  return {
-    publicKey: contractId,
-    walletType,
-    credentialId: credId,
+  const runOz = async () => {
+    return provisionOzSmartAccount(userId, signerG, credId)
   }
+
+  if (tryFactoryFirst) {
+    try {
+      return await runFactory()
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : String(e))
+    }
+    try {
+      return await runOz()
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : String(e))
+    }
+  } else {
+    try {
+      return await runOz()
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : String(e))
+    }
+    try {
+      return await runFactory()
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  throw new Error(
+    errors.length
+      ? `Could not create smart wallet (C…). ${errors[0]}`
+      : "Could not create smart wallet (C…). Configure OZ_* or SMART_ACCOUNT_FACTORY_ID in server .env.local.",
+  )
 }

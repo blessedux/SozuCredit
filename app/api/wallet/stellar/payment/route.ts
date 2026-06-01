@@ -4,12 +4,33 @@ import { getStellarConfig } from "@/lib/turnkey/config"
 import { getStellarWallet } from "@/lib/turnkey/stellar-wallet"
 import { paymentRailForAddress } from "@/lib/payment/payment-rail"
 import { isValidStellarReceiveAddress } from "@/lib/payment/stellar-address"
+import { sendToken, submitSignedSorobanEnvelope } from "@/lib/stellar/send-token"
+import { isRegisteredSendAsset } from "@/lib/stellar/asset-registry"
 import {
-  buildSorobanUsdcTransferXdr,
-  submitSignedSorobanEnvelope,
-} from "@/lib/stellar/soroban-usdc-transfer"
+  formatInsufficientBalanceMessage,
+  pickSendToken,
+} from "@/lib/stellar/pick-send-token"
 import { contractIsFactoryForSigner } from "@/lib/stellar/factory-smart-account"
 import { contractSupportsOzKitSigning } from "@/lib/stellar/supports-oz-kit-contract"
+
+/**
+ * Maps a raw Soroban submit error message to a structured code for client-side handling.
+ * Safe to add to any submit error response — unknown errors get "SOROBAN_SUBMIT_FAILED".
+ */
+function classifySorobanSubmitError(msg: string): string {
+  if (msg.includes("__check_auth") || msg.includes("InvalidAction")) return "SOROBAN_SIM_AUTH_FAILED"
+  if (msg.includes("Soroban auth rejected")) return "SOROBAN_SIM_AUTH_FAILED"
+  if (msg.includes("txMalformed")) return "TX_MALFORMED"
+  if (msg.includes("txBadAuth")) return "TX_BAD_AUTH"
+  if (msg.includes("txInsufficientFee")) return "TX_INSUFFICIENT_FEE"
+  if (msg.includes("PASSKEY_NOT_ON_SMART_ACCOUNT")) return "PASSKEY_NOT_ON_SMART_ACCOUNT"
+  if (msg.includes("Insufficient balance") || msg.includes("insufficient balance")) return "INSUFFICIENT_BALANCE"
+  if (msg.includes("No passkey") || msg.includes("credential")) return "PASSKEY_MISSING"
+  if (msg.includes("balance was not reduced") || msg.includes("failed on-chain")) return "SOROBAN_LEDGER_FAILED"
+  if (msg.includes("resource budget") || msg.includes("instructions exceeds")) return "SOROBAN_RESOURCE_LIMIT"
+  if (msg.includes("Passkey prompt")) return "PASSKEY_PROMPT_FAILED"
+  return "SOROBAN_SUBMIT_FAILED"
+}
 
 // Helper function to get transaction source (handles both Transaction and FeeBumpTransaction)
 function getTransactionSource(tx: Transaction | FeeBumpTransaction): string {
@@ -34,7 +55,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const userId = request.headers.get("x-user-id")
-    const { destination, amount, sender, signer: signerFromBody, memo } = body
+    const { destination, amount, sender, signer: signerFromBody, memo, contractId: contractIdFromBody } = body
 
     if (!userId) {
       return NextResponse.json(
@@ -55,7 +76,11 @@ export async function POST(request: NextRequest) {
         )
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
-        return NextResponse.json({ success: false, error: msg }, { status: 400, headers: corsHeaders(request) })
+        const code = classifySorobanSubmitError(msg)
+        return NextResponse.json(
+          { success: false, error: msg, code },
+          { status: 400, headers: corsHeaders(request) },
+        )
       }
     }
 
@@ -609,11 +634,39 @@ export async function POST(request: NextRequest) {
       network: stellarConfig.network,
     })
 
-    if (balanceBreakdown.spendable < amountNum + feeBuffer) {
-      const asset = balanceBreakdown.spendableAssetLabel
-      let error = `Insufficient balance. You need ${(amountNum + feeBuffer).toFixed(2)} ${asset} but have ${balanceBreakdown.spendable.toFixed(2)} ${asset} on your smart wallet.`
-      if (stellarConfig.network === "testnet" && balanceBreakdown.classicOnSigner > 0) {
-        error += ` You have ${balanceBreakdown.classicOnSigner.toFixed(2)} Circle testnet USDC on a classic G account — that balance is separate. Move or mint BlendUSDC on your C address via testnet.blend.capital.`
+    const amountRequired = amountNum + feeBuffer
+    const preferredContractId =
+      typeof contractIdFromBody === "string"
+        ? contractIdFromBody.trim().toUpperCase()
+        : undefined
+
+    if (
+      preferredContractId &&
+      !isRegisteredSendAsset(preferredContractId, stellarConfig.network)
+    ) {
+      return NextResponse.json(
+        {
+          error: `Token contract ${preferredContractId} is not in the Sozu asset registry for this network.`,
+          code: "UNKNOWN_TOKEN_CONTRACT",
+        },
+        { status: 400, headers: corsHeaders(request) },
+      )
+    }
+
+    const pickedToken = pickSendToken({
+      balances: balanceBreakdown.tokenBalances,
+      amountRequired,
+      preferredContractId,
+      network: stellarConfig.network,
+    })
+
+    if (!pickedToken) {
+      let error = formatInsufficientBalanceMessage(
+        balanceBreakdown.tokenBalances,
+        amountRequired,
+      )
+      if (stellarConfig.network === "testnet" && balanceBreakdown.legacyUsdcOnSigner > 0) {
+        error += ` You have ${balanceBreakdown.legacyUsdcOnSigner.toFixed(2)} USDC on your G signer — move it to your C smart account (Depositar). G should only hold XLM for fees.`
       }
       return NextResponse.json({ error }, { status: 400, headers: corsHeaders(request) })
     }
@@ -622,47 +675,107 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "Smart wallet signer (G…) missing in our records. Sign out, sign in with passkey again, and retry — we need your classic signer to pay Soroban fees while your C account holds USDC.",
+            "Passkey signer (G…) missing in our records. Sign out, sign in with passkey again. USDC sends from your C smart account; a server funder or your G pays Soroban fees.",
           code: "SMART_SIGNER_REQUIRED",
         },
         { status: 422, headers: corsHeaders(request) }
       )
     }
 
-    const { unsignedXdr } = await buildSorobanUsdcTransferXdr({
-      signerPublicKey: signerPk,
-      fromAddress: senderPk,
-      toAddress: destinationNorm,
-      amount: String(amount),
-      network: stellarConfig.network,
-    })
-
     const { contractCanReadOnChainSignerKeyData } = await import(
+      "@/lib/stellar/smartAccounts/resolveOnChainPublicKey"
+    )
+    const { resolveOnChainSignerKeyData } = await import(
       "@/lib/stellar/smartAccounts/resolveOnChainPublicKey"
     )
     const supportsOzKitApi = await contractSupportsOzKitSigning(senderPk)
     const canReadOnChainKeyData = await contractCanReadOnChainSignerKeyData(senderPk)
-    const isFactoryWallet =
-      walletType === "factory" ||
-      (await contractIsFactoryForSigner(senderPk, signerPk))
+    const isFactoryOnChain = await contractIsFactoryForSigner(senderPk, signerPk)
+    const useFactoryGSigner = !supportsOzKitApi && isFactoryOnChain
 
-    const signMethod =
-      isFactoryWallet && !supportsOzKitApi
-        ? "smart_g_signer"
-        : supportsOzKitApi
-          ? "oz_passkey"
-          : "oz_passkey_local"
+    const ozCred = wallet.ozCredentialId?.trim() ?? ""
+    let passkeyRegisteredOnContract = false
+
+    if (!useFactoryGSigner && senderPk.startsWith("C")) {
+      if (!ozCred) {
+        return NextResponse.json(
+          {
+            error:
+              "Passkey credential missing for this wallet. Sign out, sign in with passkey again, then retry.",
+            code: "PASSKEY_CREDENTIAL_MISSING",
+          },
+          { status: 422, headers: corsHeaders(request) },
+        )
+      }
+
+      const keyData = await resolveOnChainSignerKeyData({
+        contractId: senderPk,
+        credentialId: ozCred,
+      })
+      passkeyRegisteredOnContract = !!keyData
+
+      if (!passkeyRegisteredOnContract && supportsOzKitApi) {
+        return NextResponse.json(
+          {
+            error:
+              "Your passkey is not registered on this smart account (C…). Sign out, sign in with passkey, wait for wallet setup to finish, then send again.",
+            code: "PASSKEY_NOT_ON_SMART_ACCOUNT",
+            walletAddress: senderPk,
+          },
+          { status: 422, headers: corsHeaders(request) },
+        )
+      }
+    }
+
+    const { resolveSorobanFeePayer } = await import("@/lib/stellar/soroban-fee-payer")
+    const { feePayer, usedFunder } = await resolveSorobanFeePayer({
+      signerPublicKey: signerPk,
+      network: stellarConfig.network,
+      requireSignerAsSource: useFactoryGSigner,
+    })
+
+    console.log("[Payment API] Soroban fee payer:", {
+      feePayer: feePayer.slice(0, 8) + "…",
+      usedFunder,
+      signer: signerPk.slice(0, 8) + "…",
+      from: senderPk.slice(0, 8) + "…",
+    })
+
+    const { unsignedXdr, sorobanDataXdr, contractId: tokenContractId } = await sendToken({
+      contractId: pickedToken.asset.contractId,
+      from: senderPk,
+      to: destinationNorm,
+      amount: String(amount),
+      relayerPublicKey: feePayer,
+      network: stellarConfig.network,
+      decimals: pickedToken.asset.decimals,
+    })
+
+    const signMethod = useFactoryGSigner
+      ? "smart_g_signer"
+      : supportsOzKitApi
+        ? "oz_passkey"
+        : "oz_passkey_local"
 
     return NextResponse.json(
       {
         unsignedXdr,
+        sorobanDataXdr,
         paymentRail: "smart",
         signMethod,
         supportsOzKitApi,
         canReadOnChainKeyData,
+        passkeyRegisteredOnContract,
+        feePayerPublicKey: feePayer,
+        usedFunderRelayer: usedFunder,
         signerPublicKey: signerPk,
         walletAddress: senderPk,
         ozCredentialId: wallet.ozCredentialId ?? null,
+        contractId: tokenContractId,
+        assetId: pickedToken.asset.id,
+        assetDisplayName: pickedToken.asset.displayName,
+        /** @deprecated */ usdcTokenContractId: tokenContractId,
+        /** @deprecated */ usdcSendAssetLabel: pickedToken.asset.displayName,
       },
       { headers: corsHeaders(request) }
     )

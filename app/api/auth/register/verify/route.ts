@@ -11,7 +11,8 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { username, credential, challenge, referralCode } = await request.json()
+    const { username, credential, challenge, referralCode, clientPublicKey65b } =
+      await request.json()
     
     // Log referral code for debugging
     console.log("[Register] Referral code received:", referralCode || "none")
@@ -352,18 +353,40 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Store 65-byte secp256r1 public key (not raw attestation blob)
+    // Store 65-byte secp256r1 public key (never the raw attestation blob or credential id)
     let publicKey: string
+    const { extractPasskeyPublicKey65ForStorage } = await import(
+      "@/lib/webauthn/extract-attestation-pubkey"
+    )
+    const { parsePasskeyPublicKey65, publicKeyToBase64Url } = await import(
+      "@/lib/stellar/smartAccounts/passkeyPublicKey"
+    )
     try {
-      const { extractPasskeyPublicKey65ForStorage } = await import(
-        "@/lib/webauthn/extract-attestation-pubkey"
-      )
       publicKey = extractPasskeyPublicKey65ForStorage(credential)
-    } catch {
-      publicKey =
-        credential.response.publicKey ||
-        credential.response.attestationObject ||
-        credential.id
+    } catch (extractErr) {
+      if (typeof clientPublicKey65b === "string" && clientPublicKey65b.trim()) {
+        try {
+          publicKey = publicKeyToBase64Url(parsePasskeyPublicKey65(clientPublicKey65b.trim()))
+        } catch {
+          console.error("[Register] Passkey public key extraction failed:", extractErr)
+          return NextResponse.json(
+            {
+              error:
+                "Could not read passkey public key from registration. Try again or use a different passkey.",
+            },
+            { status: 400, headers: corsHeaders(request) },
+          )
+        }
+      } else {
+        console.error("[Register] Passkey public key extraction failed:", extractErr)
+        return NextResponse.json(
+          {
+            error:
+              "Could not read passkey public key from registration. Try again or use a different passkey.",
+          },
+          { status: 400, headers: corsHeaders(request) },
+        )
+      }
     }
     
     // Use service client to bypass RLS since we don't have an authenticated session yet

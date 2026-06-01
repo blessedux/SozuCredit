@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
-import { SOZU_SHELL_READY_EVENT } from "@/lib/app-ready"
+import { SOZU_BOOTSTRAP_READY_EVENT } from "@/lib/app-ready"
 
 const STATIC_PRELOADER_ID = "sozu-preloader"
 const MIN_VISIBLE_MS = 100
@@ -58,13 +58,12 @@ export function Preloader() {
     }
 
     const onReady = () => beginFade()
-    // Primary: shell-ready fires as soon as first frame paints (inline script also listens,
-    // this is the React-side fallback in case the inline script missed the event).
-    window.addEventListener(SOZU_SHELL_READY_EVENT, onReady, { once: true })
+    // Primary: bootstrap-ready — auth routing settled and destination UI may show.
+    window.addEventListener(SOZU_BOOTSTRAP_READY_EVENT, onReady, { once: true })
     maxTimer = setTimeout(beginFade, MAX_VISIBLE_MS)
 
     return () => {
-      window.removeEventListener(SOZU_SHELL_READY_EVENT, onReady)
+      window.removeEventListener(SOZU_BOOTSTRAP_READY_EVENT, onReady)
       if (maxTimer) clearTimeout(maxTimer)
       if (fadeTimer) clearTimeout(fadeTimer)
       if (removeTimer) clearTimeout(removeTimer)

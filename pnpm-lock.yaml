@@ -20,6 +20,9 @@ dependencies:
   '@hookform/resolvers':
     specifier: ^3.10.0
     version: 3.10.0(react-hook-form@7.65.0)
+  '@noble/curves':
+    specifier: 1.8.1
+    version: 1.8.1
   '@paper-design/shaders-react':
     specifier: ^0.0.76
     version: 0.0.76(@types/react@19.2.2)(react@19.2.0)
@@ -989,6 +992,13 @@ packages:
     dev: false
     optional: true
 
+  /@noble/curves@1.8.1:
+    resolution: {integrity: sha512-warwspo+UYUPep0Q+vtdVB4Ugn8GGQj8iyB3gnRWsztmUHTI3S1nhdiWNsPUGL0vud7JlRRk1XEu7Lq1KGTnMQ==}
+    engines: {node: ^14.21.3 || >=16}
+    dependencies:
+      '@noble/hashes': 1.7.1
+    dev: false
+
   /@noble/curves@1.9.7:
     resolution: {integrity: sha512-gbKGcRUYIjA3/zCCNaWDciTMFI0dCkvou3TL8Zmy5Nc7sJ47a0jtOeZoTaMxkuqRo9cRhjOdZJXegxYE5FN/xw==}
     engines: {node: ^14.21.3 || >=16}
@@ -1001,6 +1011,11 @@ packages:
     engines: {node: '>= 20.19.0'}
     dependencies:
       '@noble/hashes': 2.0.1
+    dev: false
+
+  /@noble/hashes@1.7.1:
+    resolution: {integrity: sha512-B8XBPsn4vT/KJAGqDzbwztd+6Yte3P4V7iafm24bxgDe/mlRuK6xmWPuCNrKt2vDafZ8MfJLlchDG/vYafQEjQ==}
+    engines: {node: ^14.21.3 || >=16}
     dev: false
 
   /@noble/hashes@1.8.0:
@@ -2586,7 +2601,7 @@ packages:
     resolution: {integrity: sha512-DcxavFpNO93mJnCSef+g97uuQANYHjxxqK8z+cX7GztSBN+Skfja5656VDZCUITql4gNhhiNyjMiWLutS2DDJg==}
     engines: {node: '>=18.0.0'}
     dependencies:
-      '@noble/curves': 1.9.7
+      '@noble/curves': 1.8.1
       '@turnkey/encoding': 0.6.0
       sha256-uint8array: 0.10.7
     dev: false

@@ -25,12 +25,13 @@ export interface StrategyConfig {
   description: string
 }
 
-// ─── Testnet ─────────────────────────────────────────────────────────────────
-// BlendUSDC testnet: CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU
-// Testnet contracts from paltalabs/defindex public/testnet.contracts.json
+import { getDefaultBlendUsdcContractId } from "@/lib/stellar/asset-registry-core"
 
-const TESTNET_BLEND_USDC = "CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU"
-const TESTNET_BLEND_USDC_RESERVE = TESTNET_BLEND_USDC // same contract acts as reserve ID
+// ─── Testnet ─────────────────────────────────────────────────────────────────
+// Reserve asset contractId — same default as server registry (env overrides on server).
+
+const TESTNET_BLEND_USDC = getDefaultBlendUsdcContractId("testnet")
+const TESTNET_BLEND_USDC_RESERVE = TESTNET_BLEND_USDC
 
 const TESTNET_STRATEGIES: Record<StrategyId, StrategyConfig> = {
   fixed: {
@@ -77,7 +78,7 @@ const TESTNET_STRATEGIES: Record<StrategyId, StrategyConfig> = {
 // Circle USDC mainnet:               CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75
 // Blend mainnet Fixed pool:          CAJJZSGMMM3PD7N33TAPHGBUGTB43OC73HVIK2L2G6BNGGGYOSSYBXBD
 
-const MAINNET_USDC = "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75"
+const MAINNET_USDC = getDefaultBlendUsdcContractId("mainnet")
 
 const MAINNET_STRATEGIES: Record<StrategyId, StrategyConfig> = {
   fixed: {

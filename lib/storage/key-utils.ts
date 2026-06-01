@@ -96,6 +96,13 @@ export function storeCredentialIdInSession(credentialId: string): void {
   }
 }
 
+/** WebAuthn rawId (base64url) for OZ keyData suffix — must match assertion bytes at sign time. */
+export function storeCredentialRawIdInSession(rawIdBase64Url: string): void {
+  if (typeof window !== "undefined" && rawIdBase64Url.trim()) {
+    sessionStorage.setItem("credential_raw_id", rawIdBase64Url.trim())
+  }
+}
+
 /**
  * Get public key from sessionStorage (if stored)
  * 

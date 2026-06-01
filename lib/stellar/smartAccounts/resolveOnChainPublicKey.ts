@@ -6,10 +6,11 @@ import { Api } from "@stellar/stellar-sdk/rpc"
 import { buildContextRuleTypesFromAuthEntry } from "@/lib/stellar/smartAccounts/contextRuleTypes"
 import {
   credentialIdToBuffer,
-  extractCredentialIdFromKeyData,
   extractPublicKeyFromKeyData,
   publicKeyToBase64Url,
 } from "@/lib/stellar/smartAccounts/passkeyPublicKey"
+
+const SECP256R1_PUBLIC_KEY_SIZE = 65
 import { normalizeCredentialId } from "@/lib/webauthn/normalize-credential-id"
 import type { xdr } from "@stellar/stellar-sdk"
 
@@ -86,8 +87,6 @@ function pickExternalKeyData(signers: unknown, credentialId: string): Buffer | n
     if (credentialIdAppearsInKeyData(keyData, credentialId)) return keyData
   }
 
-  // Legacy deploys (e.g. attestation blob as keyData) — single External signer must be used as-is.
-  if (external.length === 1) return external[0]
   return null
 }
 

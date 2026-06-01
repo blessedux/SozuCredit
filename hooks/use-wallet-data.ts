@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { getUserId } from "@/lib/wallet-utils"
 import { parseApyFromApiResponse } from "@/lib/defindex/parse-apy-response"
 import { deferNonCritical } from "@/lib/defer-non-critical"
+import { isClientAuthed } from "@/lib/client-auth-gate"
 
 export interface Vault {
   id: string
@@ -25,14 +26,25 @@ export interface DefindexBalance {
   walletBalance: number
   /** Circle USDC SAC on C (testnet) — shown on Stellar Expert. */
   sorobanSacBalance: number
+  /** Soroban spendable on C (unique contracts; send picks one per tx). */
+  spendableOnC?: number
   strategyBalance: number
   /** @deprecated Use displayBalance — kept for audit panel total row migration. */
   totalBalance: number
   /** Primary balance card figure (wallet + strategy + classic on G signer when applicable). */
   displayBalance: number
   classicOnSigner: number
+  /** USDC mistakenly on G — not in totals; migration hint only. */
+  legacyUsdcOnSigner?: number
   strategyShares: number
   apy: number
+  tokenBalances?: Array<{
+    assetId: string
+    contractId: string
+    balance: number
+    displayName?: string
+  }>
+  contractIds?: { blend?: string | null; circleSac?: string | null }
 }
 
 export interface AutoDepositStatus {
@@ -66,7 +78,12 @@ export function useWalletData() {
   const [xlmBalance, setXlmBalance] = useState<number | null>(null)
   const [walletAddress, setWalletAddress] = useState(() => {
     if (typeof window === "undefined") return ""
-    return sessionStorage.getItem("stellar_public_key") || ""
+    if (!isClientAuthed()) return ""
+    return (
+      localStorage.getItem("stellar_public_key") ??
+      sessionStorage.getItem("stellar_public_key") ??
+      ""
+    )
   })
   const [walletNetwork, setWalletNetwork] = useState<"testnet" | "mainnet">("testnet")
   const [username, setUsername] = useState("")
@@ -151,12 +168,16 @@ export function useWalletData() {
           setDefindexBalance((prev) => ({
             walletBalance: retry.walletBalance,
             sorobanSacBalance: retry.sorobanSacBalance,
+            spendableOnC: retry.spendableOnC,
             strategyBalance: retry.strategyBalance,
             totalBalance: retry.displayBalance,
             displayBalance: retry.displayBalance,
             classicOnSigner: retry.classicOnSigner,
+            legacyUsdcOnSigner: retry.legacyUsdcOnSigner,
             strategyShares: prev?.strategyShares ?? 0,
             apy: prev?.apy ?? 15.5,
+            tokenBalances: retry.tokenBalances,
+            contractIds: retry.contractIds,
           }))
           setWalletAddress(sessionPk)
           return
@@ -166,18 +187,34 @@ export function useWalletData() {
       setDefindexBalance((prev) => ({
         walletBalance: unified.walletBalance,
         sorobanSacBalance: unified.sorobanSacBalance,
+        spendableOnC: unified.spendableOnC,
         strategyBalance: unified.strategyBalance,
         totalBalance: unified.displayBalance,
         displayBalance: unified.displayBalance,
         classicOnSigner: unified.classicOnSigner,
+        legacyUsdcOnSigner: unified.legacyUsdcOnSigner,
         strategyShares: prev?.strategyShares ?? 0,
         apy: prev?.apy ?? 15.5,
+        tokenBalances: unified.tokenBalances,
+        contractIds: unified.contractIds,
       }))
 
-      const addressToPersist = requestedPk || unified.walletAddress
+      let addressToPersist = requestedPk || unified.walletAddress
+      if (
+        addressToPersist?.startsWith("G") &&
+        sessionPk?.startsWith("C") &&
+        sessionPk.length === 56
+      ) {
+        addressToPersist = sessionPk
+      } else if (unified.walletAddress?.startsWith("C")) {
+        addressToPersist = unified.walletAddress
+      } else if (requestedPk?.startsWith("C")) {
+        addressToPersist = requestedPk
+      }
+
       if (addressToPersist && addressToPersist.length === 56) {
         setWalletAddress(addressToPersist)
-        if (typeof window !== "undefined") {
+        if (typeof window !== "undefined" && addressToPersist.startsWith("C")) {
           localStorage.setItem("stellar_public_key", addressToPersist)
           sessionStorage.setItem("stellar_public_key", addressToPersist)
         }
@@ -296,7 +333,7 @@ export function useWalletData() {
     try {
       console.log("[Wallet] Fetching DeFindex balance")
       const qs =
-        publicKey && /^[GC][A-Z0-9]{55}$/.test(publicKey)
+        publicKey && /^(C|G)[A-Z0-9]{55}$/.test(publicKey)
           ? `?publicKey=${encodeURIComponent(publicKey)}`
           : ""
       const defindexResponse = await fetch(`/api/wallet/defindex/balance${qs}`, {
@@ -493,17 +530,57 @@ export function useWalletData() {
           typeof walletData.publicKey === "string" ? walletData.publicKey.trim() : ""
 
         if (publicKeyToUse) {
-          if (publicKeyToUse.startsWith("G") && retryCount < 2) {
-            console.log("[Wallet] Legacy G in DB — retrying smart account sync…")
-            setTimeout(() => fetchWalletAddress(userId, retryCount + 1), 1500)
-            return
+          if (publicKeyToUse.startsWith("G")) {
+            const sessionC =
+              typeof window !== "undefined"
+                ? (
+                    localStorage.getItem("stellar_public_key") ??
+                    sessionStorage.getItem("stellar_public_key")
+                  )
+                    ?.trim()
+                    .toUpperCase()
+                : null
+            if (sessionC?.startsWith("C") && sessionC.length === 56) {
+              console.log("[Wallet] DB has legacy G — using session C for UI")
+              setWalletAddress(sessionC)
+              if (walletData.network) setWalletNetwork(walletData.network)
+              void bootstrapWalletFetches(sessionC, userId)
+              return
+            }
+            if (retryCount < 2) {
+              console.log("[Wallet] Legacy G in DB — retrying smart account sync…")
+              setTimeout(() => fetchWalletAddress(userId, retryCount + 1), 1500)
+              return
+            }
+            try {
+              const { ensureSmartWallet } = await import("@/lib/wallet/ensure-smart-wallet")
+              const ensured = await ensureSmartWallet(
+                userId,
+                sessionStorage.getItem("credential_id") ?? undefined,
+              )
+              if (ensured.publicKey.startsWith("C")) {
+                const { persistCanonicalWalletSession } = await import(
+                  "@/lib/wallet/persist-wallet-session"
+                )
+                persistCanonicalWalletSession(
+                  ensured.publicKey,
+                  ensured.walletType,
+                  ensured.credentialId,
+                )
+                setWalletAddress(ensured.publicKey)
+                void bootstrapWalletFetches(ensured.publicKey, userId)
+                return
+              }
+            } catch (ensureErr) {
+              console.warn("[Wallet] ensureSmartWallet after legacy G:", ensureErr)
+            }
           }
           console.log("[Wallet] ✅ Stellar wallet address loaded:", publicKeyToUse)
           setWalletAddress(publicKeyToUse)
           if (walletData.network) {
             setWalletNetwork(walletData.network)
           }
-          if (typeof window !== "undefined") {
+          if (typeof window !== "undefined" && publicKeyToUse.startsWith("C")) {
             localStorage.setItem("stellar_public_key", publicKeyToUse)
             sessionStorage.setItem("stellar_public_key", publicKeyToUse)
           }
@@ -682,6 +759,11 @@ export function useWalletData() {
     // Prefer client-derived public key (passkey-derived) to avoid showing
     // wallet-creation CTAs while we sync with the server/DB.
     // Read from localStorage (persistent) falling back to sessionStorage (legacy).
+    if (!isClientAuthed()) {
+      window.location.replace(`/auth${window.location.search}${window.location.hash}`)
+      return
+    }
+
     const sessionPublicKey =
       localStorage.getItem("stellar_public_key") ?? sessionStorage.getItem("stellar_public_key")
     if (sessionPublicKey?.startsWith("C") && !walletAddress) {
@@ -689,37 +771,11 @@ export function useWalletData() {
     }
 
     const checkAuth = () => {
-      // Read from localStorage (persistent session) falling back to sessionStorage (legacy tabs)
-      const isAuthenticated =
-        localStorage.getItem("dev_authenticated") === "true" ||
-        sessionStorage.getItem("dev_authenticated") === "true"
-      const rawUserId =
-        localStorage.getItem("dev_username") ?? sessionStorage.getItem("dev_username")
-
-      // Legacy dev shortcut created dev-user-* IDs with no passkey — clear and send to auth.
-      if (typeof rawUserId === "string" && rawUserId.startsWith("dev-user-")) {
-        localStorage.removeItem("dev_username")
-        localStorage.removeItem("dev_authenticated")
-        sessionStorage.removeItem("dev_username")
-        sessionStorage.removeItem("dev_authenticated")
-        window.location.replace("/auth")
+      if (!isClientAuthed()) {
+        window.location.replace(`/auth${window.location.search}${window.location.hash}`)
         return
       }
-
-      if (!isAuthenticated || !rawUserId) {
-        setTimeout(() => {
-          const retryCheck =
-            localStorage.getItem("dev_authenticated") === "true" ||
-            sessionStorage.getItem("dev_authenticated") === "true"
-          if (!retryCheck) {
-            window.location.replace("/auth")
-          } else {
-            fetchVaultData()
-          }
-        }, 1500)
-      } else {
-        fetchVaultData()
-      }
+      fetchVaultData()
     }
 
     const fetchVaultData = async () => {

@@ -293,8 +293,11 @@ Soroban / DeFindex variables are documented in **[Wallet, Stellar, and DeFindex]
 
 ## 📚 Documentation index
 
+Full index: **[docs/README.md](./docs/README.md)**
+
 | Topic | Guide |
 |--------|--------|
+| **Privacy wallet roadmap (Phases 1–10)** | [docs/privacy-wallet-roadmap.md](./docs/privacy-wallet-roadmap.md) |
 | Architecture and platform | [docs/architecture-and-platform.md](./docs/architecture-and-platform.md) |
 | Authentication and accounts | [docs/authentication-and-accounts.md](./docs/authentication-and-accounts.md) |
 | Wallet, Stellar, DeFindex | [docs/wallet-stellar-defindex.md](./docs/wallet-stellar-defindex.md) |
@@ -310,35 +313,40 @@ Soroban / DeFindex variables are documented in **[Wallet, Stellar, and DeFindex]
 
 ## 📈 Roadmap
 
-### ✅ Phase 1: Foundation (Completed)
+Two roadmaps apply to this product:
+
+1. **Privacy + compliance stack (Phases 1–10)** — passkeys, smart accounts, credentials, rotating addresses, ZK compliance, shielded treasury. Canonical doc: **[docs/privacy-wallet-roadmap.md](./docs/privacy-wallet-roadmap.md)**.
+2. **Sozu Credit product features (below)** — DeFi, education, community credit, and UX milestones.
+
+### ✅ Product Phase 1: Foundation (Completed)
 
 - Passkeys authentication
 - Stellar wallet creation
 - Trust points & vouching
 - Basic UI/UX
 
-### 🚧 Phase 2: DeFi Integration (In Progress)
+### 🚧 Product Phase 2: DeFi Integration (In Progress)
 
 - USDC asset setup
 - Yield vault integration
 - Auto-deposit logic
 - Balance aggregation
 
-### 📅 Phase 3: Education Portal
+### 📅 Product Phase 3: Education Portal
 
 - Course modules
 - Progress tracking
 - Certification system
 - Credit unlocking
 
-### 📅 Phase 4: Credit Pools
+### 📅 Product Phase 4: Credit Pools
 
 - Decentralized credit contracts
 - Disbursement system
 - Repayment tracking
 - Trust score integration
 
-### 📅 Phase 5: Advanced Features
+### 📅 Product Phase 5: Advanced Features
 
 - Multi-asset support
 - Payment links

@@ -2,6 +2,8 @@
 
 High-level view of how SozuCredit is structured: custody models, backend responsibilities, and where truth lives.
 
+**Strategic direction:** Long-term privacy, compliance, and self-custody phasing is in [privacy-wallet-roadmap.md](./privacy-wallet-roadmap.md) (Phases 1–10). This file describes the **current** platform shape.
+
 ## Frontend and API
 
 - **Next.js (App Router)** hosts the PWA UI and route handlers (wallet, auth, ledger, payment rail).

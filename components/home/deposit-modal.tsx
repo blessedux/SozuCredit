@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils"
 import { useWalletLanguage } from "@/lib/wallet-language"
 import { formatWalletText } from "@/lib/wallet-texts"
 import { getBlendUsdcTestnetFundingGuide } from "@/lib/wallet/blend-usdc-funding"
+import { resolveDepositReceiveAddress } from "@/lib/wallet/deposit-receive-address"
+import { getUserId } from "@/lib/wallet-utils"
 
 type DepositModalProps = {
   isOpen: boolean
@@ -41,12 +43,17 @@ export function DepositModal({
 }: DepositModalProps) {
   const { t } = useWalletLanguage()
   const [address, setAddress] = useState<string>("")
+  const [depositAddressSource, setDepositAddressSource] = useState<
+    "prop" | "storage" | "sync" | "legacy"
+  >("storage")
   const [sozuTag, setSozuTag] = useState<string>("")
   const [qrMode, setQrMode] = useState<QrMode>("tag")
   const [tagCopied, setTagCopied] = useState(false)
   const [addressCopied, setAddressCopied] = useState(false)
   const [visible, setVisible] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [resolving, setResolving] = useState(false)
+  const [setupError, setSetupError] = useState<string | null>(null)
 
   useEffect(() => {
     setMounted(true)
@@ -56,12 +63,6 @@ export function DepositModal({
     if (!isOpen) {
       setVisible(false)
       return
-    }
-
-    if (walletAddressProp) {
-      setAddress(walletAddressProp)
-    } else if (typeof window !== "undefined") {
-      setAddress(sessionStorage.getItem("stellar_public_key") ?? "")
     }
 
     let tag = ""
@@ -74,10 +75,44 @@ export function DepositModal({
     }
 
     setQrMode(tag ? "tag" : "address")
+
+    setSetupError(
+      typeof window !== "undefined"
+        ? sessionStorage.getItem("wallet_setup_error")
+        : null,
+    )
+
+    void (async () => {
+      setResolving(true)
+      try {
+        const userId = getUserId()
+        const { address: depositAddr, source } = await resolveDepositReceiveAddress(
+          walletAddressProp,
+          userId,
+        )
+        setDepositAddressSource(source)
+        setAddress(depositAddr)
+        if (!depositAddr) {
+          const statusRes = await fetch("/api/wallet/smart-wallet/status")
+          if (statusRes.ok) {
+            const status = (await statusRes.json()) as { missingEnv?: string | null }
+            if (status.missingEnv) setSetupError(status.missingEnv)
+          }
+        } else if (typeof window !== "undefined") {
+          sessionStorage.removeItem("wallet_setup_error")
+          setSetupError(null)
+        }
+      } finally {
+        setResolving(false)
+      }
+    })()
+
     requestAnimationFrame(() => setVisible(true))
   }, [isOpen, walletAddressProp])
 
-  const effectiveAddress = walletAddressProp || address
+  const propIsC = walletAddressProp?.trim().toUpperCase().startsWith("C")
+  const effectiveAddress =
+    address.startsWith("C") ? address : propIsC ? walletAddressProp!.trim().toUpperCase() : address
   const hasTag = Boolean(sozuTag)
   const canShowTagQr = hasTag
   const activeMode: QrMode = canShowTagQr ? qrMode : "address"
@@ -98,7 +133,9 @@ export function DepositModal({
     activeMode === "tag" && sozuTag
       ? formatWalletText(t.depositTagCaption, { tag: sozuTag })
       : effectiveAddress
-        ? formatWalletText(t.depositAddressCaption, { addr: addressLabel })
+        ? effectiveAddress.startsWith("C")
+          ? `${formatWalletText(t.depositAddressCaption, { addr: addressLabel })} · ${t.depositSmartAccountHint}`
+          : formatWalletText(t.depositAddressCaption, { addr: addressLabel })
         : t.depositConnectWallet
 
   const handleCopyTag = async () => {
@@ -152,7 +189,7 @@ export function DepositModal({
         <X className="h-4 w-4" />
       </button>
 
-      <p className="text-[9px] font-light uppercase tracking-[0.3em] text-white/35">{t.depositTitle}</p>
+      <div className="text-[9px] font-light uppercase tracking-[0.3em] text-white/35">{t.depositTitle}</div>
 
       {canShowTagQr ? (
         <div
@@ -222,7 +259,7 @@ export function DepositModal({
         ) : (
           <div className="h-56 w-56 animate-pulse rounded-2xl bg-white/10" />
         )}
-        <p className="max-w-[16rem] text-center text-[10px] leading-snug text-white/40">{qrCaption}</p>
+        <div className="max-w-[16rem] text-center text-[10px] leading-snug text-white/40">{qrCaption}</div>
       </div>
 
       <div
@@ -279,6 +316,26 @@ export function DepositModal({
           </button>
         ) : null}
 
+        {!effectiveAddress && (setupError || resolving) ? (
+          <div className="rounded-2xl border border-rose-500/35 bg-rose-950/40 px-4 py-3 text-left">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-rose-200/90">
+              {t.depositNoWallet}
+            </div>
+            {setupError ? (
+              <div className="mt-1.5 text-[10px] leading-relaxed text-white/55">{setupError}</div>
+            ) : null}
+            {resolving ? (
+              <div className="mt-1 text-[10px] text-white/40">{t.depositResolvingWallet}</div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {depositAddressSource === "legacy" && effectiveAddress.startsWith("G") ? (
+          <div className="rounded-2xl border border-amber-500/35 bg-amber-950/40 px-4 py-2.5 text-[10px] leading-relaxed text-amber-100/90">
+            {t.depositLegacyGWarning}
+          </div>
+        ) : null}
+
         {showBlendGuide && blendFunding ? (
           <div className="rounded-2xl border border-amber-500/35 bg-amber-950/40 px-4 py-3 text-left">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-200/90">
@@ -312,7 +369,7 @@ export function DepositModal({
         ) : null}
       </div>
 
-      <p className="shrink-0 text-[9px] text-white/25">{t.depositUsdcOnly}</p>
+      <div className="shrink-0 text-[9px] text-white/25">{t.depositUsdcOnly}</div>
     </div>
   )
 

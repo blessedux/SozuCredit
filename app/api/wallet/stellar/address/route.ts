@@ -33,9 +33,50 @@ export async function GET(request: Request) {
       }
     }
 
-    // Get wallet from database (use service client if no authenticated user)
     console.log("[Stellar Address API] Getting wallet for userId:", userId)
-    const wallet = await getStellarWallet(userId, !user)
+    let wallet = await getStellarWallet(userId, !user)
+
+    if (wallet?.publicKey?.startsWith("G")) {
+      const { ensureFactorySmartWalletForUser } = await import(
+        "@/lib/stellar/migrate-legacy-wallet"
+      )
+      const { isFactorySmartAccountConfigured } = await import("@/lib/stellar/soroban-env")
+      if (isFactorySmartAccountConfigured()) {
+        const migrated = await ensureFactorySmartWalletForUser(
+          userId,
+          wallet.signerPublicKey ?? wallet.publicKey,
+        )
+        if (!("error" in migrated)) {
+          wallet = {
+            id: wallet.id,
+            userId: wallet.userId,
+            publicKey: migrated.publicKey,
+            signerPublicKey: migrated.signerPublicKey,
+            walletType: migrated.walletType,
+            network: migrated.network,
+            createdAt: wallet.createdAt,
+            updatedAt: new Date().toISOString(),
+          }
+        } else {
+          console.warn("[Stellar Address API] G→C migration failed:", migrated.error)
+        }
+      } else {
+        console.warn(
+          "[Stellar Address API] Legacy G in DB; factory not configured — client should provision OZ C",
+        )
+        return NextResponse.json(
+          {
+            publicKey: null,
+            network: wallet.network,
+            walletType: "legacy",
+            signerPublicKey: wallet.signerPublicKey ?? wallet.publicKey,
+            walletMustMigrate: true,
+            provisionVia: "oz_passkey",
+          },
+          { headers: corsHeaders(request as any) },
+        )
+      }
+    }
 
     if (!wallet) {
       console.log("[Stellar Address API] No wallet row yet for userId:", userId)
@@ -75,7 +116,7 @@ export async function GET(request: Request) {
       {
         publicKey: pk,
         network: wallet.network,
-        walletType: wallet.walletType ?? null,
+        walletType: wallet.walletType ?? (pk.startsWith("C") ? "factory" : null),
         signerPublicKey: wallet.signerPublicKey ?? null,
         walletMustMigrate: pk.startsWith("G"),
       },

@@ -1,14 +1,34 @@
 "use client"
 
 import { checkAccountStatus } from "@/lib/stellar/wallet-creator"
+import { getUserId } from "@/lib/wallet-utils"
 
 const ACTIVATION_COMPLETE_KEY = "sozu_wallet_activation_complete"
+const WELCOME_ONBOARDING_KEY_PREFIX = "sozu_welcome_onboarding_v1_"
 
 export function isSmartContractWalletAddress(
   publicKey: string | null | undefined,
 ): boolean {
   const pk = publicKey?.trim().toUpperCase()
   return !!pk && pk.startsWith("C") && pk.length === 56
+}
+
+export function welcomeOnboardingStorageKey(userId: string): string {
+  return `${WELCOME_ONBOARDING_KEY_PREFIX}${userId.trim()}`
+}
+
+export function hasCompletedWelcomeOnboarding(userId?: string | null): boolean {
+  if (typeof window === "undefined") return true
+  const id = userId?.trim() || getUserId()
+  if (!id) return false
+  return localStorage.getItem(welcomeOnboardingStorageKey(id)) === "1"
+}
+
+export function markWelcomeOnboardingComplete(userId?: string | null): void {
+  if (typeof window === "undefined") return
+  const id = userId?.trim() || getUserId()
+  if (!id) return
+  localStorage.setItem(welcomeOnboardingStorageKey(id), "1")
 }
 
 export function markWalletActivationComplete(): void {
@@ -42,8 +62,21 @@ async function fetchDbWalletPublicKey(userId: string): Promise<{
 }
 
 /**
- * Classic G testnet activation slides (friendbot + USDC trustline).
- * Smart accounts (C…) are provisioned at passkey login — never show this flow.
+ * First-time welcome slides (testnet). Shown once per user id — independent of C vs G.
+ */
+export function needsWelcomeOnboarding(params: {
+  walletNetwork: string
+  userId?: string | null
+}): boolean {
+  if (params.walletNetwork !== "testnet") return false
+  const userId = params.userId?.trim() || getUserId()
+  if (!userId) return false
+  return !hasCompletedWelcomeOnboarding(userId)
+}
+
+/**
+ * Classic G testnet activation (friendbot + USDC trustline).
+ * Smart accounts (C…) skip this; they use welcome slides only.
  */
 export async function needsWalletActivationOnboarding(params: {
   walletAddress: string | null | undefined
@@ -59,18 +92,9 @@ export async function needsWalletActivationOnboarding(params: {
 
   if (typeof window !== "undefined") {
     if (localStorage.getItem(ACTIVATION_COMPLETE_KEY) === "1") return false
-
-    const stored =
-      localStorage.getItem("stellar_public_key") ??
-      sessionStorage.getItem("stellar_public_key")
-    if (isSmartContractWalletAddress(stored)) {
-      markWalletActivationComplete()
-      return false
-    }
   }
 
   if (isSmartContractWalletAddress(pk)) {
-    markWalletActivationComplete()
     return false
   }
 
@@ -83,12 +107,10 @@ export async function needsWalletActivationOnboarding(params: {
         if (db.walletType) sessionStorage.setItem("wallet_type", db.walletType)
         sessionStorage.removeItem("wallet_sync_pending")
       }
-      markWalletActivationComplete()
       return false
     }
   }
 
-  // Legacy G only: Horizon account + Circle USDC trustline
   if (!pk.startsWith("G") || pk.length !== 56) return false
 
   try {

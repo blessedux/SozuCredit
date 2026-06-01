@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { allowCredentialTransportsForRequest } from "@/lib/webauthn/credential-transports"
 import { generateChallenge } from "@/lib/webauthn/utils"
-import { challengeStore, cleanupChallenges } from "@/lib/webauthn/config"
+import { challengeStore, cleanupChallenges, getRpID, rpName } from "@/lib/webauthn/config"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
@@ -21,7 +21,8 @@ export async function POST(request: NextRequest) {
 
     // Generate challenge
     const challenge = generateChallenge()
-    console.log("[Login Challenge] Generated challenge:", challenge.substring(0, 20) + "...")
+    const rpID = getRpID(request)
+    console.log("[Login Challenge] Generated challenge:", challenge.substring(0, 20) + "...", "rpId:", rpID)
 
     // If username provided and not empty, try to get specific passkeys for that user
     if (username && typeof username === "string" && username !== "") {
@@ -54,6 +55,7 @@ export async function POST(request: NextRequest) {
           return NextResponse.json(
             {
               challenge,
+              rp: { name: rpName, id: rpID },
               allowCredentials: passkeys.map((pk) => ({
                 id: pk.credential_id,
                 type: "public-key",
@@ -84,6 +86,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         challenge,
+        rp: { name: rpName, id: rpID },
         // Omit allowCredentials to enable passkey discovery
         timeout: 60000,
         userVerification: "required",

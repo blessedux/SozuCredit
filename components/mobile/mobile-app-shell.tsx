@@ -8,7 +8,7 @@ import { useAppViewportLock } from "@/hooks/use-app-viewport-lock"
 import { SmartAccountKitProvider } from "@/components/SmartAccountKitProvider"
 import { WalletDataProvider } from "@/components/wallet/wallet-data-provider"
 import { WalletLanguageProvider } from "@/lib/wallet-language"
-import { signalShellReady } from "@/lib/app-ready"
+import { signalBootstrapReady } from "@/lib/app-ready"
 import {
   OnboardingOverlayProvider,
   useOnboardingOverlay,
@@ -73,12 +73,13 @@ function MobileAppShellPanels() {
     window.history.replaceState(window.history.state, "", next)
   }, [searchParams])
 
-  // Signal that the shell has painted so the preloader can dismiss immediately.
-  // Double-rAF ensures we're past the first composite frame before fading.
+  // Bootstrap gate on /home signals ready after auth; other wallet routes signal here.
   useEffect(() => {
+    if (typeof window !== "undefined" && window.location.pathname === "/home") return
+
     const raf1 = requestAnimationFrame(() => {
       const raf2 = requestAnimationFrame(() => {
-        signalShellReady()
+        signalBootstrapReady()
       })
       return () => cancelAnimationFrame(raf2)
     })

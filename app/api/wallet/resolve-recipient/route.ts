@@ -19,6 +19,28 @@ const corsHeaders = (request: NextRequest) => ({
   "Access-Control-Allow-Headers": "Content-Type, Authorization, x-user-id",
 })
 
+type ResolveCacheEntry = {
+  expiresAt: number
+  body: Record<string, unknown>
+}
+
+const RESOLVE_CACHE_TTL_MS = 5 * 60 * 1000
+const resolveRecipientCache = new Map<string, ResolveCacheEntry>()
+
+function readResolveCache(tag: string): Record<string, unknown> | null {
+  const hit = resolveRecipientCache.get(tag)
+  if (!hit) return null
+  if (Date.now() > hit.expiresAt) {
+    resolveRecipientCache.delete(tag)
+    return null
+  }
+  return hit.body
+}
+
+function writeResolveCache(tag: string, body: Record<string, unknown>): void {
+  resolveRecipientCache.set(tag, { body, expiresAt: Date.now() + RESOLVE_CACHE_TTL_MS })
+}
+
 export async function OPTIONS(request: NextRequest) {
   return NextResponse.json({}, { headers: corsHeaders(request) })
 }
@@ -65,6 +87,11 @@ export async function POST(request: NextRequest) {
         { error: "Recipient not found. Please check the Sozu tag or wallet address." },
         { status: 404, headers: corsHeaders(request) }
       )
+    }
+
+    const cached = readResolveCache(sozuTagLookup.toLowerCase())
+    if (cached) {
+      return NextResponse.json(cached, { headers: corsHeaders(request) })
     }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -116,12 +143,22 @@ export async function POST(request: NextRequest) {
       username: profile.username,
     })
 
-    const { data: wallets, error: walletError } = await serviceClient
-      .from("stellar_wallets")
-      .select("public_key, user_id, network, updated_at")
-      .eq("user_id", profile.id)
-      .order("updated_at", { ascending: false })
-      .limit(1)
+    const [{ data: wallets, error: walletError }, { data: orgRow }] = await Promise.all([
+      serviceClient
+        .from("stellar_wallets")
+        .select("public_key, user_id, network, updated_at")
+        .eq("user_id", profile.id)
+        .order("updated_at", { ascending: false })
+        .limit(1),
+      serviceClient
+        .from("organizations")
+        .select("soroban_contract_id")
+        .eq("sozu_tag_auth_user_id", profile.id)
+        .not("soroban_contract_id", "is", null)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ])
 
     if (walletError) {
       console.error("[Resolve Recipient] Error finding wallet:", walletError)
@@ -131,7 +168,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const wallet = wallets?.[0] ?? null
+    let wallet = wallets?.[0] ?? null
+
+    /** SozuPay org $tag → org disbursement C (SAC treasury), not only the admin's personal C. */
+    const orgTreasuryC = orgRow?.soroban_contract_id?.trim().toUpperCase()
+    const resolvedFromOrgTreasury =
+      !!orgTreasuryC && isValidStellarReceiveAddress(orgTreasuryC)
+    if (resolvedFromOrgTreasury) {
+      wallet = {
+        public_key: orgTreasuryC,
+        user_id: profile.id,
+        network: wallet?.network ?? "testnet",
+        updated_at: wallet?.updated_at ?? new Date().toISOString(),
+      }
+    }
 
     if (!wallet?.public_key) {
       console.log("[Resolve Recipient] No wallet found for user_id:", profile.id)
@@ -156,18 +206,20 @@ export async function POST(request: NextRequest) {
     const rail = paymentRailForAddress(pk)!
     console.log("[Resolve Recipient] Returning wallet for tag:", profile.username, rail)
 
-    return NextResponse.json(
-      {
-        walletAddress: pk,
-        tag: profile.username,
-        network: wallet.network,
-        addressType: rail === "smart" ? "contract" : "classic",
-        paymentRail: rail,
-        paymentSupported: true,
-        ...(rail === "legacy" && { legacyNotice: LEGACY_CLASSIC_PAYMENT_NOTICE }),
-      },
-      { headers: corsHeaders(request) }
-    )
+    const payload = {
+      walletAddress: pk,
+      tag: profile.username,
+      network: wallet.network,
+      addressType: rail === "smart" ? "contract" : "classic",
+      paymentRail: rail,
+      paymentSupported: true,
+      ...(resolvedFromOrgTreasury && { receiveTarget: "sozupay_org_treasury" }),
+      ...(rail === "legacy" && { legacyNotice: LEGACY_CLASSIC_PAYMENT_NOTICE }),
+    }
+
+    writeResolveCache(sozuTagLookup.toLowerCase(), payload)
+
+    return NextResponse.json(payload, { headers: corsHeaders(request) })
   } catch (error: unknown) {
     console.error("[Resolve Recipient] Error:", error)
     return NextResponse.json(

@@ -3,7 +3,8 @@
  * Handles recipient resolution, payment submission, and transaction signing
  */
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
+import { iosHapticSingle } from "@/lib/haptics/ios-switch-pulse"
 import { getUserId } from "@/lib/wallet-utils"
 import type { PaymentReceipt } from "@/lib/payment/payment-receipt"
 import {
@@ -24,14 +25,44 @@ import {
 import { normalizeSozuTag } from "@/lib/payment/sozu-tag-lookup"
 import { isValidStellarReceiveAddress } from "@/lib/payment/stellar-address"
 import type { ReferenceFiat } from "@/lib/treasury/types"
+import {
+  canCoverSendAmount,
+  maxSingleTokenBalance,
+  type BalancePayloadForSend,
+} from "@/lib/stellar/spendable-balance-client"
+
+/** Warm kit + on-chain connect so Send can open the passkey prompt immediately on tap. */
+async function warmKitForSend(contractId: string, credentialId: string): Promise<void> {
+  const c = contractId.trim().toUpperCase()
+  const cred = credentialId.trim()
+  if (!c.startsWith("C") || !cred) return
+  try {
+    const { getSmartAccountKit } = await import("@/lib/stellar/smartAccounts/client")
+    const { ensureKitConnectedForSend } = await import("@/lib/stellar/smartAccounts/ensureKitConnected")
+    const { kit } = await getSmartAccountKit()
+    await ensureKitConnectedForSend(kit, cred, c)
+  } catch (err) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[Send Payment] Kit warm-up skipped:", err)
+    }
+  }
+}
 
 export function useSendPayment(
   walletAddress: string,
   walletNetwork: "testnet" | "mainnet",
-  defindexBalance: { walletBalance: number; strategyBalance: number; totalBalance: number } | null,
+  defindexBalance: {
+    walletBalance: number
+    sorobanSacBalance?: number
+    spendableOnC?: number
+    strategyBalance: number
+    totalBalance: number
+    displayBalance?: number
+  } | null,
   referenceFiat: ReferenceFiat,
   onSuccess?: (receipt: PaymentReceipt) => void,
-  onRefresh?: () => void
+  onRefresh?: () => void | Promise<void>,
+  insufficientBalanceLabel = "Amount exceeds available balance",
 ) {
   const [sendRecipient, setSendRecipient] = useState("")
   const [sendAmount, setSendAmount] = useState("")
@@ -39,6 +70,7 @@ export function useSendPayment(
     defaultSendAmountCurrency(referenceFiat),
   )
   const [isSending, setIsSending] = useState(false)
+  const [sendPhase, setSendPhase] = useState<"preparing" | "signing" | "submitting" | null>(null)
   const [sendStep, setSendStep] = useState<"recipient" | "amount">("recipient")
   const [resolvedRecipientAddress, setResolvedRecipientAddress] = useState<string | null>(null)
   const [resolvedPaymentRail, setResolvedPaymentRail] = useState<"smart" | "legacy" | null>(null)
@@ -47,7 +79,124 @@ export function useSendPayment(
   const [isManualMode, setIsManualMode] = useState(false)
   const [sendMemo, setSendMemo] = useState("")
   const [recipientError, setRecipientError] = useState<string | null>(null)
+  const [amountError, setAmountError] = useState<string | null>(null)
   const [isVibrating, setIsVibrating] = useState(false)
+
+  /** Tag → address from live validation; avoids a second resolve on Continue. */
+  const recipientResolveCacheRef = useRef<{
+    forTag: string
+    address: string
+    rail?: "smart" | "legacy"
+    notice?: string | null
+  } | null>(null)
+
+  /** Cached result from background payment build (invalidated on amount/recipient change). */
+  const prefetchedBuildRef = useRef<{
+    unsignedXdr: string
+    sorobanDataXdr?: string
+    signMethod: string
+    ozCredentialId?: string
+    signerPublicKey?: string
+    walletAddress?: string
+    supportsOzKitApi?: boolean
+    forAmount: number
+    forRecipient: string
+    forSender: string
+  } | null>(null)
+
+  const PAYMENT_ERROR_SHAKE_MS = 500
+
+  const triggerPaymentErrorFeedback = useCallback(() => {
+    setIsVibrating(true)
+    iosHapticSingle()
+    setTimeout(() => setIsVibrating(false), PAYMENT_ERROR_SHAKE_MS)
+  }, [])
+
+  const buildCachedBalancePayload = useCallback((): BalancePayloadForSend => {
+    const cachedWalletUsdc =
+      defindexBalance?.spendableOnC ??
+      (defindexBalance?.walletBalance ?? 0) + (defindexBalance?.sorobanSacBalance ?? 0)
+
+    return {
+      usdcBalance: cachedWalletUsdc,
+      sorobanUsdcBalance: defindexBalance?.walletBalance,
+      sorobanSacUsdcBalance: defindexBalance?.sorobanSacBalance,
+    }
+  }, [defindexBalance])
+
+  const rejectInsufficientAmount = useCallback(() => {
+    setAmountError(insufficientBalanceLabel)
+    triggerPaymentErrorFeedback()
+  }, [insufficientBalanceLabel, triggerPaymentErrorFeedback])
+
+  /**
+   * Background prefetch: when amount + recipient are valid, build the unsigned Soroban tx
+   * so that on Send tap we can go straight to the passkey prompt.
+   */
+  useEffect(() => {
+    const amount = parseFloat(sendAmount)
+    if (!sendAmount || amount <= 0 || !resolvedRecipientAddress || !walletAddress.startsWith("C")) {
+      prefetchedBuildRef.current = null
+      return
+    }
+    const userId = getUserId()
+    if (!userId) return
+
+    const ctrl = new AbortController()
+    const timer = window.setTimeout(async () => {
+      try {
+        const { alignWalletForSendFast } = await import("@/lib/wallet/align-send-wallet")
+        const aligned = await alignWalletForSendFast(userId, walletAddress.trim().toUpperCase()).catch(() => null)
+        const senderC = aligned?.contractId ?? walletAddress.trim().toUpperCase()
+        const passkeySignerG = aligned?.signerG
+        const sessionCredentialId = aligned?.credentialId
+
+        const res = await fetch("/api/wallet/stellar/payment", {
+          method: "POST",
+          signal: ctrl.signal,
+          headers: { "Content-Type": "application/json", "x-user-id": userId },
+          body: JSON.stringify({
+            destination: resolvedRecipientAddress,
+            amount: amount.toString(),
+            sender: senderC,
+            ...(passkeySignerG ? { signer: passkeySignerG } : {}),
+          }),
+        })
+        if (!res.ok || ctrl.signal.aborted) return
+        const build = await res.json()
+        if (ctrl.signal.aborted) return
+        const unsignedXdr = typeof build.unsignedXdr === "string" ? build.unsignedXdr
+          : typeof build.envelopeXdr === "string" ? build.envelopeXdr : null
+        if (!unsignedXdr) return
+
+        prefetchedBuildRef.current = {
+          unsignedXdr,
+          sorobanDataXdr: build.sorobanDataXdr ?? undefined,
+          signMethod: build.signMethod,
+          ozCredentialId: build.ozCredentialId ?? undefined,
+          signerPublicKey: build.signerPublicKey ?? passkeySignerG ?? undefined,
+          walletAddress: build.walletAddress ?? senderC,
+          supportsOzKitApi: build.supportsOzKitApi,
+          forAmount: amount,
+          forRecipient: resolvedRecipientAddress,
+          forSender: senderC,
+        }
+        if (sessionCredentialId) {
+          const { storeCredentialIdInSession } = await import("@/lib/storage/key-utils")
+          storeCredentialIdInSession(sessionCredentialId)
+          void warmKitForSend(senderC, sessionCredentialId)
+        }
+      } catch {
+        /* background prefetch errors are silent */
+      }
+    }, 150)
+
+    return () => {
+      ctrl.abort()
+      window.clearTimeout(timer)
+      prefetchedBuildRef.current = null
+    }
+  }, [sendAmount, resolvedRecipientAddress, walletAddress])
 
   const toggleAmountCurrency = useCallback(() => {
     const nextCurrency: SendAmountCurrency =
@@ -77,8 +226,25 @@ export function useSendPayment(
     setIsManualMode(false)
     setSendMemo("")
     setRecipientError(null)
+    setSendPhase(null)
+    prefetchedBuildRef.current = null
+    recipientResolveCacheRef.current = null
+    setAmountError(null)
     setIsVibrating(false)
   }, [referenceFiat])
+
+  /** Back to recipient step without closing the modal. */
+  const goBackToRecipient = useCallback(() => {
+    setSendStep("recipient")
+    setResolvedRecipientAddress(null)
+    setResolvedPaymentRail(null)
+    setLegacyPaymentNotice(null)
+    setRecipientError(null)
+    setAmountError(null)
+    setSendPhase(null)
+    // Keep `sendRecipient` + `sendAmount` so user can quickly adjust.
+    prefetchedBuildRef.current = null
+  }, [])
 
   const applyResolvedRecipient = useCallback(
     (address: string, rail?: "smart" | "legacy", notice?: string | null) => {
@@ -90,6 +256,19 @@ export function useSendPayment(
       setRecipientError(null)
     },
     []
+  )
+
+  const cacheRecipientResolution = useCallback(
+    (
+      tag: string,
+      address: string,
+      rail?: "smart" | "legacy",
+      notice?: string | null,
+    ) => {
+      const key = (normalizeSozuTag(tag) || tag.trim()).toLowerCase()
+      recipientResolveCacheRef.current = { forTag: key, address, rail, notice }
+    },
+    [],
   )
 
   const handleResolveRecipient = useCallback(async () => {
@@ -120,8 +299,14 @@ export function useSendPayment(
 
       if (isManualMode) {
         setRecipientError("Enter a Sozu tag or a Stellar address (C… smart account or G… legacy).")
-        setIsVibrating(true)
-        setTimeout(() => setIsVibrating(false), 500)
+        triggerPaymentErrorFeedback()
+        return
+      }
+
+      const tagKey = (normalizeSozuTag(trimmed) || trimmed).toLowerCase()
+      const cached = recipientResolveCacheRef.current
+      if (cached && cached.forTag === tagKey) {
+        applyResolvedRecipient(cached.address, cached.rail, cached.notice)
         return
       }
 
@@ -139,8 +324,7 @@ export function useSendPayment(
       if (!resolveResponse.ok) {
         const error = await resolveResponse.json().catch(() => ({}))
         setRecipientError(recipientResolveErrorMessage(error.error))
-        setIsVibrating(true)
-        setTimeout(() => setIsVibrating(false), 500)
+        triggerPaymentErrorFeedback()
         return
       }
 
@@ -148,8 +332,7 @@ export function useSendPayment(
       const recipientAddress = data?.walletAddress as string | undefined
       if (!recipientAddress) {
         setRecipientError("Sozu tag not found. Check spelling or paste a C… or G… address.")
-        setIsVibrating(true)
-        setTimeout(() => setIsVibrating(false), 500)
+        triggerPaymentErrorFeedback()
         return
       }
 
@@ -163,12 +346,11 @@ export function useSendPayment(
       setRecipientError(
         error instanceof Error ? error.message : "Could not resolve recipient",
       )
-      setIsVibrating(true)
-      setTimeout(() => setIsVibrating(false), 500)
+      triggerPaymentErrorFeedback()
     } finally {
       setIsResolvingRecipient(false)
     }
-  }, [sendRecipient, isManualMode, applyResolvedRecipient])
+  }, [sendRecipient, isManualMode, applyResolvedRecipient, triggerPaymentErrorFeedback])
 
   const handleSendPayment = useCallback(async () => {
     if (!sendAmount || parseFloat(sendAmount) <= 0 || !resolvedRecipientAddress) {
@@ -184,18 +366,6 @@ export function useSendPayment(
       alert("Wallet address not found. Please create a wallet first.")
       return
     }
-
-    const userId = getUserId()
-    if (!userId) {
-      alert("User not authenticated. Please log in again.")
-      return
-    }
-
-    console.log("[Send Payment] Fetching real-time USDC balance for verification...")
-    let currentBalance = defindexBalance?.walletBalance ?? 0
-    const bufferAmount = 0.01
-    const requiredBalance = amount + bufferAmount
-
     if (!walletAddress.startsWith("C")) {
       alert(
         "Tu billetera debe ser una cuenta inteligente (C…). Cerrá sesión, volvé a entrar con passkey y completá la configuración.",
@@ -203,166 +373,223 @@ export function useSendPayment(
       return
     }
 
-    if (walletAddress) {
-      try {
-        const balanceResponse = await fetch(
-          `/api/wallet/stellar/balance?publicKey=${encodeURIComponent(walletAddress)}`,
-          { headers: { "x-user-id": userId } },
-        )
-
-        if (balanceResponse.ok) {
-          const balanceData = (await balanceResponse.json()) as {
-            usdcBalance?: number
-            classicUsdcOnSigner?: number
-            spendableAssetLabel?: string
-          }
-          if (typeof balanceData.usdcBalance === "number") {
-            currentBalance = balanceData.usdcBalance
-            console.log("[Send Payment] ✅ Spendable on C:", currentBalance)
-          }
-          if (
-            currentBalance < requiredBalance &&
-            typeof balanceData.classicUsdcOnSigner === "number" &&
-            balanceData.classicUsdcOnSigner > 0
-          ) {
-            const label = balanceData.spendableAssetLabel ?? "BlendUSDC"
-            alert(
-              `You have ${balanceData.classicUsdcOnSigner.toFixed(2)} Circle testnet USDC on a classic G account, but sends use ${label} on your smart account (C…). Mint or move funds to your C address via testnet.blend.capital.`,
-            )
-            return
-          }
-        }
-      } catch (balanceError) {
-        console.warn("[Send Payment] Could not fetch real-time balance, using cached:", balanceError)
-      }
-    }
-
-    if (currentBalance < requiredBalance) {
-      const strategyBalance = defindexBalance?.strategyBalance || 0
-      let errorMessage = `Insufficient balance. You need ${requiredBalance.toFixed(2)} USDC (including ${bufferAmount.toFixed(2)} USDC buffer) but only have ${currentBalance.toFixed(2)} USDC available in your wallet.`
-      if (strategyBalance > 0) {
-        errorMessage += `\n\nYou have ${strategyBalance.toFixed(2)} USDC locked in DeFindex strategy. Withdraw from DeFindex first.`
-      }
-      alert(errorMessage)
+    const userId = getUserId()
+    if (!userId) {
+      alert("User not authenticated. Please log in again.")
       return
     }
 
+    const bufferAmount = 0.01
+    const requiredBalance = amount + bufferAmount
+
+    setAmountError(null)
+
+    const coverCached = canCoverSendAmount(buildCachedBalancePayload(), requiredBalance)
+    if (!coverCached.ok) {
+      rejectInsufficientAmount()
+      return
+    }
+
+    // Show spinner immediately — before any async work.
     setIsSending(true)
+
+    // Check whether the prefetched build is still valid for this send.
+    const prefetch = prefetchedBuildRef.current
+    const prefetchHit =
+      prefetch &&
+      Math.abs(prefetch.forAmount - amount) < 0.000001 &&
+      prefetch.forRecipient === resolvedRecipientAddress
+
+    // Prefetch hit → jump straight to signing UI so the passkey prompt opens on the user gesture.
+    setSendPhase(prefetchHit ? "signing" : "preparing")
+
     try {
+      let preferredContractId: string | undefined
+
+      let senderC = walletAddress.trim().toUpperCase()
       let passkeySignerG: string | undefined
-      try {
-        const { getCurrentCredentialId } = await import("@/lib/storage/key-utils")
-        const { deriveAndStoreKey } = await import("@/lib/storage/browser-keys")
-        const credId = await getCurrentCredentialId(walletAddress)
-        if (credId) {
-          const { publicKey } = await deriveAndStoreKey(credId, userId)
-          const g = publicKey.trim().toUpperCase()
-          if (g.startsWith("G") && g.length === 56) passkeySignerG = g
-        }
-      } catch {
-        // Server may still have signer_public_key on file
-      }
+      let sessionCredentialId: string | undefined
 
-      const buildResponse = await fetch("/api/wallet/stellar/payment", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-user-id": userId,
-        },
-        body: JSON.stringify({
-          destination: resolvedRecipientAddress,
-          amount: amount.toString(),
-          sender: walletAddress,
-          ...(passkeySignerG ? { signer: passkeySignerG } : {}),
-          memo: sendMemo.trim() || undefined,
-        }),
-      })
-
-      if (!buildResponse.ok) {
-        const error = await buildResponse.json()
-        throw new Error(error.error || "Failed to build payment transaction")
-      }
-
-      const build = await buildResponse.json()
-      const signMethod = build.signMethod as string | undefined
-
-      let submitBody: { signedTransactionXdr?: string; signedEnvelopeXdr?: string }
-
-      const unsignedXdr =
-        typeof build.unsignedXdr === "string"
-          ? build.unsignedXdr
-          : typeof build.envelopeXdr === "string"
-            ? build.envelopeXdr
-            : null
-
-      if (!unsignedXdr) {
-        throw new Error("No unsigned transaction returned")
-      }
-
-      const signerPublicKey =
-        typeof build.signerPublicKey === "string" && build.signerPublicKey.startsWith("G")
-          ? build.signerPublicKey
-          : passkeySignerG ?? null
-
-      if (!signerPublicKey) {
-        throw new Error(
-          "Smart wallet signer (G…) missing. Sign out, sign in with passkey again, then retry.",
-        )
-      }
-
-      const { getCurrentCredentialId } = await import("@/lib/storage/key-utils")
-      const credentialId =
-        (typeof build.ozCredentialId === "string" ? build.ozCredentialId : null) ||
-        (await getCurrentCredentialId(signerPublicKey))
-      if (!credentialId) {
-        throw new Error("Credential ID not found. Please log in again.")
-      }
-
-      const { getStellarConfig } = await import("@/lib/turnkey/config")
-      const stellarConfig = getStellarConfig()
-      const { Networks } = await import("@stellar/stellar-sdk")
-      const networkPassphrase =
-        stellarConfig.network === "mainnet" ? Networks.PUBLIC : Networks.TESTNET
-
-      if (signMethod === "oz_passkey" || signMethod === "oz_passkey_local") {
-        const { getSmartAccountKit } = await import("@/lib/stellar/smartAccounts/client")
-        const { signSorobanPreparedTxWithPasskey } = await import(
-          "@/lib/stellar/smartAccounts/signSorobanUsdc"
-        )
-        const { kit, config } = await getSmartAccountKit()
-        const walletContractId =
-          typeof build.walletAddress === "string" && build.walletAddress.startsWith("C")
-            ? build.walletAddress
-            : walletAddress.startsWith("C")
-              ? walletAddress
-              : null
-        const signedEnvelopeXdr = await signSorobanPreparedTxWithPasskey({
-          kit,
-          unsignedXdr,
-          networkPassphrase: config.networkPassphrase,
-          credentialId,
-          smartAccountContractId: walletContractId,
-          webauthnVerifierAddress: config.webauthnVerifierAddress,
-          supportsOzKitApi: build.supportsOzKitApi === true,
-        })
-        submitBody = { signedEnvelopeXdr }
-      } else if (signMethod === "smart_g_signer") {
-        const { signSorobanUsdcWithGSigner } = await import(
-          "@/lib/stellar/smartAccounts/signSorobanTransferG"
-        )
-        const signedEnvelopeXdr = await signSorobanUsdcWithGSigner({
-          unsignedXdr,
-          signerPublicKey,
-          credentialId,
-          userId,
-          networkPassphrase,
-        })
-        submitBody = { signedEnvelopeXdr }
+      if (prefetchHit && prefetch) {
+        // Fast path: wallet already aligned during prefetch.
+        senderC = prefetch.walletAddress?.startsWith("C") ? prefetch.walletAddress : senderC
+        passkeySignerG = prefetch.signerPublicKey?.startsWith("G") ? prefetch.signerPublicKey : undefined
+        if (prefetch.ozCredentialId) sessionCredentialId = prefetch.ozCredentialId
       } else {
+        // Slow path: align wallet now (with fast cached variant).
+        try {
+          const { alignWalletForSendFast } = await import("@/lib/wallet/align-send-wallet")
+          const aligned = await alignWalletForSendFast(userId, senderC)
+          senderC = aligned.contractId
+          passkeySignerG = aligned.signerG
+          sessionCredentialId = aligned.credentialId
+          if (aligned.realigned && typeof window !== "undefined") {
+            localStorage.setItem("stellar_public_key", senderC)
+            sessionStorage.setItem("stellar_public_key", senderC)
+          }
+        } catch (alignErr) {
+          console.warn("[Send Payment] Wallet align skipped:", alignErr)
+          try {
+            const { getCurrentCredentialId } = await import("@/lib/storage/key-utils")
+            const { deriveAndStoreKey } = await import("@/lib/storage/browser-keys")
+            const credId = await getCurrentCredentialId(undefined)
+            if (credId) {
+              sessionCredentialId = credId
+              const { publicKey } = await deriveAndStoreKey(credId, userId)
+              const g = publicKey.trim().toUpperCase()
+              if (g.startsWith("G") && g.length === 56) passkeySignerG = g
+            }
+          } catch {
+            /* server will supply signer_public_key */
+          }
+        }
+      }
+
+      if (sessionCredentialId && senderC.startsWith("C") && !prefetchHit) {
+        await warmKitForSend(senderC, sessionCredentialId)
+      }
+
+      const signAndSubmit = async (): Promise<{
+        signedTransactionXdr?: string
+        signedEnvelopeXdr?: string
+      }> => {
+        let build: Record<string, unknown>
+
+        if (prefetchHit && prefetch) {
+          build = {
+            unsignedXdr: prefetch.unsignedXdr,
+            sorobanDataXdr: prefetch.sorobanDataXdr,
+            signMethod: prefetch.signMethod,
+            ozCredentialId: prefetch.ozCredentialId,
+            signerPublicKey: prefetch.signerPublicKey,
+            walletAddress: prefetch.walletAddress,
+            supportsOzKitApi: prefetch.supportsOzKitApi,
+          }
+        } else {
+          const buildResponse = await fetch("/api/wallet/stellar/payment", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-user-id": userId },
+            body: JSON.stringify({
+              destination: resolvedRecipientAddress,
+              amount: amount.toString(),
+              sender: senderC,
+              ...(passkeySignerG ? { signer: passkeySignerG } : {}),
+              ...(preferredContractId ? { contractId: preferredContractId } : {}),
+              memo: sendMemo.trim() || undefined,
+            }),
+          })
+
+          if (!buildResponse.ok) {
+            const error = (await buildResponse.json().catch(() => ({}))) as {
+              error?: string
+              code?: string
+            }
+            if (error.code === "PASSKEY_NOT_ON_SMART_ACCOUNT") {
+              throw new Error(
+                `${error.error ?? "Passkey not on smart account."} Use the same browser URL you used at login (e.g. always http://localhost:3001). Sign out, sign in, then retry.`,
+              )
+            }
+            throw new Error(error.error || "Failed to build payment transaction")
+          }
+
+          build = await buildResponse.json()
+        }
+
+        const signMethod = build.signMethod as string | undefined
+
+        const unsignedXdr =
+          typeof build.unsignedXdr === "string"
+            ? build.unsignedXdr
+            : typeof build.envelopeXdr === "string"
+              ? build.envelopeXdr
+              : null
+
+        if (!unsignedXdr) {
+          throw new Error("No unsigned transaction returned")
+        }
+
+        const signerPublicKey =
+          typeof build.signerPublicKey === "string" && (build.signerPublicKey as string).startsWith("G")
+            ? (build.signerPublicKey as string)
+            : passkeySignerG ?? null
+
+        if (!signerPublicKey) {
+          throw new Error(
+            "Smart wallet signer (G…) missing. Sign out, sign in with passkey again, then retry.",
+          )
+        }
+
+        const { getCurrentCredentialId, storeCredentialIdInSession } = await import(
+          "@/lib/storage/key-utils"
+        )
+        const credentialId =
+          (typeof build.ozCredentialId === "string" ? build.ozCredentialId : null) ||
+          sessionCredentialId ||
+          (await getCurrentCredentialId(signerPublicKey))
+        if (!credentialId) {
+          throw new Error("Credential ID not found. Please log in again.")
+        }
+        storeCredentialIdInSession(credentialId)
+
+        const walletContractId =
+          typeof build.walletAddress === "string" && (build.walletAddress as string).startsWith("C")
+            ? (build.walletAddress as string).trim().toUpperCase()
+            : senderC
+
+        const { getStellarConfig } = await import("@/lib/turnkey/config")
+        const stellarConfig = getStellarConfig()
+        const { Networks } = await import("@stellar/stellar-sdk")
+        const networkPassphrase =
+          stellarConfig.network === "mainnet" ? Networks.PUBLIC : Networks.TESTNET
+
+        if (!prefetchHit) {
+          setSendPhase("signing")
+        }
+
+        if (signMethod === "oz_passkey" || signMethod === "oz_passkey_local") {
+          const { getSmartAccountKit } = await import("@/lib/stellar/smartAccounts/client")
+          const { signSorobanPreparedTxWithPasskey } = await import(
+            "@/lib/stellar/smartAccounts/signSorobanUsdc"
+          )
+          const { extractSorobanDataXdr } = await import("@/lib/stellar/soroban-prepared-envelope")
+          const { kit, config } = await getSmartAccountKit()
+          const sorobanDataXdr =
+            typeof build.sorobanDataXdr === "string" && (build.sorobanDataXdr as string).length > 0
+              ? (build.sorobanDataXdr as string)
+              : extractSorobanDataXdr(unsignedXdr, config.networkPassphrase)
+          const signedEnvelopeXdr = await signSorobanPreparedTxWithPasskey({
+            kit,
+            unsignedXdr,
+            sorobanDataXdr,
+            networkPassphrase: config.networkPassphrase,
+            credentialId,
+            smartAccountContractId: walletContractId,
+            webauthnVerifierAddress: config.webauthnVerifierAddress,
+            supportsOzKitApi: build.supportsOzKitApi === true,
+            signMethod: signMethod ?? "oz_passkey",
+          })
+          return { signedEnvelopeXdr }
+        }
+        if (signMethod === "smart_g_signer") {
+          const { signSorobanUsdcWithGSigner } = await import(
+            "@/lib/stellar/smartAccounts/signSorobanTransferG"
+          )
+          const signedEnvelopeXdr = await signSorobanUsdcWithGSigner({
+            unsignedXdr,
+            signerPublicKey,
+            credentialId,
+            userId,
+            networkPassphrase,
+          })
+          return { signedEnvelopeXdr }
+        }
         throw new Error(`Unsupported sign method: ${signMethod ?? "unknown"}`)
       }
 
-      const submitResponse = await fetch("/api/wallet/stellar/payment", {
+      const submitBody = await signAndSubmit()
+      setSendPhase("submitting")
+
+    const submitResponse = await fetch("/api/wallet/stellar/payment", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -372,8 +599,25 @@ export function useSendPayment(
       })
 
       if (!submitResponse.ok) {
-        const error = await submitResponse.json()
-        throw new Error(error.error || "Failed to submit payment")
+        const submitErr = await submitResponse.json().catch(() => ({})) as { error?: string; code?: string }
+        const code = submitErr.code ?? ""
+        console.error("[Send Payment] Submit failed", { code, error: submitErr.error })
+        let userMsg = submitErr.error || "Failed to submit payment"
+        if (code === "SOROBAN_SIM_AUTH_FAILED") {
+          userMsg =
+            "The smart account rejected this passkey signature on-chain (__check_auth). Refresh the page, try Send again once, and use only http://localhost:3001. If it persists, sign out and create a new wallet at that same URL."
+        } else if (code === "TX_MALFORMED") {
+          userMsg = "Transaction structure error. Please refresh the page and try again."
+        } else if (code === "PASSKEY_NOT_ON_SMART_ACCOUNT") {
+          userMsg = "Your passkey doesn't match the one registered on this smart account — it may have been registered on a different device or URL. Sign out completely, then sign in again at this same URL to set up a fresh wallet."
+        } else if (code === "SOROBAN_LEDGER_FAILED" || code === "SOROBAN_RESOURCE_LIMIT") {
+          userMsg =
+            submitErr.error ??
+            "The transaction was submitted but failed on-chain. Your balance was not reduced — refresh and try Send again."
+        } else if (code === "PASSKEY_PROMPT_FAILED") {
+          userMsg = submitErr.error ?? "Passkey was cancelled or timed out. Close any other passkey dialog and tap Send again."
+        }
+        throw new Error(userMsg)
       }
 
       const result = await submitResponse.json()
@@ -389,8 +633,7 @@ export function useSendPayment(
         }
 
         if (onRefresh) {
-          onRefresh()
-          setTimeout(() => onRefresh(), 3000)
+          await Promise.resolve(onRefresh())
         }
 
         if (onSuccess) {
@@ -418,17 +661,10 @@ export function useSendPayment(
         errorMessage =
           "Your wallet is not active on the network yet. Fund your smart account or classic wallet with XLM/USDC."
       }
-      if (
-        errorMessage.includes("InvalidAction") ||
-        errorMessage.includes("__check_auth") ||
-        errorMessage.includes("failed account authentication")
-      ) {
-        errorMessage =
-          "Your passkey does not match this smart account (C…). Sign out, sign in again, and complete wallet setup when prompted. If you still cannot send, your account may need a new smart wallet — contact support."
-      }
       alert(`❌ ${errorMessage}`)
     } finally {
       setIsSending(false)
+      setSendPhase(null)
     }
   }, [
     sendAmount,
@@ -443,6 +679,8 @@ export function useSendPayment(
     onSuccess,
     onRefresh,
     resetSendPayment,
+    buildCachedBalancePayload,
+    rejectInsufficientAmount,
   ])
 
   return {
@@ -450,6 +688,7 @@ export function useSendPayment(
     sendAmount,
     amountInputCurrency,
     isSending,
+    sendPhase,
     sendStep,
     resolvedRecipientAddress,
     resolvedPaymentRail,
@@ -458,15 +697,19 @@ export function useSendPayment(
     isManualMode,
     sendMemo,
     recipientError,
+    amountError,
     isVibrating,
     setSendRecipient,
     setSendAmount,
     setIsManualMode,
     setSendMemo,
     setRecipientError,
+    setAmountError,
     toggleAmountCurrency,
     handleResolveRecipient,
     handleSendPayment,
     resetSendPayment,
+    cacheRecipientResolution,
+    goBackToRecipient,
   }
 }
