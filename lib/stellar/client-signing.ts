@@ -10,6 +10,20 @@
 import { Transaction, TransactionBuilder, Keypair, FeeBumpTransaction } from "@stellar/stellar-sdk"
 import { retrieveKeypair, getKeypairByPublicKey } from "../storage/browser-keys"
 
+/** SEP-10 and Horizon txs sign with G…; session may only store the smart account C…. */
+function resolveTransactionSigningPublicKey(
+  transaction: Transaction,
+  publicKey?: string
+): string {
+  const source = transaction.source.trim().toUpperCase()
+  const hint = publicKey?.trim().toUpperCase()
+
+  if (hint?.startsWith("G") && hint.length === 56) return hint
+  if (source.startsWith("G") && source.length === 56) return source
+  if (hint) return hint
+  return source
+}
+
 export interface SignedTransaction {
   transaction: Transaction | FeeBumpTransaction
   signature: string
@@ -129,9 +143,17 @@ export async function signTransactionClientSide(
 ): Promise<SignedTransaction> {
   console.log("[Client Signing] Starting client-side transaction signing")
 
-  // Get public key from transaction if not provided
-  const txPublicKey = publicKey || transaction.source
+  const txPublicKey = resolveTransactionSigningPublicKey(transaction, publicKey)
   console.log("[Client Signing] Transaction source (public key):", txPublicKey)
+  if (
+    publicKey &&
+    publicKey.trim().toUpperCase() !== txPublicKey &&
+    publicKey.trim().toUpperCase().startsWith("C")
+  ) {
+    console.log(
+      "[Client Signing] Using G signer from transaction (session had smart account C address)"
+    )
+  }
 
   // Retrieve keypair from browser storage
   let keypair: Keypair | null = null

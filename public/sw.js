@@ -1,6 +1,6 @@
 // Service Worker for SozuCredit PWA
-const CACHE_NAME = 'sozucredit-v4';
-const RUNTIME_CACHE = 'sozucredit-runtime-v4';
+const CACHE_NAME = 'sozucredit-v5';
+const RUNTIME_CACHE = 'sozucredit-runtime-v5';
 
 function isDevTunnelHost(hostname) {
   return (
@@ -71,9 +71,10 @@ self.addEventListener('fetch', (event) => {
   // Everything else — network-first with cache fallback
   event.respondWith(
     fetch(request)
-      .then((response) => {
+      .then(async (response) => {
         if (response.ok && response.type === 'basic') {
-          caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, response.clone()));
+          const cache = await caches.open(RUNTIME_CACHE);
+          await cache.put(request, response.clone());
         }
         return response;
       })

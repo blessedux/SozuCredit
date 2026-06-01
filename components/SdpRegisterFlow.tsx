@@ -162,6 +162,8 @@ export function SdpRegisterFlow() {
           : Networks.TESTNET);
 
       const tx = new Transaction(chData.transaction_xdr as string, networkPassphrase);
+      // SEP-10 challenge source is always G…; session may store smart account C… after signup.
+      const sep10Signer = tx.source.trim().toUpperCase();
 
       const { signTransactionWithPasskeyApproval } = await import(
         "@/lib/stellar/client-signing"
@@ -169,7 +171,7 @@ export function SdpRegisterFlow() {
       const signed = await signTransactionWithPasskeyApproval(
         tx,
         wallet.credentialId ?? "",
-        wallet.publicKey,
+        sep10Signer,
         wallet.userId ?? ""
       );
 
