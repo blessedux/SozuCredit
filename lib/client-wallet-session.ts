@@ -38,9 +38,41 @@ export async function loadClientWalletSession(): Promise<ClientWalletSession> {
     localStorage.getItem("stellar_public_key") ??
     sessionStorage.getItem("stellar_public_key");
 
-  let credentialId = sessionStorage.getItem("credential_id");
+  let credentialId =
+    sessionStorage.getItem("credential_id") ?? localStorage.getItem("credential_id");
   if (!credentialId && publicKey) {
     credentialId = await getCurrentCredentialId(publicKey);
+  }
+  if (!credentialId && userId) {
+    try {
+      const addrRes = await fetch("/api/wallet/stellar/address", {
+        headers: { "x-user-id": userId },
+      });
+      if (addrRes.ok) {
+        const data = (await addrRes.json()) as { signerPublicKey?: string | null };
+        const signer = data.signerPublicKey?.trim().toUpperCase();
+        if (signer?.startsWith("G") && signer.length === 56) {
+          credentialId = await getCurrentCredentialId(signer);
+        }
+      }
+    } catch {
+      // non-fatal
+    }
+  }
+  if (!credentialId && userId) {
+    try {
+      const pkRes = await fetch("/api/auth/passkeys/primary", {
+        headers: { "x-user-id": userId },
+      });
+      if (pkRes.ok) {
+        const data = (await pkRes.json()) as { credentialId?: string };
+        if (typeof data.credentialId === "string" && data.credentialId.trim()) {
+          credentialId = data.credentialId.trim();
+        }
+      }
+    } catch {
+      // non-fatal
+    }
   }
 
   const isAuthenticated = isAuthenticatedClient() && !!userId;

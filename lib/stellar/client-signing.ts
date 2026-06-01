@@ -8,7 +8,12 @@
 "use client"
 
 import { Transaction, TransactionBuilder, Keypair, FeeBumpTransaction } from "@stellar/stellar-sdk"
-import { retrieveKeypair, getKeypairByPublicKey } from "../storage/browser-keys"
+import {
+  retrieveKeypair,
+  getKeypairByPublicKey,
+  deriveAndStoreKey,
+} from "../storage/browser-keys"
+import { storeCredentialIdInSession } from "../storage/key-utils"
 
 /** SEP-10 and Horizon txs sign with G…; session may only store the smart account C…. */
 function resolveTransactionSigningPublicKey(
@@ -117,8 +122,19 @@ export async function signTransactionWithPasskeyApproval(
 
   console.log("[Client Signing] ✅ Assertion verified by server")
 
-  // Step 5: Sign transaction with stored keypair
-  return await signTransactionClientSide(transaction, credentialId, publicKey, userId)
+  // Use the credential that actually passed WebAuthn (session may lack credential_id on SDP signup).
+  const assertedCredentialId = credential.id?.trim() || credentialId?.trim() || undefined
+  if (assertedCredentialId) {
+    storeCredentialIdInSession(assertedCredentialId)
+  }
+
+  // Step 5: Sign transaction with stored (or derived) keypair
+  return await signTransactionClientSide(
+    transaction,
+    assertedCredentialId,
+    publicKey,
+    userId
+  )
 }
 
 /**
@@ -155,25 +171,37 @@ export async function signTransactionClientSide(
     )
   }
 
-  // Retrieve keypair from browser storage
   let keypair: Keypair | null = null
+  const normalizedCredentialId = credentialId?.trim() || undefined
 
-  if (credentialId) {
-    // Try to get keypair by credential ID (most direct)
-    // Pass userId if available for verification
-    console.log("[Client Signing] Retrieving keypair by credential ID:", credentialId.substring(0, 20) + "...")
-    keypair = await retrieveKeypair(credentialId, userId)
+  if (normalizedCredentialId) {
+    console.log(
+      "[Client Signing] Retrieving keypair by credential ID:",
+      normalizedCredentialId.substring(0, 20) + "..."
+    )
+    keypair = await retrieveKeypair(normalizedCredentialId, userId)
   }
 
   if (!keypair) {
-    // Fallback: try to get keypair by public key
-    console.log("[Client Signing] Keypair not found by credential ID, trying public key lookup:", txPublicKey.substring(0, 10) + "...")
-    keypair = await getKeypairByPublicKey(txPublicKey, credentialId)
+    console.log(
+      "[Client Signing] Keypair not found by credential ID, trying public key lookup:",
+      txPublicKey.substring(0, 10) + "..."
+    )
+    keypair = await getKeypairByPublicKey(txPublicKey, normalizedCredentialId)
+  }
+
+  // Deterministic recovery: derive from passkey + userId and persist to IndexedDB.
+  if (!keypair && normalizedCredentialId && userId) {
+    console.log("[Client Signing] Deriving keypair from passkey credential…")
+    const derived = await deriveAndStoreKey(normalizedCredentialId, userId)
+    if (derived.publicKey === txPublicKey) {
+      keypair = derived.keypair
+    }
   }
 
   if (!keypair) {
     throw new Error(
-      `Keypair not found in browser storage. Credential ID: ${credentialId ? credentialId.substring(0, 20) + "..." : "not provided"}, Public Key: ${txPublicKey.substring(0, 10)}..., User ID: ${userId || "not provided"}`
+      `Keypair not found in browser storage. Credential ID: ${normalizedCredentialId ? normalizedCredentialId.substring(0, 20) + "..." : "not provided"}, Public Key: ${txPublicKey.substring(0, 10)}..., User ID: ${userId || "not provided"}`
     )
   }
 

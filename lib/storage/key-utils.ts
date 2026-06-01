@@ -41,9 +41,11 @@ export function getCredentialIdFromSession(): string | null {
     return null
   }
 
-  // Try to get from sessionStorage
-  // We might store it during authentication
-  return sessionStorage.getItem("credential_id") || null
+  return (
+    sessionStorage.getItem("credential_id") ??
+    localStorage.getItem("credential_id") ??
+    null
+  )
 }
 
 /**
@@ -93,6 +95,7 @@ export async function getCurrentCredentialId(
 export function storeCredentialIdInSession(credentialId: string): void {
   if (typeof window !== "undefined") {
     sessionStorage.setItem("credential_id", credentialId)
+    localStorage.setItem("credential_id", credentialId)
   }
 }
 

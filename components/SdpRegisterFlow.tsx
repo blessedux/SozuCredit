@@ -165,14 +165,20 @@ export function SdpRegisterFlow() {
       // SEP-10 challenge source is always G…; session may store smart account C… after signup.
       const sep10Signer = tx.source.trim().toUpperCase();
 
+      // Re-load session so credential_id is resolved (localStorage, signer lookup, primary passkey).
+      const freshSession = await loadClientWalletSession();
+      const credentialId =
+        freshSession.credentialId ?? wallet.credentialId ?? undefined;
+      const userId = freshSession.userId ?? wallet.userId ?? "";
+
       const { signTransactionWithPasskeyApproval } = await import(
         "@/lib/stellar/client-signing"
       );
       const signed = await signTransactionWithPasskeyApproval(
         tx,
-        wallet.credentialId ?? "",
+        credentialId ?? "",
         sep10Signer,
-        wallet.userId ?? ""
+        userId
       );
 
       const tokRes = await fetch("/api/sdp/sep10/token", {
