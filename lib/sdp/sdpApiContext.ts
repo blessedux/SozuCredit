@@ -69,6 +69,12 @@ export async function getSdpApiContext(): Promise<SdpApiContext> {
     };
   }
 
+  const { headers } = await import("next/headers");
+  const hdrs = await headers();
+
+  // Client sends passkey-derived G right after sync-signer (most reliable for SEP-10).
+  const headerSep10Signer = hdrs.get("x-sep10-signer")?.trim().toUpperCase() ?? null;
+
   // Primary: look up wallet from DB.
   // Fallback: accept x-stellar-public-key header sent by the passkey client
   // (the key is stored in sessionStorage after passkey login). Security is
@@ -76,15 +82,17 @@ export async function getSdpApiContext(): Promise<SdpApiContext> {
   // matching private key — a fake key would fail token exchange.
   let stellarAccount: string | null = null;
 
+  if (headerSep10Signer?.startsWith("G") && headerSep10Signer.length === 56) {
+    stellarAccount = headerSep10Signer;
+  }
+
   const wallet = await getStellarWallet(userId, true);
-  if (wallet) {
+  if (!stellarAccount && wallet) {
     stellarAccount = resolveSep10StellarAccount(wallet);
   }
 
   if (!stellarAccount) {
-    const { headers } = await import("next/headers");
-    const hdrs = await headers();
-    const headerKey = hdrs.get("x-stellar-public-key")?.trim() ?? null;
+    const headerKey = hdrs.get("x-stellar-public-key")?.trim().toUpperCase() ?? null;
     if (headerKey?.startsWith("G") && headerKey.length === 56) {
       stellarAccount = headerKey;
     }

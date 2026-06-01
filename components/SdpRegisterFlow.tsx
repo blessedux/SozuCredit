@@ -152,12 +152,14 @@ export function SdpRegisterFlow() {
 
       const authHeaders: HeadersInit = {
         "x-user-id": userId,
+        "x-sep10-signer": syncedSigner.publicKey,
         ...(wallet.publicKey ? { "x-stellar-public-key": wallet.publicKey } : {}),
       };
 
       const chRes = await fetch("/api/sdp/sep10/challenge", {
         credentials: "include",
         headers: authHeaders,
+        cache: "no-store",
       });
       const chData = (await chRes.json().catch(() => ({}))) as {
         transaction_xdr?: string;
@@ -177,12 +179,6 @@ export function SdpRegisterFlow() {
 
       const tx = new Transaction(chData.transaction_xdr as string, networkPassphrase);
       const sep10Signer = tx.source.trim().toUpperCase();
-
-      if (sep10Signer !== syncedSigner.publicKey) {
-        throw new Error(
-          "La clave firmante de la billetera no coincide con el desafío SEP-10. Intentá de nuevo."
-        );
-      }
 
       const { signTransactionWithPasskeyApproval } = await import(
         "@/lib/stellar/client-signing"

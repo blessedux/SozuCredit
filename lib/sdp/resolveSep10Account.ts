@@ -6,13 +6,12 @@ export function resolveSep10StellarAccount(wallet: {
   publicKey: string;
   signerPublicKey?: string | null;
 }): string | null {
-  const pk = wallet.publicKey.trim();
-  if (pk.startsWith("G") && pk.length === 56) return pk;
+  // Passkey-derived G signer wins over legacy public_key (may be stale after sync-signer).
+  const signer = wallet.signerPublicKey?.trim().toUpperCase();
+  if (signer?.startsWith("G") && signer.length === 56) return signer;
 
-  if (pk.startsWith("C") && pk.length === 56) {
-    const signer = wallet.signerPublicKey?.trim();
-    if (signer?.startsWith("G") && signer.length === 56) return signer;
-  }
+  const pk = wallet.publicKey.trim().toUpperCase();
+  if (pk.startsWith("G") && pk.length === 56) return pk;
 
   return null;
 }
