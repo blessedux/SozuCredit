@@ -129,10 +129,16 @@ export async function signTransactionWithPasskeyApproval(
     storeCredentialIdInSession(assertedCredentialId)
   }
 
-  // Step 5: Sign transaction with stored (or derived) keypair
+  // Step 5: Sign with the credential that controls this G (may differ from WebAuthn assertion id).
+  const txSigner = resolveTransactionSigningPublicKey(transaction, publicKey)
+  const resolved = userId
+    ? await resolveKeypairForSignerG(txSigner, userId, assertedCredentialId)
+    : null
+  const signingCredentialId = resolved?.credentialId ?? assertedCredentialId
+
   return await signTransactionClientSide(
     transaction,
-    assertedCredentialId,
+    signingCredentialId,
     publicKey,
     userId
   )
@@ -218,7 +224,8 @@ export async function signTransactionClientSide(
 
   if (!keypair) {
     throw new Error(
-      `Keypair not found in browser storage. Credential ID: ${normalizedCredentialId ? normalizedCredentialId.substring(0, 20) + "..." : "not provided"}, Public Key: ${txPublicKey.substring(0, 10)}..., User ID: ${userId || "not provided"}`
+      `No pudimos firmar con tu passkey para esta billetera (${txPublicKey.substring(0, 8)}…). ` +
+        "Probá en el dispositivo donde creaste tu cuenta Sozu, o iniciá sesión con el passkey original."
     )
   }
 

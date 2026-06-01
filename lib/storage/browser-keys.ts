@@ -8,6 +8,7 @@
 import { Keypair } from "@stellar/stellar-sdk"
 import { get, set, remove, getByIndex, getAllByIndex, STORES } from "./indexeddb"
 import { deriveKeypairWithSeed, deriveStellarKeypair } from "../webauthn/key-derivation"
+import { normalizeCredentialId } from "../webauthn/normalize-credential-id"
 
 /**
  * Encrypted key data structure stored in IndexedDB
@@ -141,22 +142,21 @@ export async function storeEncryptedKey(
   seed: Uint8Array,
   publicKey: string
 ): Promise<void> {
+  const cid = normalizeCredentialId(credentialId)
   if (seed.length !== 32) {
     throw new Error(`Invalid seed length: expected 32 bytes, got ${seed.length}`)
   }
 
   console.log("[Browser Keys] Storing encrypted key:", {
-    credentialId: credentialId.substring(0, 20) + "...",
+    credentialId: cid.substring(0, 20) + "...",
     userId,
     publicKey: publicKey.substring(0, 10) + "...",
   })
 
-  // Encrypt the seed
-  const { encrypted, iv } = await encryptSeed(seed, credentialId)
+  const { encrypted, iv } = await encryptSeed(seed, cid)
 
-  // Create encrypted key data
   const encryptedKeyData: EncryptedKeyData = {
-    credentialId,
+    credentialId: cid,
     userId,
     encryptedSeed: encrypted,
     publicKey,
@@ -165,8 +165,7 @@ export async function storeEncryptedKey(
     updatedAt: new Date().toISOString(),
   }
 
-  // Store in IndexedDB
-  await set(STORES.KEYS, credentialId, encryptedKeyData)
+  await set(STORES.KEYS, cid, encryptedKeyData)
 
   console.log("[Browser Keys] ✅ Encrypted key stored successfully")
 }
@@ -182,16 +181,13 @@ export async function retrieveKeypair(
   credentialId: string,
   userId?: string
 ): Promise<Keypair | null> {
+  const cid = normalizeCredentialId(credentialId)
   console.log("[Browser Keys] Retrieving key:", {
-    credentialId: credentialId.substring(0, 20) + "...",
+    credentialId: cid.substring(0, 20) + "...",
     userId: userId || "not provided",
   })
 
-  // Get encrypted key data from IndexedDB
-  const encryptedKeyData = await get<EncryptedKeyData>(
-    STORES.KEYS,
-    credentialId
-  )
+  const encryptedKeyData = await get<EncryptedKeyData>(STORES.KEYS, cid)
 
   if (!encryptedKeyData) {
     console.log("[Browser Keys] No stored key found for credential ID")
@@ -212,7 +208,7 @@ export async function retrieveKeypair(
     const seed = await decryptSeed(
       encryptedKeyData.encryptedSeed,
       encryptedKeyData.iv,
-      credentialId
+      cid
     )
 
     // Verify seed length
@@ -246,41 +242,60 @@ export async function retrieveKeypair(
  * @param userId - User ID (optional but recommended)
  * @returns Stellar Keypair and public key
  */
+/**
+ * Derive and store key from passkey credential ID.
+ * When `requiredPublicKey` is set, tries with userId then legacy (no userId) derivation.
+ */
 export async function deriveAndStoreKey(
   credentialId: string,
-  userId?: string
+  userId?: string,
+  options?: { requiredPublicKey?: string }
 ): Promise<{ keypair: Keypair; publicKey: string }> {
+  const cid = normalizeCredentialId(credentialId)
+  const required = options?.requiredPublicKey?.trim().toUpperCase()
+
   console.log("[Browser Keys] Deriving and storing key:", {
-    credentialId: credentialId.substring(0, 20) + "...",
+    credentialId: cid.substring(0, 20) + "...",
     userId: userId || "not provided",
+    requiredPublicKey: required ? required.substring(0, 10) + "..." : undefined,
   })
 
-  // Check if key already exists
-  const existingKeypair = await retrieveKeypair(credentialId)
+  const existingKeypair = await retrieveKeypair(cid)
   if (existingKeypair) {
-    console.log("[Browser Keys] Key already exists, returning existing keypair")
-    return {
-      keypair: existingKeypair,
-      publicKey: existingKeypair.publicKey(),
+    const existingPk = existingKeypair.publicKey().toUpperCase()
+    if (!required || existingPk === required) {
+      console.log("[Browser Keys] Key already exists, returning existing keypair")
+      return { keypair: existingKeypair, publicKey: existingPk }
     }
+    console.warn("[Browser Keys] Replacing cached key — public key mismatch for credential")
+    await deleteStoredKey(cid)
   }
 
-  // Derive keypair from credential ID
-  const { keypair, publicKey, seed } = await deriveKeypairWithSeed(
-    credentialId,
-    userId
-  )
+  const variants: (string | undefined)[] = userId ? [userId, undefined] : [undefined]
 
-  // Store encrypted key if userId is provided
-  if (userId) {
-    await storeEncryptedKey(credentialId, userId, seed, publicKey)
-  } else {
-    console.warn(
-      "[Browser Keys] ⚠️ No userId provided, key will not be persisted"
+  for (const uid of variants) {
+    const { keypair, publicKey, seed } = await deriveKeypairWithSeed(cid, uid)
+    const pk = publicKey.trim().toUpperCase()
+    if (required && pk !== required) continue
+    if (userId) {
+      await storeEncryptedKey(cid, userId, seed, publicKey)
+    } else {
+      console.warn("[Browser Keys] ⚠️ No userId provided, key will not be persisted")
+    }
+    return { keypair, publicKey: pk }
+  }
+
+  if (required) {
+    throw new Error(
+      `Passkey does not derive to required public key ${required.substring(0, 10)}...`
     )
   }
 
-  return { keypair, publicKey }
+  const { keypair, publicKey, seed } = await deriveKeypairWithSeed(cid, userId)
+  if (userId) {
+    await storeEncryptedKey(cid, userId, seed, publicKey)
+  }
+  return { keypair, publicKey: publicKey.trim().toUpperCase() }
 }
 
 /**
@@ -334,11 +349,12 @@ export async function cloneEncryptedKeyForNewCredential(
  * Delete stored key
  */
 export async function deleteStoredKey(credentialId: string): Promise<void> {
+  const cid = normalizeCredentialId(credentialId)
   console.log("[Browser Keys] Deleting stored key:", {
-    credentialId: credentialId.substring(0, 20) + "...",
+    credentialId: cid.substring(0, 20) + "...",
   })
 
-  await remove(STORES.KEYS, credentialId)
+  await remove(STORES.KEYS, cid)
   console.log("[Browser Keys] ✅ Key deleted successfully")
 }
 

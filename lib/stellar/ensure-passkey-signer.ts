@@ -125,21 +125,23 @@ export async function resolveKeypairForSignerG(
 /** Derive the passkey-bound G signer (first credential that yields a G). */
 export async function derivePrimaryPasskeySignerG(
   userId: string,
-  preferredCredentialId?: string | null
+  preferredCredentialId?: string | null,
+  requiredPublicKey?: string
 ): Promise<{ publicKey: string; credentialId: string } | null> {
   const candidates = await collectCredentialIdCandidates(preferredCredentialId, userId)
+  const required = requiredPublicKey?.trim().toUpperCase()
+
   for (const cid of candidates) {
-    for (const uid of [userId, undefined] as const) {
-      try {
-        const { keypair, publicKey } = await deriveKeypairWithSeed(cid, uid)
-        const pk = publicKey.trim().toUpperCase()
-        if (pk.startsWith("G") && pk.length === 56) {
-          await deriveAndStoreKey(cid, userId)
-          return { publicKey: pk, credentialId: cid }
-        }
-      } catch {
-        // try next
+    try {
+      const { publicKey } = await deriveAndStoreKey(cid, userId, {
+        requiredPublicKey: required,
+      })
+      const pk = publicKey.trim().toUpperCase()
+      if (pk.startsWith("G") && pk.length === 56) {
+        return { publicKey: pk, credentialId: cid }
       }
+    } catch {
+      // try next credential
     }
   }
   return null
@@ -214,22 +216,29 @@ export async function prepareSdpSigningMaterial(
   const registeredG = await fetchRegisteredSignerG(userId)
 
   if (registeredG) {
-    const resolved = await resolveKeypairForSignerG(
+    let resolved = await resolveKeypairForSignerG(
       registeredG,
       userId,
       preferredCredentialId
     )
-    if (resolved) {
-      return { publicKey: registeredG, credentialId: resolved.credentialId }
+
+    if (!resolved) {
+      await derivePrimaryPasskeySignerG(userId, preferredCredentialId, registeredG)
+      resolved = await resolveKeypairForSignerG(
+        registeredG,
+        userId,
+        preferredCredentialId
+      )
     }
 
-    const derived = await derivePrimaryPasskeySignerG(userId, preferredCredentialId)
-    if (derived && derived.publicKey !== registeredG) {
+    if (!resolved) {
       throw new Error(
         `Tu passkey en este dispositivo no controla la billetera registrada para este pago (${registeredG.slice(0, 8)}…). ` +
           "Probá en el dispositivo donde creaste tu cuenta Sozu, o iniciá sesión con el passkey original."
       )
     }
+
+    return { publicKey: registeredG, credentialId: resolved.credentialId }
   }
 
   return syncPasskeySignerToServer(userId, preferredCredentialId)
