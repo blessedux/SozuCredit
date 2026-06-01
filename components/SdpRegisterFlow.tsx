@@ -135,12 +135,26 @@ export function SdpRegisterFlow() {
 
     setStatus("busy");
 
-    const authHeaders: HeadersInit = {
-      ...(wallet.userId ? { "x-user-id": wallet.userId } : {}),
-      ...(wallet.publicKey ? { "x-stellar-public-key": wallet.publicKey } : {}),
-    };
-
     try {
+      const freshSession = await loadClientWalletSession();
+      const userId = freshSession.userId ?? wallet.userId ?? "";
+      const credentialId =
+        freshSession.credentialId ?? wallet.credentialId ?? undefined;
+
+      if (!userId) {
+        throw new Error("No encontramos tu sesión. Iniciá sesión primero.");
+      }
+
+      const { syncPasskeySignerToServer } = await import(
+        "@/lib/stellar/ensure-passkey-signer"
+      );
+      const syncedSigner = await syncPasskeySignerToServer(userId, credentialId);
+
+      const authHeaders: HeadersInit = {
+        "x-user-id": userId,
+        ...(wallet.publicKey ? { "x-stellar-public-key": wallet.publicKey } : {}),
+      };
+
       const chRes = await fetch("/api/sdp/sep10/challenge", {
         credentials: "include",
         headers: authHeaders,
@@ -162,21 +176,20 @@ export function SdpRegisterFlow() {
           : Networks.TESTNET);
 
       const tx = new Transaction(chData.transaction_xdr as string, networkPassphrase);
-      // SEP-10 challenge source is always G…; session may store smart account C… after signup.
       const sep10Signer = tx.source.trim().toUpperCase();
 
-      // Re-load session so credential_id is resolved (localStorage, signer lookup, primary passkey).
-      const freshSession = await loadClientWalletSession();
-      const credentialId =
-        freshSession.credentialId ?? wallet.credentialId ?? undefined;
-      const userId = freshSession.userId ?? wallet.userId ?? "";
+      if (sep10Signer !== syncedSigner.publicKey) {
+        throw new Error(
+          "La clave firmante de la billetera no coincide con el desafío SEP-10. Intentá de nuevo."
+        );
+      }
 
       const { signTransactionWithPasskeyApproval } = await import(
         "@/lib/stellar/client-signing"
       );
       const signed = await signTransactionWithPasskeyApproval(
         tx,
-        credentialId ?? "",
+        syncedSigner.credentialId,
         sep10Signer,
         userId
       );

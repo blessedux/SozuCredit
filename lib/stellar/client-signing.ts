@@ -14,6 +14,7 @@ import {
   deriveAndStoreKey,
 } from "../storage/browser-keys"
 import { storeCredentialIdInSession } from "../storage/key-utils"
+import { resolveKeypairForSignerG } from "./ensure-passkey-signer"
 
 /** SEP-10 and Horizon txs sign with G…; session may only store the smart account C…. */
 function resolveTransactionSigningPublicKey(
@@ -174,12 +175,29 @@ export async function signTransactionClientSide(
   let keypair: Keypair | null = null
   const normalizedCredentialId = credentialId?.trim() || undefined
 
-  if (normalizedCredentialId) {
+  if (userId) {
+    const resolved = await resolveKeypairForSignerG(
+      txPublicKey,
+      userId,
+      normalizedCredentialId
+    )
+    if (resolved) {
+      keypair = resolved.keypair
+      if (resolved.credentialId) {
+        storeCredentialIdInSession(resolved.credentialId)
+      }
+    }
+  }
+
+  if (!keypair && normalizedCredentialId) {
     console.log(
       "[Client Signing] Retrieving keypair by credential ID:",
       normalizedCredentialId.substring(0, 20) + "..."
     )
     keypair = await retrieveKeypair(normalizedCredentialId, userId)
+    if (keypair && keypair.publicKey() !== txPublicKey) {
+      keypair = null
+    }
   }
 
   if (!keypair) {
@@ -190,7 +208,6 @@ export async function signTransactionClientSide(
     keypair = await getKeypairByPublicKey(txPublicKey, normalizedCredentialId)
   }
 
-  // Deterministic recovery: derive from passkey + userId and persist to IndexedDB.
   if (!keypair && normalizedCredentialId && userId) {
     console.log("[Client Signing] Deriving keypair from passkey credential…")
     const derived = await deriveAndStoreKey(normalizedCredentialId, userId)
