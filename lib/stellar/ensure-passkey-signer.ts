@@ -2,10 +2,12 @@
 
 import { Keypair } from "@stellar/stellar-sdk"
 import { normalizeCredentialId } from "@/lib/webauthn/normalize-credential-id"
+import { deriveKeypairWithSeed } from "@/lib/webauthn/key-derivation"
 import {
   deriveAndStoreKey,
   retrieveKeypair,
   getKeypairByPublicKey,
+  storeEncryptedKey,
 } from "@/lib/storage/browser-keys"
 
 function addCredentialCandidate(ids: Set<string>, id?: string | null): void {
@@ -14,7 +16,7 @@ function addCredentialCandidate(ids: Set<string>, id?: string | null): void {
   ids.add(normalizeCredentialId(trimmed))
 }
 
-/** Collect passkey credential ids from session, storage, and server. */
+/** Collect passkey credential ids (never rawId — derivation uses credential.id only). */
 export async function collectCredentialIdCandidates(
   preferred?: string | null,
   userId?: string | null
@@ -25,7 +27,6 @@ export async function collectCredentialIdCandidates(
   if (typeof window !== "undefined") {
     addCredentialCandidate(ids, sessionStorage.getItem("credential_id"))
     addCredentialCandidate(ids, localStorage.getItem("credential_id"))
-    addCredentialCandidate(ids, sessionStorage.getItem("credential_raw_id"))
   }
 
   if (userId) {
@@ -61,6 +62,30 @@ export async function collectCredentialIdCandidates(
   return [...ids]
 }
 
+/** Derive G with userId (current) and without (legacy wallets). */
+async function deriveMatchingKeypair(
+  credentialId: string,
+  userId: string,
+  targetG: string
+): Promise<{ keypair: Keypair; publicKey: string } | null> {
+  const cid = normalizeCredentialId(credentialId)
+  const target = targetG.trim().toUpperCase()
+
+  for (const uid of [userId, undefined] as const) {
+    try {
+      const { keypair, publicKey, seed } = await deriveKeypairWithSeed(cid, uid)
+      const pk = publicKey.trim().toUpperCase()
+      if (pk === target) {
+        await storeEncryptedKey(cid, userId, seed, publicKey)
+        return { keypair, publicKey: pk }
+      }
+    } catch {
+      // try next variant
+    }
+  }
+  return null
+}
+
 /** Resolve the Ed25519 G keypair that can sign for `signerG`. */
 export async function resolveKeypairForSignerG(
   signerG: string,
@@ -74,13 +99,13 @@ export async function resolveKeypairForSignerG(
 
   for (const cid of candidates) {
     const stored = await retrieveKeypair(cid, userId)
-    if (stored?.publicKey() === target) {
+    if (stored?.publicKey().toUpperCase() === target) {
       return { keypair: stored, credentialId: cid }
     }
   }
 
   const byPk = await getKeypairByPublicKey(target, preferredCredentialId)
-  if (byPk?.publicKey() === target) {
+  if (byPk?.publicKey().toUpperCase() === target) {
     return {
       keypair: byPk,
       credentialId: preferredCredentialId ?? candidates[0] ?? "",
@@ -88,32 +113,60 @@ export async function resolveKeypairForSignerG(
   }
 
   for (const cid of candidates) {
-    const derived = await deriveAndStoreKey(cid, userId)
-    if (derived.publicKey === target) {
-      return { keypair: derived.keypair, credentialId: cid }
+    const matched = await deriveMatchingKeypair(cid, userId, target)
+    if (matched) {
+      return { keypair: matched.keypair, credentialId: cid }
     }
   }
 
   return null
 }
 
-/** Derive the passkey-bound G signer (first matching credential). */
+/** Derive the passkey-bound G signer (first credential that yields a G). */
 export async function derivePrimaryPasskeySignerG(
   userId: string,
   preferredCredentialId?: string | null
 ): Promise<{ publicKey: string; credentialId: string } | null> {
   const candidates = await collectCredentialIdCandidates(preferredCredentialId, userId)
   for (const cid of candidates) {
-    const derived = await deriveAndStoreKey(cid, userId)
-    const pk = derived.publicKey.trim().toUpperCase()
-    if (pk.startsWith("G") && pk.length === 56) {
-      return { publicKey: pk, credentialId: cid }
+    for (const uid of [userId, undefined] as const) {
+      try {
+        const { keypair, publicKey } = await deriveKeypairWithSeed(cid, uid)
+        const pk = publicKey.trim().toUpperCase()
+        if (pk.startsWith("G") && pk.length === 56) {
+          await deriveAndStoreKey(cid, userId)
+          return { publicKey: pk, credentialId: cid }
+        }
+      } catch {
+        // try next
+      }
     }
   }
   return null
 }
 
-/** Align DB signer_public_key with passkey-derived G before SEP-10. */
+async function fetchRegisteredSignerG(userId: string): Promise<string | null> {
+  try {
+    const res = await fetch("/api/wallet/stellar/address", {
+      headers: { "x-user-id": userId },
+      cache: "no-store",
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as {
+      signerPublicKey?: string | null
+      publicKey?: string | null
+    }
+    const signer = data.signerPublicKey?.trim().toUpperCase()
+    if (signer?.startsWith("G") && signer.length === 56) return signer
+    const pk = data.publicKey?.trim().toUpperCase()
+    if (pk?.startsWith("G") && pk.length === 56) return pk
+  } catch {
+    // non-fatal
+  }
+  return null
+}
+
+/** Align DB signer_public_key with passkey-derived G (new wallets only). */
 export async function syncPasskeySignerToServer(
   userId: string,
   preferredCredentialId?: string | null
@@ -147,4 +200,37 @@ export async function syncPasskeySignerToServer(
       : derived.publicKey
 
   return { publicKey: synced, credentialId: derived.credentialId }
+}
+
+/**
+ * Prepare SEP-10 signing material for SDP.
+ * Existing accounts: keep the registered G and find the passkey that controls it.
+ * New accounts: derive G from passkey and sync to DB.
+ */
+export async function prepareSdpSigningMaterial(
+  userId: string,
+  preferredCredentialId?: string | null
+): Promise<{ publicKey: string; credentialId: string }> {
+  const registeredG = await fetchRegisteredSignerG(userId)
+
+  if (registeredG) {
+    const resolved = await resolveKeypairForSignerG(
+      registeredG,
+      userId,
+      preferredCredentialId
+    )
+    if (resolved) {
+      return { publicKey: registeredG, credentialId: resolved.credentialId }
+    }
+
+    const derived = await derivePrimaryPasskeySignerG(userId, preferredCredentialId)
+    if (derived && derived.publicKey !== registeredG) {
+      throw new Error(
+        `Tu passkey en este dispositivo no controla la billetera registrada para este pago (${registeredG.slice(0, 8)}…). ` +
+          "Probá en el dispositivo donde creaste tu cuenta Sozu, o iniciá sesión con el passkey original."
+      )
+    }
+  }
+
+  return syncPasskeySignerToServer(userId, preferredCredentialId)
 }

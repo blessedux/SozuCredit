@@ -44,14 +44,15 @@ export async function POST(request: NextRequest) {
 
     if (credentialIdRaw) {
       const normalized = normalizeCredentialId(credentialIdRaw)
-      const { data: passkey } = await svc
+      const { data: passkeys } = await svc
         .from("passkeys")
         .select("credential_id")
         .eq("user_id", userId)
-        .eq("credential_id", normalized)
-        .maybeSingle()
 
-      if (!passkey) {
+      const owned = (passkeys ?? []).some(
+        (p) => normalizeCredentialId(String(p.credential_id ?? "")) === normalized
+      )
+      if (!owned) {
         return NextResponse.json(
           { error: "Passkey does not belong to this account." },
           { status: 403, headers }

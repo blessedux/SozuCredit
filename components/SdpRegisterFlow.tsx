@@ -145,10 +145,10 @@ export function SdpRegisterFlow() {
         throw new Error("No encontramos tu sesión. Iniciá sesión primero.");
       }
 
-      const { syncPasskeySignerToServer } = await import(
+      const { prepareSdpSigningMaterial } = await import(
         "@/lib/stellar/ensure-passkey-signer"
       );
-      const syncedSigner = await syncPasskeySignerToServer(userId, credentialId);
+      const syncedSigner = await prepareSdpSigningMaterial(userId, credentialId);
 
       const authHeaders: HeadersInit = {
         "x-user-id": userId,
