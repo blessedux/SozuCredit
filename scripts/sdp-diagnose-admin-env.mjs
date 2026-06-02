@@ -74,7 +74,7 @@ if (config.apiUrl && config.adminEmail && config.adminPassword) {
       console.log(
         "\n→ Env password likely never valid in SDP. Updating .env/Vercel does NOT change SDP users."
       );
-      console.log("  Run: node scripts/sdp-forgot-password.mjs");
+      console.log("  Run: node scripts/sdp-reset-password.mjs request (token in Railway logs)");
       console.log("  Then set SDP_ADMIN_PASSWORD to the password you chose in the email link.");
     } else {
       console.log(

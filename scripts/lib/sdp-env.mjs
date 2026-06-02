@@ -1,10 +1,11 @@
 import { readFileSync, existsSync } from "fs";
 
-/** SDP login requires upper, lower, digit, symbol, min 8 (see SDP OpenAPI /login). */
+/** SDP auth encrypts passwords with bcrypt (12–36 chars, see stellar-auth/pkg/auth). */
 export function sdpPasswordPolicyIssues(password) {
   const issues = [];
   if (!password) return ["empty"];
-  if (password.length < 8) issues.push("min 8 characters");
+  if (password.length < 12) issues.push("min 12 characters (SDP auth)");
+  if (password.length > 36) issues.push("max 36 characters (SDP auth)");
   if (!/[A-Z]/.test(password)) issues.push("uppercase letter");
   if (!/[a-z]/.test(password)) issues.push("lowercase letter");
   if (!/[0-9]/.test(password)) issues.push("digit");

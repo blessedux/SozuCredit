@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 /**
- * Trigger SDP forgot-password email for the NGO operator account.
- * After you set a new password via the email link, copy that exact password into
- * SDP_ADMIN_PASSWORD in SozuCredit + SozuPay .env.local and Vercel.
+ * @deprecated Use scripts/sdp-reset-password.mjs (request + apply via Railway logs).
  *
+ * Trigger SDP forgot-password. On Railway (DRY_RUN) no email is sent — token is in logs.
  * Usage: node scripts/sdp-forgot-password.mjs
  */
 
@@ -42,8 +41,6 @@ console.log(`POST /forgot-password → HTTP ${res.status}`);
 console.log(text.slice(0, 400));
 if (!res.ok) process.exit(1);
 console.log(
-  "\nCheck the inbox for",
-  adminEmail,
-  "(and spam). Set a password that satisfies SDP: 8+ chars, upper, lower, digit, symbol.",
-  "Then put the SAME password in SDP_ADMIN_PASSWORD everywhere and run sdp-lookup-receiver-dob.mjs again."
+  "\nEmail is usually NOT sent (Railway EMAIL_SENDER_TYPE=DRY_RUN).",
+  "Use: node scripts/sdp-reset-password.mjs (see docs/sdp-admin-password-recovery.md)"
 );
