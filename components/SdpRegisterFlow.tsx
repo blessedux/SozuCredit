@@ -4,7 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Fingerprint } from "lucide-react";
 import { Transaction, Networks } from "@stellar/stellar-sdk";
-import { loadClientWalletSession } from "@/lib/client-wallet-session";
+import {
+  loadClientWalletSession,
+  persistClientWalletSession,
+} from "@/lib/client-wallet-session";
+import { getSep10ClientAccountId } from "@/lib/sdp/sep10ClientAccount";
 
 const CTA_CLASS =
   "inline-flex items-center justify-center gap-2 w-full rounded-xl border border-orange-400/35 bg-orange-500/15 hover:bg-orange-500/25 active:bg-orange-500/30 backdrop-blur-md disabled:opacity-50 disabled:cursor-not-allowed text-orange-100 font-semibold py-3 px-6 transition-colors";
@@ -123,15 +127,48 @@ export function SdpRegisterFlow() {
     }
   };
 
+  const ensureWalletReadyForSdp = async (
+    userId: string,
+    credentialId?: string
+  ): Promise<{ publicKey: string; credentialId: string }> => {
+    const cred =
+      credentialId?.trim() ||
+      (typeof window !== "undefined"
+        ? sessionStorage.getItem("credential_id") ?? localStorage.getItem("credential_id")
+        : null) ||
+      undefined;
+
+    if (!cred) {
+      throw new Error(
+        "No encontramos tu passkey en esta sesión. Cerrá sesión e iniciá de nuevo con passkey."
+      );
+    }
+
+    const { alignWalletMaterialAfterLogin } = await import(
+      "@/lib/storage/post-login-wallet"
+    );
+    const aligned = await alignWalletMaterialAfterLogin(userId, cred);
+    if (aligned.needsWalletSync || !aligned.publicKey) {
+      throw new Error(
+        aligned.setupError ??
+          "Tu billetera aún no está lista. Abrí la app principal, completá la configuración, y volvé a intentar."
+      );
+    }
+
+    persistClientWalletSession({
+      userId,
+      publicKey: aligned.publicKey,
+      credentialId: cred,
+    });
+
+    return { publicKey: aligned.publicKey, credentialId: cred };
+  };
+
   /**
    * SEP-10 passkey sign → SEP-24 deposit redirect.
    */
   const requestFunds = async () => {
     setError(null);
-    if (!wallet.publicKey) {
-      setError("No encontramos tu billetera. Iniciá sesión primero.");
-      return;
-    }
 
     setStatus("busy");
 
@@ -145,15 +182,20 @@ export function SdpRegisterFlow() {
         throw new Error("No encontramos tu sesión. Iniciá sesión primero.");
       }
 
+      const walletReady = await ensureWalletReadyForSdp(userId, credentialId);
+
       const { prepareSdpSigningMaterial } = await import(
         "@/lib/stellar/ensure-passkey-signer"
       );
-      const syncedSigner = await prepareSdpSigningMaterial(userId, credentialId);
+      const syncedSigner = await prepareSdpSigningMaterial(
+        userId,
+        walletReady.credentialId
+      );
 
       const authHeaders: HeadersInit = {
         "x-user-id": userId,
         "x-sep10-signer": syncedSigner.publicKey,
-        ...(wallet.publicKey ? { "x-stellar-public-key": wallet.publicKey } : {}),
+        "x-stellar-public-key": walletReady.publicKey,
       };
 
       const chRes = await fetch("/api/sdp/sep10/challenge", {
@@ -178,7 +220,14 @@ export function SdpRegisterFlow() {
           : Networks.TESTNET);
 
       const tx = new Transaction(chData.transaction_xdr as string, networkPassphrase);
-      const sep10Signer = tx.source.trim().toUpperCase();
+      // SEP-10: tx.source is the anchor server G — sign with the user's passkey-derived G.
+      const userSignerG = syncedSigner.publicKey.trim().toUpperCase();
+      const challengeClientG = getSep10ClientAccountId(tx);
+      if (challengeClientG && challengeClientG !== userSignerG) {
+        throw new Error(
+          `La billetera del desafío (${challengeClientG.slice(0, 8)}…) no coincide con tu billetera (${userSignerG.slice(0, 8)}…). Contactá soporte.`
+        );
+      }
 
       const { signTransactionWithPasskeyApproval } = await import(
         "@/lib/stellar/client-signing"
@@ -186,7 +235,7 @@ export function SdpRegisterFlow() {
       const signed = await signTransactionWithPasskeyApproval(
         tx,
         syncedSigner.credentialId,
-        sep10Signer,
+        userSignerG,
         userId
       );
 
@@ -361,25 +410,28 @@ export function SdpRegisterFlow() {
 
       {(status === "idle" || status === "error") && (
         <div className="space-y-2 text-xs text-white/45 text-center">
-          <p>Firmá con passkey para autorizar la recepción del pago en tu billetera.</p>
+          <p>Firmá con passkey para autorizar la recepción del pago en tu billetera Sozu.</p>
           <p className="text-white/35">
-            En la pantalla del operador (SDP), usá el mismo correo y fecha de nacimiento que
-            registró la organización para este beneficiario.
+            Después de firmar, te redirigimos al operador de pagos (SDP) para completar el
+            registro. Ahí podés pedir verificación por correo — es un paso aparte de Sozu, no
+            el login de esta pantalla.
           </p>
-          {expectedEmailHint && (
-            <p>
-              Correo esperado: <span className="text-white/70">{expectedEmailHint}</span>
-            </p>
-          )}
           {expectedDobHint && (
             <p>
-              Fecha de nacimiento: <span className="text-white/70">{expectedDobHint}</span>
+              Fecha de nacimiento esperada:{" "}
+              <span className="text-white/70">{expectedDobHint}</span>
+            </p>
+          )}
+          {expectedEmailHint && (
+            <p>
+              Si SDP pide correo, debería coincidir con:{" "}
+              <span className="text-white/70">{expectedEmailHint}</span>
             </p>
           )}
           {isTestnet && (
             <p className="text-orange-200/70">
-              Testnet: si no recibís el OTP por correo, probá el código{" "}
-              <span className="font-mono text-white/80">000000</span> (válido en SDP testnet).
+              Testnet (solo en la pantalla de SDP, después de firmar): si no llega el código por
+              correo, probá <span className="font-mono text-white/80">000000</span>.
             </p>
           )}
         </div>
@@ -388,11 +440,21 @@ export function SdpRegisterFlow() {
       {error && (
         <div className="rounded-lg bg-red-950/50 border border-red-800/50 p-3">
           <p className="text-sm text-red-400">{error}</p>
-          {error.includes("billetera") && (
-            <Link href="/auth?sdpInvite=1" className="text-xs text-red-300 underline mt-1 block">
-              Iniciar sesión de nuevo
-            </Link>
-          )}
+          {error.includes("billetera") || error.includes("passkey") ? (
+            <button
+              type="button"
+              className="text-xs text-red-300 underline mt-1 block"
+              onClick={() => {
+                void (async () => {
+                  const { clearClientSession } = await import("@/lib/storage/clear-session");
+                  clearClientSession();
+                  window.location.href = "/auth?sdpInvite=1";
+                })();
+              }}
+            >
+              Cerrar sesión e intentar de nuevo
+            </button>
+          ) : null}
         </div>
       )}
     </div>

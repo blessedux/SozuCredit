@@ -21,10 +21,12 @@ function resolveTransactionSigningPublicKey(
   transaction: Transaction,
   publicKey?: string
 ): string {
-  const source = transaction.source.trim().toUpperCase()
   const hint = publicKey?.trim().toUpperCase()
 
+  // Caller should pass the user's passkey-derived G. SEP-10 challenge tx.source is the anchor server.
   if (hint?.startsWith("G") && hint.length === 56) return hint
+
+  const source = transaction.source.trim().toUpperCase()
   if (source.startsWith("G") && source.length === 56) return source
   if (hint) return hint
   return source

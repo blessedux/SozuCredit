@@ -238,8 +238,25 @@ export async function prepareSdpSigningMaterial(
       )
     }
 
+    if (resolved.keypair.publicKey().toUpperCase() !== registeredG) {
+      throw new Error(
+        `No pudimos alinear la clave firmante (${registeredG.slice(0, 8)}…). Cerrá sesión e intentá de nuevo.`
+      )
+    }
+
     return { publicKey: registeredG, credentialId: resolved.credentialId }
   }
 
-  return syncPasskeySignerToServer(userId, preferredCredentialId)
+  const synced = await syncPasskeySignerToServer(userId, preferredCredentialId)
+  const verified = await resolveKeypairForSignerG(
+    synced.publicKey,
+    userId,
+    synced.credentialId
+  )
+  if (!verified) {
+    throw new Error(
+      "No pudimos preparar tu clave para firmar el desembolso. Cerrá sesión e intentá de nuevo con passkey."
+    )
+  }
+  return synced
 }

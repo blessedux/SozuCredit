@@ -263,12 +263,25 @@ export async function deriveAndStoreKey(
   const existingKeypair = await retrieveKeypair(cid)
   if (existingKeypair) {
     const existingPk = existingKeypair.publicKey().toUpperCase()
-    if (!required || existingPk === required) {
+    if (userId) {
+      const stored = await get<EncryptedKeyData>(STORES.KEYS, cid)
+      if (stored && stored.userId !== userId) {
+        console.warn("[Browser Keys] Cached key belongs to another user — re-deriving")
+        await deleteStoredKey(cid)
+      } else if (!required || existingPk === required) {
+        console.log("[Browser Keys] Key already exists, returning existing keypair")
+        return { keypair: existingKeypair, publicKey: existingPk }
+      } else {
+        console.warn("[Browser Keys] Replacing cached key — public key mismatch for credential")
+        await deleteStoredKey(cid)
+      }
+    } else if (!required || existingPk === required) {
       console.log("[Browser Keys] Key already exists, returning existing keypair")
       return { keypair: existingKeypair, publicKey: existingPk }
+    } else {
+      console.warn("[Browser Keys] Replacing cached key — public key mismatch for credential")
+      await deleteStoredKey(cid)
     }
-    console.warn("[Browser Keys] Replacing cached key — public key mismatch for credential")
-    await deleteStoredKey(cid)
   }
 
   const variants: (string | undefined)[] = userId ? [userId, undefined] : [undefined]
