@@ -98,6 +98,38 @@ if (cmd === "request") {
     }
   } else if (authUsers?.error) {
     console.error(`(Could not preflight auth_users: ${authUsers.error})`);
+  } else {
+    console.error(
+      "(Tip: set SDP_DATABASE_PUBLIC_URL in .env.local to preflight email + show existing reset tokens.)"
+    );
+  }
+
+  const dbUrl =
+    merged.SDP_DATABASE_PUBLIC_URL?.trim() ||
+    merged.DATABASE_PUBLIC_URL?.trim() ||
+    "";
+  if (dbUrl) {
+    const schema = `sdp_${config.tenantName}`;
+    const emailEsc = config.adminEmail.replace(/'/g, "''");
+    const { spawnSync } = await import("child_process");
+    const q = spawnSync(
+      "psql",
+      [
+        dbUrl,
+        "-t",
+        "-A",
+        "-c",
+        `SELECT token FROM "${schema}".auth_user_password_reset aupr JOIN "${schema}".auth_users au ON au.id = aupr.auth_user_id WHERE lower(au.email) = lower('${emailEsc}') AND aupr.is_valid = true AND (aupr.created_at + interval '20 minutes') > now() ORDER BY aupr.created_at DESC LIMIT 1;`,
+      ],
+      { encoding: "utf8" }
+    );
+    const existing = (q.stdout || "").trim();
+    if (existing) {
+      console.log(`Active reset token already exists (SDP will not email again yet).`);
+      console.log(`Use: node scripts/sdp-fetch-reset-token.mjs`);
+      console.log(`Or:  node scripts/sdp-reset-password.mjs apply --token='${existing}' --password='SozuAdmin2026!'`);
+      process.exit(0);
+    }
   }
 
   const { res, data } = await postJson("/forgot-password", {
