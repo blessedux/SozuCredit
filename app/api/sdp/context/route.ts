@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { parseInviteCookie, SDP_INVITE_COOKIE_NAME } from "@/lib/sdp/invitePayload";
 import { normalizeDateOfBirth } from "@/lib/sdp/beneficiaryIdentity";
+import { decodeSdpOrganizationName } from "@/lib/sdp/displayName";
 
 /**
  * GET /api/sdp/context
@@ -31,8 +32,12 @@ export async function GET() {
     return `${email.slice(0, 2)}***${email.slice(at)}`;
   };
 
+  const organizationName =
+    decodeSdpOrganizationName(payload.organizationName) || payload.organizationName;
+
   return NextResponse.json({
-    organizationName: payload.organizationName,
+    organizationName,
+    needsEmailStep: !payload.verifiedEmail?.trim(),
     asset: payload.asset,
     sdpHost: payload.sdpHost,
     requiresIdentityVerification,

@@ -44,7 +44,7 @@ export type Sep24InteractiveResult =
 /** Multi-tenant Railway SDP wallet-registration pages require tenant + lang in the URL. */
 export function augmentSdpInteractiveUrl(
   url: string,
-  opts: { tenantName?: string; lang?: string; token?: string }
+  opts: { tenantName?: string; lang?: string; token?: string; email?: string }
 ): string {
   try {
     const u = new URL(url);
@@ -58,6 +58,10 @@ export function augmentSdpInteractiveUrl(
     const token = opts.token?.trim();
     if (token && !u.searchParams.has("token")) {
       u.searchParams.set("token", token);
+    }
+    const email = opts.email?.trim().toLowerCase();
+    if (email && !u.searchParams.has("email")) {
+      u.searchParams.set("email", email);
     }
     return u.toString();
   } catch {

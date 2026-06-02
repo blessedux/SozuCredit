@@ -11,12 +11,14 @@ import {
   verifyBeneficiaryIdentity,
 } from "@/lib/sdp/beneficiaryIdentity";
 
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 /**
  * POST /api/sdp/verify-identity
- * Body: { full_name?: string, date_of_birth?: string, email?: string }
- *
- * Local pre-check against unsigned invite hints (bn, bd, be). Does not run SDP OTP —
- * that happens on the SDP webview after SEP-24 redirect.
+ * Body: { email?: string, full_name?: string, date_of_birth?: string }
+ * Saves beneficiary email for SDP (before passkey). Optional name/DOB when invite includes bn/bd.
  */
 export async function POST(request: Request) {
   const cookieStore = await cookies();
@@ -35,28 +37,22 @@ export async function POST(request: Request) {
     typeof body.date_of_birth === "string" ? body.date_of_birth.trim() : "";
   const email = typeof body.email === "string" ? body.email.trim() : "";
 
-  const needsIdentity = Boolean(
-    invite.expectedFullName || invite.expectedDateOfBirth || invite.expectedBeneficiaryEmail
-  );
+  const needsNameDob = Boolean(invite.expectedFullName || invite.expectedDateOfBirth);
 
-  if (!needsIdentity) {
-    return NextResponse.json({ ok: true, skipped: true });
+  if (!email) {
+    return NextResponse.json({ error: "Ingresá tu correo electrónico." }, { status: 400 });
+  }
+  if (!isValidEmail(email)) {
+    return NextResponse.json({ error: "Ingresá un correo válido." }, { status: 400 });
   }
 
-  if (invite.expectedFullName && !fullName) {
-    return NextResponse.json({ error: "Ingresá tu nombre completo." }, { status: 400 });
-  }
-  if (invite.expectedDateOfBirth && !dateOfBirth) {
-    return NextResponse.json(
-      { error: "Ingresá tu fecha de nacimiento." },
-      { status: 400 }
-    );
-  }
-  if (invite.expectedBeneficiaryEmail && !email) {
-    return NextResponse.json(
-      { error: "Ingresá el correo que la organización registró para este beneficiario." },
-      { status: 400 }
-    );
+  if (needsNameDob) {
+    if (invite.expectedFullName && !fullName) {
+      return NextResponse.json({ error: "Ingresá tu nombre completo." }, { status: 400 });
+    }
+    if (invite.expectedDateOfBirth && !dateOfBirth) {
+      return NextResponse.json({ error: "Ingresá tu fecha de nacimiento." }, { status: 400 });
+    }
   }
 
   const result = verifyBeneficiaryIdentity({
@@ -65,7 +61,7 @@ export async function POST(request: Request) {
     expectedEmail: invite.expectedBeneficiaryEmail,
     providedFullName: fullName || invite.expectedFullName || "",
     providedDateOfBirth: dateOfBirth || invite.expectedDateOfBirth || "",
-    providedEmail: email || undefined,
+    providedEmail: email,
   });
 
   if (!result.ok) {
@@ -73,13 +69,13 @@ export async function POST(request: Request) {
   }
 
   const normalizedDob = dateOfBirth ? normalizeDateOfBirth(dateOfBirth) : null;
-  const normalizedEmail = email ? email.trim().toLowerCase() : undefined;
+  const normalizedEmail = email.trim().toLowerCase();
 
   const updated = {
     ...invite,
+    verifiedEmail: normalizedEmail,
     ...(fullName ? { verifiedFullName: fullName } : {}),
     ...(normalizedDob ? { verifiedDateOfBirth: normalizedDob } : {}),
-    ...(normalizedEmail ? { verifiedEmail: normalizedEmail } : {}),
   };
   cookieStore.set(SDP_INVITE_COOKIE_NAME, serializeInviteCookie(updated), {
     httpOnly: true,

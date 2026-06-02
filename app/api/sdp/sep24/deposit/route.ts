@@ -40,6 +40,11 @@ export async function POST() {
   if (invite.token) {
     extra.token = invite.token;
   }
+  const registrationEmail =
+    invite.verifiedEmail?.trim() || invite.expectedBeneficiaryEmail?.trim();
+  if (registrationEmail) {
+    extra.email = registrationEmail;
+  }
 
   const res = await postSep24DepositInteractive({
     sep24Base: invite.sep24Base,
@@ -61,6 +66,7 @@ export async function POST() {
       tenantName,
       lang: "es",
       token: invite.token,
+      email: registrationEmail,
     }),
     id: res.id ?? null,
     sep24Account,

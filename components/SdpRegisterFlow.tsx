@@ -9,6 +9,7 @@ import {
   persistClientWalletSession,
 } from "@/lib/client-wallet-session";
 import { getSep10ClientAccountId } from "@/lib/sdp/sep10ClientAccount";
+import { decodeSdpOrganizationName } from "@/lib/sdp/displayName";
 
 const CTA_CLASS =
   "inline-flex items-center justify-center gap-2 w-full rounded-xl border border-orange-400/35 bg-orange-500/15 hover:bg-orange-500/25 active:bg-orange-500/30 backdrop-blur-md disabled:opacity-50 disabled:cursor-not-allowed text-orange-100 font-semibold py-3 px-6 transition-colors";
@@ -23,7 +24,12 @@ type WalletState = {
 };
 
 type Status = "idle" | "busy" | "done" | "error";
-type Step = "identity" | "funds";
+type Step = "contact" | "funds";
+
+function orgPaymentLabel(orgName: string): string {
+  const label = decodeSdpOrganizationName(orgName) || orgName.trim();
+  return label ? `Recibir pago de ${label}` : "Recibir tu pago";
+}
 
 export function SdpRegisterFlow() {
   const [wallet, setWallet] = useState<WalletState>({
@@ -31,24 +37,20 @@ export function SdpRegisterFlow() {
     credentialId: null,
     userId: null,
   });
-  const [orgName, setOrgName] = useState<string>("");
-  const [expectedEmailHint, setExpectedEmailHint] = useState<string | null>(null);
-  const [expectedDobHint, setExpectedDobHint] = useState<string | null>(null);
-  const [isTestnet, setIsTestnet] = useState(false);
-  const [requiresIdentity, setRequiresIdentity] = useState(false);
+  const [orgName, setOrgName] = useState("");
   const [requiresFullName, setRequiresFullName] = useState(false);
   const [requiresDateOfBirth, setRequiresDateOfBirth] = useState(false);
-  const [requiresEmail, setRequiresEmail] = useState(false);
   const [hasInviteToken, setHasInviteToken] = useState(true);
-  const [step, setStep] = useState<Step>("identity");
+  const [step, setStep] = useState<Step>("contact");
   const [fullName, setFullName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [email, setEmail] = useState("");
-  const [identityVerified, setIdentityVerified] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
   const [hasWalletSession, setHasWalletSession] = useState(false);
+
+  const paymentTitle = orgPaymentLabel(orgName);
 
   const refreshWallet = useCallback(async () => {
     const session = await loadClientWalletSession();
@@ -64,32 +66,21 @@ export function SdpRegisterFlow() {
   const loadContext = useCallback(async () => {
     try {
       const res = await fetch("/api/sdp/context", { credentials: "include" });
-      if (res.ok) {
-        const d = (await res.json().catch(() => ({}))) as {
-          organizationName?: string;
-          requiresIdentityVerification?: boolean;
-          requiresFullName?: boolean;
-          requiresDateOfBirth?: boolean;
-          requiresEmail?: boolean;
-          hasInviteToken?: boolean;
-          expectedEmailHint?: string | null;
-          expectedDateOfBirthHint?: string | null;
-          isTestnet?: boolean;
-        };
-        if (d.organizationName) setOrgName(d.organizationName);
-        setExpectedEmailHint(d.expectedEmailHint ?? null);
-        setExpectedDobHint(d.expectedDateOfBirthHint ?? null);
-        setIsTestnet(Boolean(d.isTestnet));
-        setRequiresFullName(Boolean(d.requiresFullName));
-        setRequiresDateOfBirth(Boolean(d.requiresDateOfBirth));
-        setRequiresEmail(Boolean(d.requiresEmail));
-        setHasInviteToken(d.hasInviteToken !== false);
-        const needsIdentity = Boolean(d.requiresIdentityVerification);
-        setRequiresIdentity(needsIdentity);
-        setStep(needsIdentity ? "identity" : "funds");
-      }
+      if (!res.ok) return;
+      const d = (await res.json().catch(() => ({}))) as {
+        organizationName?: string;
+        needsEmailStep?: boolean;
+        requiresFullName?: boolean;
+        requiresDateOfBirth?: boolean;
+        hasInviteToken?: boolean;
+      };
+      if (d.organizationName) setOrgName(d.organizationName);
+      setRequiresFullName(Boolean(d.requiresFullName));
+      setRequiresDateOfBirth(Boolean(d.requiresDateOfBirth));
+      setHasInviteToken(d.hasInviteToken !== false);
+      setStep(d.needsEmailStep === false ? "funds" : "contact");
     } catch {
-      // non-fatal — org name is just display text
+      // non-fatal
     }
   }, []);
 
@@ -110,18 +101,10 @@ export function SdpRegisterFlow() {
     };
   }, [refreshWallet, loadContext]);
 
-  const verifyIdentity = async () => {
+  const saveContact = async () => {
     setError(null);
-    if (requiresFullName && !fullName.trim()) {
-      setError("Ingresá tu nombre completo.");
-      return;
-    }
-    if (requiresDateOfBirth && !dateOfBirth.trim()) {
-      setError("Ingresá tu fecha de nacimiento.");
-      return;
-    }
-    if (requiresEmail && !email.trim()) {
-      setError("Ingresá el correo que la organización registró para este beneficiario.");
+    if (!email.trim()) {
+      setError("Ingresá el correo que registró la organización.");
       return;
     }
 
@@ -132,15 +115,14 @@ export function SdpRegisterFlow() {
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          full_name: fullName.trim(),
-          date_of_birth: dateOfBirth.trim(),
-          ...(email.trim() ? { email: email.trim() } : {}),
+          email: email.trim(),
+          ...(fullName.trim() ? { full_name: fullName.trim() } : {}),
+          ...(dateOfBirth.trim() ? { date_of_birth: dateOfBirth.trim() } : {}),
         }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(data.error ?? "No pudimos verificar tu identidad.");
+      if (!res.ok) throw new Error(data.error ?? "No pudimos guardar tu correo.");
 
-      setIdentityVerified(true);
       setStep("funds");
       setStatus("idle");
     } catch (e) {
@@ -162,7 +144,7 @@ export function SdpRegisterFlow() {
 
     if (!cred) {
       throw new Error(
-        "No encontramos tu passkey en esta sesión. Cerrá sesión e iniciá de nuevo con passkey."
+        "No encontramos tu passkey. Cerrá sesión e iniciá de nuevo con passkey."
       );
     }
 
@@ -173,7 +155,7 @@ export function SdpRegisterFlow() {
     if (aligned.needsWalletSync || !aligned.publicKey) {
       throw new Error(
         aligned.setupError ??
-          "Tu billetera aún no está lista. Abrí la app principal, completá la configuración, y volvé a intentar."
+          "Tu billetera aún no está lista. Completá la configuración en la app e intentá de nuevo."
       );
     }
 
@@ -186,12 +168,8 @@ export function SdpRegisterFlow() {
     return { publicKey: aligned.publicKey, credentialId: cred };
   };
 
-  /**
-   * SEP-10 passkey sign → SEP-24 deposit redirect.
-   */
   const requestFunds = async () => {
     setError(null);
-
     setStatus("busy");
 
     try {
@@ -201,11 +179,10 @@ export function SdpRegisterFlow() {
         freshSession.credentialId ?? wallet.credentialId ?? undefined;
 
       if (!userId) {
-        throw new Error("No encontramos tu sesión. Iniciá sesión primero.");
+        throw new Error("Iniciá sesión con passkey primero.");
       }
 
       const walletReady = await ensureWalletReadyForSdp(userId, credentialId);
-
       const { prepareSdpSigningMaterial } = await import(
         "@/lib/stellar/ensure-passkey-signer"
       );
@@ -242,12 +219,11 @@ export function SdpRegisterFlow() {
           : Networks.TESTNET);
 
       const tx = new Transaction(chData.transaction_xdr as string, networkPassphrase);
-      // SEP-10: tx.source is the anchor server G — sign with the user's passkey-derived G.
       const userSignerG = syncedSigner.publicKey.trim().toUpperCase();
       const challengeClientG = getSep10ClientAccountId(tx);
       if (challengeClientG && challengeClientG !== userSignerG) {
         throw new Error(
-          `La billetera del desafío (${challengeClientG.slice(0, 8)}…) no coincide con tu billetera (${userSignerG.slice(0, 8)}…). Contactá soporte.`
+          "La billetera del desafío no coincide con la tuya. Contactá soporte."
         );
       }
 
@@ -307,12 +283,10 @@ export function SdpRegisterFlow() {
   if (!hasWalletSession) {
     return (
       <div className="max-w-sm mx-auto mt-12 space-y-6 text-center">
-        <div className="space-y-2">
-          <h1 className="text-xl font-semibold text-white">Tenés un pago esperándote</h1>
-          <p className="text-sm text-white/55">
-            Iniciá sesión o creá tu cuenta con passkey. Después volvés acá para recibir el pago.
-          </p>
-        </div>
+        <h1 className="text-xl font-semibold text-white">{paymentTitle}</h1>
+        <p className="text-sm text-white/55">
+          Entrá con passkey para continuar.
+        </p>
         <Link href="/auth?sdpInvite=1" className={CTA_CLASS}>
           <Fingerprint className="w-4 h-4 shrink-0 opacity-80" aria-hidden />
           Entrar con passkey
@@ -321,44 +295,29 @@ export function SdpRegisterFlow() {
     );
   }
 
-  if (requiresIdentity && step === "identity" && !identityVerified) {
+  if (step === "contact") {
     return (
       <div className="max-w-sm mx-auto mt-12 space-y-6">
-        <div className="space-y-1">
-          <h1 className="text-xl font-semibold text-white text-center">Confirmá tu identidad</h1>
-          {orgName && (
-            <p className="text-sm text-white/55 text-center">
-              Pago de <span className="text-white">{orgName}</span>
-            </p>
-          )}
-          <p className="text-xs text-white/45 text-center pt-1">
-            Usá los mismos datos del lote de la organización. En la pantalla de SDP después
-            vas a repetir correo y fecha de nacimiento (no confundas el código OTP con la fecha).
-          </p>
-        </div>
+        <h1 className="text-xl font-semibold text-white text-center">{paymentTitle}</h1>
+        <p className="text-sm text-white/55 text-center">
+          Mismo correo que la organización tiene en el lote.
+        </p>
 
         <div className="space-y-4">
-          {requiresEmail && (
-            <div>
-              <label htmlFor="sdp-email" className="block text-sm text-white/70 mb-1">
-                Correo electrónico
-              </label>
-              <input
-                id="sdp-email"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder={expectedEmailHint ?? "correo@ejemplo.com"}
-                className={INPUT_CLASS}
-              />
-              {expectedEmailHint && (
-                <p className="text-xs text-white/40 mt-1">
-                  Debe coincidir con el del lote: {expectedEmailHint}
-                </p>
-              )}
-            </div>
-          )}
+          <div>
+            <label htmlFor="sdp-email" className="block text-sm text-white/70 mb-1">
+              Correo electrónico
+            </label>
+            <input
+              id="sdp-email"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="correo@ejemplo.com"
+              className={INPUT_CLASS}
+            />
+          </div>
           {requiresFullName && (
             <div>
               <label htmlFor="sdp-full-name" className="block text-sm text-white/70 mb-1">
@@ -370,7 +329,6 @@ export function SdpRegisterFlow() {
                 autoComplete="name"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="Ej. María García"
                 className={INPUT_CLASS}
               />
             </div>
@@ -387,29 +345,17 @@ export function SdpRegisterFlow() {
                 onChange={(e) => setDateOfBirth(e.target.value)}
                 className={INPUT_CLASS}
               />
-              {expectedDobHint && (
-                <p className="text-xs text-white/40 mt-1">
-                  Mismo formato que en SDP: {expectedDobHint}
-                </p>
-              )}
             </div>
           )}
         </div>
 
         <button
           type="button"
-          onClick={() => void verifyIdentity()}
+          onClick={() => void saveContact()}
           disabled={status === "busy"}
           className={CTA_CLASS}
         >
-          {status === "busy" ? (
-            <>
-              <span className="h-4 w-4 rounded-full border-2 border-orange-200/30 border-t-orange-100 animate-spin" />
-              Verificando…
-            </>
-          ) : (
-            "Continuar"
-          )}
+          {status === "busy" ? "Guardando…" : "Continuar"}
         </button>
 
         {error && (
@@ -423,16 +369,9 @@ export function SdpRegisterFlow() {
 
   return (
     <div className="max-w-sm mx-auto mt-12 space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-xl font-semibold text-white text-center">
-          {status === "done" ? "Redirigiendo…" : "Recibir tu pago"}
-        </h1>
-        {orgName && (
-          <p className="text-sm text-white/55 text-center">
-            de <span className="text-white">{orgName}</span>
-          </p>
-        )}
-      </div>
+      <h1 className="text-xl font-semibold text-white text-center">
+        {status === "done" ? "Redirigiendo…" : paymentTitle}
+      </h1>
 
       {status !== "done" && (
         <button
@@ -442,14 +381,11 @@ export function SdpRegisterFlow() {
           className={CTA_CLASS}
         >
           {status === "busy" ? (
-            <>
-              <span className="h-4 w-4 rounded-full border-2 border-orange-200/30 border-t-orange-100 animate-spin" />
-              Autenticando…
-            </>
+            "Autenticando…"
           ) : (
             <>
               <Fingerprint className="w-4 h-4 shrink-0 opacity-80" aria-hidden />
-              Solicitar fondos
+              Confirmar con passkey
             </>
           )}
         </button>
@@ -457,43 +393,21 @@ export function SdpRegisterFlow() {
 
       {status === "busy" && (
         <p className="text-xs text-white/45 text-center">
-          Aparecerá el prompt de passkey. Confirmá con tu huella, rostro o PIN del dispositivo.
+          Confirmá con huella, rostro o PIN del dispositivo.
         </p>
       )}
 
       {!hasInviteToken && (status === "idle" || status === "error") && (
         <p className="text-xs text-amber-300/90 text-center">
-          Este enlace no incluye el token del beneficiario. Abrí de nuevo el enlace del correo de
-          la organización (no solo /sdp/register).
+          Abrí de nuevo el enlace completo del correo de la organización.
         </p>
       )}
 
       {(status === "idle" || status === "error") && (
-        <div className="space-y-2 text-xs text-white/45 text-center">
-          <p>Firmá con passkey para autorizar la recepción del pago en tu billetera Sozu.</p>
-          <p className="text-white/35">
-            En SDP hay dos pasos distintos: (1) código OTP al correo del lote, (2) fecha de
-            nacimiento o PIN de verificación — no uses el OTP en el campo de fecha.
-          </p>
-          {expectedEmailHint && (
-            <p>
-              Correo del lote (usalo en SDP):{" "}
-              <span className="text-white/70">{expectedEmailHint}</span>
-            </p>
-          )}
-          {expectedDobHint && (
-            <p>
-              Fecha de nacimiento del lote (campo aparte del OTP):{" "}
-              <span className="text-white/70">{expectedDobHint}</span>
-            </p>
-          )}
-          {isTestnet && (
-            <p className="text-orange-200/70">
-              Testnet en SDP: si no llega el OTP por correo, probá{" "}
-              <span className="font-mono text-white/80">000000</span>.
-            </p>
-          )}
-        </div>
+        <p className="text-xs text-white/45 text-center">
+          En el siguiente paso solo ingresás el código OTP y tu fecha de nacimiento (ya
+          cargamos tu correo acá).
+        </p>
       )}
 
       {error && (

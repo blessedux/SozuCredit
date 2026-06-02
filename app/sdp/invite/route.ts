@@ -4,6 +4,7 @@ import { parseSdpAllowedDomains, isSdpHostAllowed } from "@/lib/sdp/allowlist";
 import { fetchSdpTomlEndpoints } from "@/lib/sdp/fetchSdpToml";
 import { verifySdpRegistrationUrl } from "@/lib/sdp/verifyInviteUrl";
 import { encodeQuerySorted } from "@/lib/sdp/queryEncode";
+import { decodeSdpOrganizationName } from "@/lib/sdp/displayName";
 import {
   serializeInviteCookie,
   SDP_INVITE_COOKIE_NAME,
@@ -96,7 +97,7 @@ export async function GET(request: NextRequest) {
   const exp = Math.floor(Date.now() / 1000) + SDP_INVITE_COOKIE_MAX_AGE_SEC;
   const payload = {
     sdpHost: domainParam,
-    organizationName: nameParam || "Organization",
+    organizationName: decodeSdpOrganizationName(nameParam) || "Organization",
     asset: assetParam,
     webAuthEndpoint: toml.webAuthEndpoint,
     sep24Base: toml.transferServerSep24,
