@@ -20,6 +20,7 @@ import { fileURLToPath } from "url";
 import {
   getSdpAdminConfig,
   loadMergedSdpEnv,
+  listSdpAuthUserEmails,
   sdpAdminLogin,
   sdpPasswordPolicyIssues,
 } from "./lib/sdp-env.mjs";
@@ -44,15 +45,28 @@ function parseArgs(argv) {
 }
 
 async function postJson(path, body) {
-  const res = await fetch(`${config.apiUrl}${path}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      "SDP-Tenant-Name": config.tenantName,
-    },
-    body: JSON.stringify(body),
-  });
+  let res;
+  try {
+    res = await fetch(`${config.apiUrl}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "SDP-Tenant-Name": config.tenantName,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    const cause = e instanceof Error ? e.cause ?? e : e;
+    const msg = cause instanceof Error ? cause.message : String(cause);
+    console.error(
+      `Network error calling ${config.apiUrl}${path}: ${msg}\n` +
+        "Check internet/DNS. Try: curl -I " +
+        config.apiUrl +
+        "/health"
+    );
+    process.exit(1);
+  }
   const text = await res.text();
   let data;
   try {
@@ -71,6 +85,21 @@ if (!config.apiUrl || !config.adminEmail) {
 }
 
 if (cmd === "request") {
+  const authUsers = listSdpAuthUserEmails(merged);
+  if (authUsers?.emails) {
+    const want = config.adminEmail.trim().toLowerCase();
+    if (!authUsers.emails.includes(want)) {
+      console.error(
+        `SDP_ADMIN_EMAIL=${config.adminEmail} is NOT in auth_users.\n` +
+          `Registered operator email(s): ${authUsers.emails.join(", ")}\n` +
+          `Update SDP_ADMIN_EMAIL in .env.local, then re-run this command.`
+      );
+      process.exit(1);
+    }
+  } else if (authUsers?.error) {
+    console.error(`(Could not preflight auth_users: ${authUsers.error})`);
+  }
+
   const { res, data } = await postJson("/forgot-password", {
     email: config.adminEmail,
   });

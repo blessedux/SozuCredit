@@ -1,4 +1,5 @@
 import { readFileSync, existsSync } from "fs";
+import { spawnSync } from "child_process";
 
 /** SDP auth encrypts passwords with bcrypt (12–36 chars, see stellar-auth/pkg/auth). */
 export function sdpPasswordPolicyIssues(password) {
@@ -83,4 +84,24 @@ export async function sdpAdminLogin(config) {
   });
   const data = await res.json().catch(() => ({}));
   return { res, data };
+}
+
+/** Returns emails in sdp_<tenant>.auth_users when SDP_DATABASE_PUBLIC_URL is set. */
+export function listSdpAuthUserEmails(merged) {
+  const dbUrl =
+    readEnvValue(merged, "SDP_DATABASE_PUBLIC_URL", "DATABASE_PUBLIC_URL") ||
+    "";
+  if (!dbUrl) return null;
+  const tenant = readEnvValue(merged, "SDP_TENANT_NAME") || "mujeres-admin";
+  const schema = `sdp_${tenant}`;
+  const sql = `SELECT email FROM "${schema}".auth_users ORDER BY email;`;
+  const r = spawnSync("psql", [dbUrl, "-t", "-A", "-c", sql], {
+    encoding: "utf8",
+  });
+  if (r.status !== 0) return { error: (r.stderr || r.stdout || "").trim() };
+  const emails = (r.stdout || "")
+    .split("\n")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return { emails };
 }
