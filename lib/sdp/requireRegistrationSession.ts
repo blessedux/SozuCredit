@@ -4,6 +4,7 @@ import { getSdpApiContext } from "./sdpApiContext";
 import { getSdpSep24JwtCookie } from "./jwtCookie";
 import { sdpInteractiveDepositApiBase } from "./sep24Session";
 import type { SdpInvitePayload } from "./invitePayload";
+import { normalizeVerificationField } from "./formatVerificationValue";
 
 export async function requireSdpRegistrationSession(): Promise<
   | {
@@ -45,8 +46,9 @@ export async function requireSdpRegistrationSession(): Promise<
     };
   }
 
-  const verificationField =
-    ctx.invite.sdpVerificationField?.trim() || "DATE_OF_BIRTH";
+  const verificationField = normalizeVerificationField(
+    ctx.invite.sdpVerificationField
+  );
 
   const { resolveSep24RegistrationAccount } = await import("./resolveSep10Account");
   const sep24Account = resolveSep24RegistrationAccount({

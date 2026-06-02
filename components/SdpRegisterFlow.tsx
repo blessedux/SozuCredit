@@ -27,6 +27,8 @@ type SdpDebug = {
   transactionId?: string | null;
   verifiedEmail?: string;
   verifiedDateOfBirth?: string | null;
+  verificationField?: string;
+  verificationSent?: string;
 };
 
 function orgPaymentLabel(orgName: string): string {
@@ -47,6 +49,8 @@ function DebugPanel({ debug }: { debug: SdpDebug | null }) {
         {debug.transactionId && <li>tx_id: {debug.transactionId}</li>}
         {debug.verifiedEmail && <li>email: {debug.verifiedEmail}</li>}
         {debug.verifiedDateOfBirth && <li>dob: {debug.verifiedDateOfBirth}</li>}
+        {debug.verificationField && <li>verification_field: {debug.verificationField}</li>}
+        {debug.verificationSent && <li>verification_sent: {debug.verificationSent}</li>}
       </ul>
     </details>
   );
@@ -68,6 +72,7 @@ export function SdpRegisterFlow() {
   const [hasWalletSession, setHasWalletSession] = useState(false);
   const [walletUserId, setWalletUserId] = useState<string | null>(null);
   const [walletCredentialId, setWalletCredentialId] = useState<string | null>(null);
+  const [verificationField, setVerificationField] = useState("DATE_OF_BIRTH");
 
   const paymentTitle = orgPaymentLabel(orgName);
 
@@ -83,12 +88,14 @@ export function SdpRegisterFlow() {
         verifiedEmail?: string | null;
         verifiedDateOfBirth?: string | null;
         transactionId?: string | null;
+        verificationField?: string;
       };
       if (d.organizationName) setOrgName(d.organizationName);
       setHasInviteToken(d.hasInviteToken !== false);
       setIsTestnet(Boolean(d.isTestnet));
       if (d.verifiedEmail) setEmail(d.verifiedEmail);
       if (d.verifiedDateOfBirth) setDateOfBirth(d.verifiedDateOfBirth);
+      if (d.verificationField) setVerificationField(d.verificationField);
       if (d.step && d.step !== "invite_missing") setStep(d.step);
       if (d.transactionId) {
         setDebug((prev) => ({ ...prev, transactionId: d.transactionId }));
@@ -238,10 +245,34 @@ export function SdpRegisterFlow() {
       setDebug(depData.debug ?? null);
       setStep("otp");
       setStatus("idle");
+      void loadRegistrationInfo();
       void sendOtp();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
       setStatus("error");
+    }
+  };
+
+  const loadRegistrationInfo = async () => {
+    try {
+      const res = await fetch("/api/sdp/registration/info", { credentials: "include" });
+      if (!res.ok) return;
+      const d = (await res.json()) as {
+        verificationField?: string;
+        debug?: SdpDebug;
+      };
+      if (d.verificationField) setVerificationField(d.verificationField);
+      if (d.debug) {
+        setDebug((prev) => ({
+          ...prev,
+          ...d.debug,
+          verifiedEmail: email || prev?.verifiedEmail,
+          verifiedDateOfBirth: dateOfBirth || prev?.verifiedDateOfBirth,
+          verificationField: d.verificationField ?? prev?.verificationField,
+        }));
+      }
+    } catch {
+      // non-fatal
     }
   };
 
@@ -278,11 +309,15 @@ export function SdpRegisterFlow() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ otp: otp.trim() }),
+        body: JSON.stringify({
+          otp: otp.trim(),
+          date_of_birth: dateOfBirth.trim() || undefined,
+        }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
         hint?: string;
+        verificationField?: string;
         debug?: SdpDebug;
       };
       if (!res.ok) {
@@ -290,7 +325,15 @@ export function SdpRegisterFlow() {
           [data.error, data.hint].filter(Boolean).join(" ") || "Verificación falló"
         );
       }
-      if (data.debug) setDebug((prev) => ({ ...prev, ...data.debug }));
+      if (data.debug) {
+        setDebug((prev) => ({
+          ...prev,
+          ...data.debug,
+          verifiedEmail: email,
+          verifiedDateOfBirth: dateOfBirth,
+          verificationField: data.verificationField ?? verificationField,
+        }));
+      }
       setStep("done");
       setStatus("idle");
       void pollStatus();
@@ -447,6 +490,36 @@ export function SdpRegisterFlow() {
           Testnet: probá OTP <span className="font-mono">000000</span>
         </p>
       )}
+      {verificationField === "DATE_OF_BIRTH" ? (
+        <div>
+          <label htmlFor="sdp-dob-otp" className="block text-sm text-white/70 mb-1">
+            Fecha de nacimiento (AAAA-MM-DD, igual que el lote)
+          </label>
+          <input
+            id="sdp-dob-otp"
+            type="date"
+            value={dateOfBirth}
+            onChange={(e) => setDateOfBirth(e.target.value)}
+            className={INPUT_CLASS}
+          />
+          <p className="mt-1 text-xs text-white/40">
+            Debe coincidir con la columna «verification» del CSV en SozuPay.
+          </p>
+        </div>
+      ) : verificationField === "YEAR_MONTH" ? (
+        <div>
+          <label htmlFor="sdp-ym-otp" className="block text-sm text-white/70 mb-1">
+            Año y mes (AAAA-MM)
+          </label>
+          <input
+            id="sdp-ym-otp"
+            type="month"
+            value={dateOfBirth.slice(0, 7)}
+            onChange={(e) => setDateOfBirth(e.target.value ? `${e.target.value}-01` : "")}
+            className={INPUT_CLASS}
+          />
+        </div>
+      ) : null}
       <div>
         <label htmlFor="sdp-otp" className="block text-sm text-white/70 mb-1">
           Código OTP
