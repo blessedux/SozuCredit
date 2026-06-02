@@ -8,6 +8,7 @@
 
 import type { StrategyId } from "./strategy-catalog"
 import { getStrategyConfig } from "./strategy-catalog"
+import { resolvePrimaryVaultDepositAsset } from "./vault-deposit-asset"
 
 export interface DeFindexConfig {
   network: "testnet" | "mainnet"
@@ -67,4 +68,28 @@ export function validateDeFindexConfig(config: DeFindexConfig): boolean {
     config.defindexStrategyAddress &&
     config.assetAddress
   )
+}
+
+/**
+ * Catalog config with `assetAddress` aligned to the vault's on-chain deposit token.
+ * Falls back to strategy-catalog when `get_assets` is unavailable.
+ */
+export async function getResolvedDeFindexConfig(
+  strategyId: StrategyId = "fixed",
+  networkOverride?: string | null,
+): Promise<DeFindexConfig> {
+  const config = getDeFindexConfig(strategyId, networkOverride)
+  const override = process.env.DEFINDEX_VAULT_DEPOSIT_ASSET_CONTRACT?.trim().toUpperCase()
+  if (override?.startsWith("C") && override.length === 56) {
+    return { ...config, assetAddress: override }
+  }
+
+  const onChain = await resolvePrimaryVaultDepositAsset(
+    config.defindexVaultAddress,
+    config.network,
+  )
+  if (onChain) {
+    return { ...config, assetAddress: onChain }
+  }
+  return config
 }

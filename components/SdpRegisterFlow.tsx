@@ -73,6 +73,27 @@ type SdpDebug = {
   dobSource?: string;
   inviteExpectedDob?: string | null;
   batchDobIfCsvBlank?: string;
+  tenantName?: string | null;
+  candidatesTried?: string[];
+  batchLookup?: {
+    count?: number;
+    duplicateEmail?: boolean;
+    uniqueDobs?: string[];
+    transactionHit?: {
+      disbursementName?: string;
+      receiverId?: string;
+      verificationDob?: string;
+    } | null;
+    hits?: Array<{
+      disbursementName?: string;
+      disbursementStatus?: string;
+      verificationDob?: string;
+      receiverId?: string;
+      sep24TransactionId?: string | null;
+      matchesCurrentTx?: boolean;
+    }>;
+    note?: string;
+  } | null;
 };
 
 function orgPaymentLabel(orgName: string): string {
@@ -100,6 +121,28 @@ function DebugPanel({ debug }: { debug: SdpDebug | null }) {
         {debug.batchDobIfCsvBlank && (
           <li>batch_dob_if_csv_blank: {debug.batchDobIfCsvBlank}</li>
         )}
+        {debug.tenantName && <li>tenant: {debug.tenantName}</li>}
+        {debug.batchLookup?.note && (
+          <li className="text-amber-200/80">batch_lookup: {debug.batchLookup.note}</li>
+        )}
+        {debug.candidatesTried?.length ? (
+          <li>candidates_tried: {debug.candidatesTried.join(" | ")}</li>
+        ) : null}
+        {debug.batchLookup?.uniqueDobs?.length ? (
+          <li>batch_dobs: {debug.batchLookup.uniqueDobs.join(", ")}</li>
+        ) : null}
+        {debug.batchLookup?.transactionHit ? (
+          <li>
+            tx_batch: {debug.batchLookup.transactionHit.disbursementName} · receiver=
+            {debug.batchLookup.transactionHit.receiverId}
+          </li>
+        ) : null}
+        {debug.batchLookup?.hits?.map((h, i) => (
+          <li key={`hit-${i}`}>
+            batch[{i}]: {h.disbursementName} · DOB={h.verificationDob ?? "?"}
+            {h.sep24TransactionId ? ` · sep24=${h.sep24TransactionId}` : ""}
+          </li>
+        ))}
       </ul>
     </details>
   );

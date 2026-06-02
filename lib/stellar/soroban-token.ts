@@ -256,11 +256,35 @@ export async function getSorobanUsdcOnContractWallet(
   return { blend, circleSac, total: blend + circleSac }
 }
 
-export async function getDepositableUsdcBalance(
+/** Spendable USDC on a C smart account (Blend + Circle SAC on testnet). */
+export async function getWalletSpendableUsdcOnC(
   userPublicKey: string,
   network: "testnet" | "mainnet" = "testnet",
 ): Promise<number> {
   const pk = normalizeHolderAddress(userPublicKey)
+  if (pk.startsWith("C") && pk.length === 56) {
+    const { total } = await getSorobanUsdcOnContractWallet(pk, network)
+    return total
+  }
+  return getDepositableUsdcBalance(userPublicKey, network)
+}
+
+/**
+ * Balance available to deposit into a DeFindex vault.
+ * When `depositAssetContractId` is set, reads that token only (vault deposit asset).
+ * Otherwise uses legacy defaults (Blend on testnet C, Horizon USDC on mainnet G).
+ */
+export async function getDepositableUsdcBalance(
+  userPublicKey: string,
+  network: "testnet" | "mainnet" = "testnet",
+  depositAssetContractId?: string | null,
+): Promise<number> {
+  const pk = normalizeHolderAddress(userPublicKey)
+
+  if (depositAssetContractId?.startsWith("C") && depositAssetContractId.length === 56) {
+    return getSorobanTokenBalance(depositAssetContractId, pk, network)
+  }
+
   if (pk.startsWith("C") && pk.length === 56) {
     const { blend } = await getSorobanUsdcOnContractWallet(pk, network)
     return blend

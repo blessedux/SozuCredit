@@ -90,7 +90,13 @@ export const BalanceAuditPanel = memo(function BalanceAuditPanel({
 
   const MIN_DEPOSIT = Number(process.env.NEXT_PUBLIC_VAULT_MIN_DEPOSIT || "10") || 10
   const FEE_BUFFER = Number(process.env.NEXT_PUBLIC_VAULT_FEE_BUFFER || "0.4") || 0.4
-  const maxDepositable = Math.max(0, spendableOnC - FEE_BUFFER)
+
+  // On testnet the DeFindex vault only accepts Blend pool USDC (not Circle SAC).
+  // Gate earn eligibility on the vault deposit asset balance only so the button
+  // is never falsely enabled when the wallet holds SAC but no Blend.
+  // On mainnet both rails use the same Circle USDC contract so spendableOnC is fine.
+  const earnDepositableBalance = walletNetwork === "testnet" ? blendBalance : spendableOnC
+  const maxDepositable = Math.max(0, earnDepositableBalance - FEE_BUFFER)
 
   const canDeposit = maxDepositable >= MIN_DEPOSIT
   const earnBusy = earnState.status === "signing" || earnState.status === "submitting"
@@ -300,7 +306,9 @@ export const BalanceAuditPanel = memo(function BalanceAuditPanel({
 
         {!canDeposit && strategyBalance === 0 && (
           <p className="text-[10px] text-white/35 text-center">
-            Deposita USDC en tu billetera para empezar a generar rendimiento.
+            {walletNetwork === "testnet" && sorobanSacBalance > 0 && blendBalance < MIN_DEPOSIT
+              ? `Necesitas Blend USDC (mín $${MIN_DEPOSIT}) para invertir. Obtén en testnet.blend.capital.`
+              : `Deposita USDC en tu billetera para empezar a generar rendimiento.`}
           </p>
         )}
       </div>

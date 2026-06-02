@@ -627,7 +627,7 @@ export const walletTexts = {
     depositStellarAddress: "Dirección Stellar",
     depositCopied: "Copiado",
     depositNoWallet: "Sin billetera conectada",
-    depositUsdcOnly: "Envía solo USDC en la red Stellar",
+    depositUsdcOnly: "Envía USDC (Circle SAC en testnet) a esta dirección C",
     depositLegacyGWarning:
       "Esta es una cuenta clásica (G…). Para USDC Soroban en tu billetera passkey, cierra sesión y vuelve a entrar para completar la cuenta inteligente (C…).",
     depositSmartAccountHint: "Cuenta inteligente (C…) · USDC Soroban",
@@ -987,7 +987,7 @@ export const walletTexts = {
     depositStellarAddress: "Stellar address",
     depositCopied: "Copied",
     depositNoWallet: "No wallet connected",
-    depositUsdcOnly: "Send USDC on Stellar network only",
+    depositUsdcOnly: "Send USDC (Circle SAC on testnet) to this C address",
     depositLegacyGWarning:
       "This is a classic G address. Soroban USDC belongs on your passkey smart account (C…). Sign out and sign in again to finish smart wallet setup.",
     depositSmartAccountHint: "Smart account (C…) · Soroban USDC",

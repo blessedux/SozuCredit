@@ -9,7 +9,12 @@
 
 import { TransactionBuilder, Networks } from "@stellar/stellar-sdk"
 import * as rpc from "@stellar/stellar-sdk/rpc"
-import { getDepositableUsdcBalance } from "@/lib/stellar/soroban-token"
+import {
+  getDepositableUsdcBalance,
+  getSorobanUsdcOnContractWallet,
+  getWalletSpendableUsdcOnC,
+} from "@/lib/stellar/soroban-token"
+import { getResolvedDeFindexConfig } from "./config"
 import { signSorobanTransaction, submitSorobanTransaction } from "@/lib/turnkey/soroban-signing"
 import { updatePositionOnDeposit, updatePositionOnWithdraw, saveTransaction, updateTransactionStatus } from "./positions"
 import { getDeFindexConfig, validateDeFindexConfig } from "./config"
@@ -53,13 +58,17 @@ export async function getVaultBalance(
   userId?: string,
   strategyId: StrategyId = "fixed"
 ): Promise<VaultBalance> {
-  const config = getDeFindexConfig(strategyId)
+  const config = await getResolvedDeFindexConfig(strategyId)
 
   if (!validateDeFindexConfig(config)) {
     throw new Error("DeFindex configuration is invalid. Please check environment variables.")
   }
 
-  const walletBalance = await getDepositableUsdcBalance(userWalletAddress, config.network)
+  const pk = userWalletAddress.trim().toUpperCase()
+  const walletBalance =
+    pk.startsWith("C") && pk.length === 56
+      ? await getWalletSpendableUsdcOnC(pk, config.network)
+      : await getDepositableUsdcBalance(pk, config.network, config.assetAddress)
 
   // ── Primary: on-chain vault balance via DeFindex SDK ──────────────────────
   const { dfTokens: chainShares, underlyingUsdc: chainBalance } = await getVaultUserBalance(
@@ -135,7 +144,7 @@ export async function depositToStrategy(
   strategyId: StrategyId = "fixed",
   credentialId?: string
 ): Promise<{ success: boolean; shares: number; balance: number; transactionHash?: string }> {
-  const config = getDeFindexConfig(strategyId)
+  const config = await getResolvedDeFindexConfig(strategyId)
 
   if (!validateDeFindexConfig(config)) {
     throw new Error("DeFindex configuration is invalid")
@@ -145,8 +154,32 @@ export async function depositToStrategy(
     throw new Error("User ID is required for transaction signing")
   }
 
+  const pk = userWalletAddress.trim().toUpperCase()
+  const vaultDepositBalance = await getDepositableUsdcBalance(
+    pk,
+    config.network,
+    config.assetAddress,
+  )
+  if (vaultDepositBalance < amount) {
+    const { circleSac } =
+      pk.startsWith("C") && pk.length === 56
+        ? await getSorobanUsdcOnContractWallet(pk, config.network)
+        : { circleSac: 0 }
+    if (circleSac > 0 && config.network === "testnet") {
+      throw new Error(
+        `Insufficient vault deposit token. This vault accepts ${config.assetAddress.slice(0, 8)}… ` +
+          `(Blend pool USDC on testnet). You have Circle USDC SAC on C but not the vault deposit asset.`,
+      )
+    }
+    throw new Error(
+      `Insufficient balance for vault deposit. Available: ${vaultDepositBalance.toFixed(2)} USDC.`,
+    )
+  }
+
   // ── Build unsigned XDR via DeFindex SDK ────────────────────────────────
-  console.log("[DeFindex] Building deposit XDR via DeFindex SDK...")
+  console.log("[DeFindex] Building deposit XDR via DeFindex SDK...", {
+    depositAsset: config.assetAddress,
+  })
   const { xdr: depositXdr } = await buildDepositXdr(
     userWalletAddress,
     amount,
@@ -346,7 +379,7 @@ export async function getStrategyInfo(
   strategyId: StrategyId = "fixed",
   networkStr?: string | null
 ): Promise<StrategyInfo> {
-  const config = getDeFindexConfig(strategyId, networkStr)
+  const config = await getResolvedDeFindexConfig(strategyId, networkStr)
 
   let apy = 15.5
   try {

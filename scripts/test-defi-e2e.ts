@@ -93,12 +93,13 @@ async function header(title: string) {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 async function testConfigValidation() {
-  await header("Step 0 · Config Validation")
+  await header("Step 0 · Config Validation + On-Chain Deposit Asset")
   try {
-    const { getDeFindexConfig, validateDeFindexConfig } = await import("../lib/defindex/config")
+    const { getResolvedDeFindexConfig, validateDeFindexConfig } = await import("../lib/defindex/config")
     const { getStrategyConfig } = await import("../lib/defindex/strategy-catalog")
 
-    const config = getDeFindexConfig(STRATEGY_ID)
+    // getResolvedDeFindexConfig reads vault.get_assets on-chain and overrides assetAddress.
+    const config = await getResolvedDeFindexConfig(STRATEGY_ID)
     const strategy = getStrategyConfig(STRATEGY_ID)
     const valid = validateDeFindexConfig(config)
 
@@ -107,7 +108,9 @@ async function testConfigValidation() {
         network: config.network,
         strategyId: STRATEGY_ID,
         vaultAddress: strategy.vaultAddress,
-        assetAddress: strategy.assetAddress,
+        "depositAsset (on-chain)": config.assetAddress,
+        "catalogAsset (fallback)": strategy.assetAddress,
+        assetMatch: config.assetAddress === strategy.assetAddress ? "✓ same" : "⚠ on-chain override active",
         blendPoolId: strategy.blendPoolId,
         minDeposit: config.minDepositAmount,
         feeBuffer: config.networkFeeBuffer,
@@ -132,7 +135,7 @@ async function testLiveAPY() {
     if (result.success && result.data) {
       pass("APY fetched", {
         source: result.data.source ?? "unknown",
-        yearly: `${(result.data.yearly * 100).toFixed(2)}%`,
+        yearly: `${result.data.yearly.toFixed(2)}%`,
         confidence: result.data.confidence ?? "n/a",
       })
     } else {
@@ -154,12 +157,13 @@ async function testProjection() {
 
     if (result.data?.yearly) {
       const testPrincipal = 100
-      const yearly = result.data.yearly * testPrincipal
+      const apy = result.data.yearly // already percent, e.g. 8.79
+      const yearly = testPrincipal * (apy / 100)
       const monthly = yearly / 12
       const daily = yearly / 365
       pass("Projection computed", {
         principal: `$${testPrincipal}`,
-        apyUsed: `${(result.data.yearly * 100).toFixed(2)}%`,
+        apyUsed: `${apy.toFixed(2)}%`,
         daily: `$${daily.toFixed(4)}`,
         monthly: `$${monthly.toFixed(2)}`,
         yearly: `$${yearly.toFixed(2)}`,
@@ -193,33 +197,49 @@ async function testStrategyLink() {
 }
 
 async function testSorobanBalanceRead(walletAddress: string) {
-  await header("Step 4 · Soroban BlendUSDC Balance Read")
+  await header("Step 4 · Vault Deposit Asset Balance")
   try {
-    const { getDeFindexConfig } = await import("../lib/defindex/config")
-    const { getDepositableUsdcBalance } = await import("../lib/stellar/soroban-token")
-    const config = getDeFindexConfig(STRATEGY_ID)
+    const { getResolvedDeFindexConfig } = await import("../lib/defindex/config")
+    const { getDepositableUsdcBalance, getSorobanUsdcOnContractWallet } = await import(
+      "../lib/stellar/soroban-token"
+    )
 
-    const balance = await getDepositableUsdcBalance(walletAddress, config.network)
-    const canDeposit = balance >= config.minDepositAmount
+    // Use on-chain deposit asset — not just the catalog default.
+    const config = await getResolvedDeFindexConfig(STRATEGY_ID)
+    const depositBalance = await getDepositableUsdcBalance(
+      walletAddress,
+      config.network,
+      config.assetAddress,
+    )
+    const canDeposit = depositBalance >= config.minDepositAmount
+
+    // Also show Circle SAC so it's clear both tokens are visible but only one is vault-eligible.
+    let circleSac = 0
+    if (config.network === "testnet" && walletAddress.startsWith("C")) {
+      const breakdown = await getSorobanUsdcOnContractWallet(walletAddress, config.network)
+      circleSac = breakdown.circleSac
+    }
+
+    const detail = {
+      address: walletAddress.slice(0, 12) + "...",
+      depositAsset: config.assetAddress.slice(0, 12) + "...",
+      depositBalance: `${depositBalance.toFixed(4)} USDC`,
+      circleSacOnC: circleSac > 0 ? `${circleSac.toFixed(4)} (not accepted by vault)` : "0",
+      minDeposit: config.minDepositAmount,
+    }
 
     if (canDeposit) {
-      pass("BlendUSDC balance", {
-        address: walletAddress.slice(0, 12) + "...",
-        balance: `${balance} USDC`,
-        minDeposit: config.minDepositAmount,
-        status: "Ready to deposit ✓",
-      })
+      pass("Vault deposit asset balance", { ...detail, status: "Ready to deposit ✓" })
     } else {
-      warn("BlendUSDC balance", `Balance ${balance} < min ${config.minDepositAmount} — deposit skipped`, {
-        address: walletAddress.slice(0, 12) + "...",
-        balance: `${balance} USDC`,
-        minDeposit: config.minDepositAmount,
-        note: "Obtain BlendUSDC at testnet.blend.capital",
-      })
+      warn(
+        "Vault deposit asset balance",
+        `Balance ${depositBalance.toFixed(4)} < min ${config.minDepositAmount} — fund from testnet.blend.capital`,
+        detail,
+      )
     }
-    return balance
+    return depositBalance
   } catch (err) {
-    fail("BlendUSDC balance", err)
+    fail("Vault deposit asset balance", err)
     return 0
   }
 }
@@ -228,11 +248,11 @@ async function testSDKSimulation(walletAddress: string) {
   await header("Step 5 · DeFindex SDK — Build Deposit XDR (no signing)")
   try {
     const { buildDepositXdr, getVaultUserBalance } = await import("../lib/defindex/vault-sdk")
-    const { getDeFindexConfig } = await import("../lib/defindex/config")
+    const { getResolvedDeFindexConfig } = await import("../lib/defindex/config")
     const { getDepositableUsdcBalance } = await import("../lib/stellar/soroban-token")
 
-    const config = getDeFindexConfig(STRATEGY_ID)
-    const balance = await getDepositableUsdcBalance(walletAddress, config.network)
+    const config = await getResolvedDeFindexConfig(STRATEGY_ID)
+    const balance = await getDepositableUsdcBalance(walletAddress, config.network, config.assetAddress)
 
     // On-chain vault balance
     const vaultBalance = await getVaultUserBalance(walletAddress, STRATEGY_ID, config.network)
@@ -262,9 +282,9 @@ async function testWithdrawXDR(walletAddress: string) {
   await header("Step 6 · DeFindex SDK — Build Withdraw XDR (no signing)")
   try {
     const { buildWithdrawXdr, getVaultUserBalance } = await import("../lib/defindex/vault-sdk")
-    const { getDeFindexConfig } = await import("../lib/defindex/config")
+    const { getResolvedDeFindexConfig } = await import("../lib/defindex/config")
 
-    const config = getDeFindexConfig(STRATEGY_ID)
+    const config = await getResolvedDeFindexConfig(STRATEGY_ID)
     const vaultBalance = await getVaultUserBalance(walletAddress, STRATEGY_ID, config.network)
 
     if (vaultBalance.underlyingUsdc > 0) {

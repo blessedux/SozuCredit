@@ -6,7 +6,7 @@
  *   - `vaultAddress`    — DeFindex vault contract (target for depositToVault)
  *   - `strategyAddress` — underlying Blend strategy contract (for DB / deep links)
  *   - `blendPoolId`     — Blend pool ID for APY reads and verify link
- *   - `assetAddress`    — USDC variant accepted by this strategy on this network
+ *   - `assetAddress`    — Fallback deposit token; prefer getResolvedDeFindexConfig() (on-chain get_assets)
  *   - `blendUsdcReserve`— USDC reserve ID inside the Blend pool
  *   - `label`           — short UI label
  *   - `description`     — risk/composition blurb shown in settings
@@ -28,7 +28,10 @@ export interface StrategyConfig {
 import { getDefaultBlendUsdcContractId } from "@/lib/stellar/asset-registry-core"
 
 // ─── Testnet ─────────────────────────────────────────────────────────────────
-// Reserve asset contractId — same default as server registry (env overrides on server).
+// Public DeFindex vault (CBMVK2JK…) accepts Blend pool USDC (CAQCFVLO…), not Circle SAC.
+// Circle SAC on C (CBIELTK6…) is the default receive token (faucet / SozuPay).
+// When Paltalabs deploys a SAC-native vault, set DEFINDEX_FIXED_VAULT_ADDRESS + optional
+// DEFINDEX_VAULT_DEPOSIT_ASSET_CONTRACT — getResolvedDeFindexConfig reads get_assets on-chain.
 
 const TESTNET_BLEND_USDC = getDefaultBlendUsdcContractId("testnet")
 const TESTNET_BLEND_USDC_RESERVE = TESTNET_BLEND_USDC

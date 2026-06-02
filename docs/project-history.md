@@ -12,4 +12,5 @@ When you complete a major milestone, append a short dated bullet here rather tha
 
 ## Milestones
 
+- **2026-06-02** — Full ten-day development log (mobile PWA, OZ C-wallet, SDP in-app registration, DeFindex): [development-log-2026-05-23-to-2026-06-02.md](./development-log-2026-05-23-to-2026-06-02.md).
 - **2026-05-31** — Added canonical [privacy-wallet-roadmap.md](./privacy-wallet-roadmap.md) (Phases 1–10) and [docs/README.md](./README.md) index; distinguished from product roadmap in root README.

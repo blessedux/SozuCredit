@@ -1,6 +1,13 @@
 import "server-only";
 
+import { dateOfBirthFormatCandidates } from "@/lib/sdp/formatVerificationValue";
 import { maskEmail, sdpDebugLog } from "@/lib/sdp/debugLog";
+
+const SDP_NOT_FOUND = "The information you provided could not be found";
+
+function isSdpNotFoundError(error: string): boolean {
+  return error.includes(SDP_NOT_FOUND) || /could not be found/i.test(error);
+}
 
 export type SdpSendOtpResult =
   | { ok: true; verificationField: string; message: string }
@@ -131,6 +138,80 @@ export async function postSdpRegistrationVerify(params: {
   return {
     ok: true,
     message: typeof data.message === "string" ? data.message : "ok",
+  };
+}
+
+/**
+ * POST /verification — tries ISO DOB first, then slash-format variants on SDP "not found".
+ * OTP and DOB must use the same email; hash mismatch can still fail after all candidates.
+ */
+export async function postSdpRegistrationVerifyWithCandidates(params: {
+  apiBase: string;
+  sep24Jwt: string;
+  email: string;
+  otp: string;
+  verificationValue: string;
+  verificationField: string;
+  tenantName?: string;
+}): Promise<
+  | { ok: true; message: string; verificationUsed: string; candidatesTried: string[] }
+  | { ok: false; error: string; status?: number; candidatesTried: string[] }
+> {
+  const field = params.verificationField;
+  const candidates =
+    field === "DATE_OF_BIRTH"
+      ? [...new Set(dateOfBirthFormatCandidates(params.verificationValue))]
+      : [params.verificationValue.trim()];
+
+  let last: SdpVerifyRegistrationResult = {
+    ok: false,
+    error: "No verification candidates",
+  };
+
+  for (const candidate of candidates) {
+    last = await postSdpRegistrationVerify({
+      ...params,
+      verificationValue: candidate,
+    });
+    if (last.ok) {
+      sdpDebugLog(
+        "sep24Registration.ts:verify-candidate-success",
+        "SDP verify succeeded with candidate",
+        {
+          emailMasked: maskEmail(params.email),
+          verificationUsed: candidate,
+          candidatesTried: candidates,
+        },
+        "E"
+      );
+      return {
+        ok: true,
+        message: last.message,
+        verificationUsed: candidate,
+        candidatesTried: candidates,
+      };
+    }
+    if (!isSdpNotFoundError(last.error)) {
+      return { ...last, candidatesTried: candidates };
+    }
+  }
+
+  sdpDebugLog(
+    "sep24Registration.ts:verify-candidates-exhausted",
+    "all DOB format candidates rejected by SDP",
+    {
+      emailMasked: maskEmail(params.email),
+      candidatesTried: candidates,
+      lastError: last.error.slice(0, 120),
+    },
+    "A"
+  );
+
+  return {
+    ok: false,
+    error: last.error,
+    status: last.status,
+    candidatesTried: candidates,
   };
 }
 

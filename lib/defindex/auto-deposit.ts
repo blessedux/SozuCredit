@@ -16,6 +16,7 @@ import {
   saveBalanceSnapshot,
 } from "@/lib/turnkey/stellar-wallet"
 import { getDepositableUsdcBalance } from "@/lib/stellar/soroban-token"
+import { getResolvedDeFindexConfig } from "./config"
 import { depositToStrategy } from "./vault"
 import type { StrategyId } from "./strategy-catalog"
 
@@ -172,7 +173,13 @@ export async function monitorBalanceAndAutoDeposit(
     }
 
     const network = (process.env.NEXT_PUBLIC_STELLAR_NETWORK === "mainnet") ? "mainnet" : "testnet"
-    const currentBalance = await getDepositableUsdcBalance(wallet.publicKey, network)
+    const strategyId = config.strategyId ?? DEFAULT_CONFIG.strategyId
+    const defindexConfig = await getResolvedDeFindexConfig(strategyId, network)
+    const currentBalance = await getDepositableUsdcBalance(
+      wallet.publicKey,
+      network,
+      defindexConfig.assetAddress,
+    )
     const previousBalance: number | null = wallet.previousUsdcBalance ?? null
 
     const result = await checkAndTriggerAutoDeposit(userId, previousBalance, currentBalance, config)

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { postSdpRegistrationVerify } from "@/lib/sdp/sep24Registration";
+import { postSdpRegistrationVerifyWithCandidates } from "@/lib/sdp/sep24Registration";
 import { requireSdpRegistrationSession } from "@/lib/sdp/requireRegistrationSession";
 import { persistInvitePayload } from "@/lib/sdp/persistInvite";
 import {
@@ -9,6 +9,7 @@ import {
 } from "@/lib/sdp/formatVerificationValue";
 import { normalizeDateOfBirth } from "@/lib/sdp/beneficiaryIdentity";
 import { maskEmail, sdpDebugLog } from "@/lib/sdp/debugLog";
+import { lookupReceiverVerificationByEmail } from "@/lib/sdp/adminLookup";
 
 const SDP_NOT_FOUND = "The information you provided could not be found";
 
@@ -16,6 +17,7 @@ function mapSdpVerifyError(params: {
   sdpError: string;
   verificationField: string;
   verificationSent?: string | null;
+  inviteExpectedDob?: string | null;
 }): { error: string; hint: string } {
   const field = normalizeVerificationField(params.verificationField);
   const label = verificationFieldLabel(field);
@@ -30,7 +32,9 @@ function mapSdpVerifyError(params: {
           ? `SDP rechazó la fecha ${params.verificationSent} aunque la ingresaste en formato correcto.`
           : "La fecha de nacimiento no coincide con la del lote en SozuPay.",
         hint: sentIso
-          ? `SozuCredit ya envió ${params.verificationSent} a SDP. Si el lote tiene otra fecha (revisá la columna DOB en SozuPay), usá esa exacta. Si la celda verification del CSV quedó vacía, SozuPay subió 2000-01-01 por defecto — probá esa fecha para confirmarlo. También puede haber otro lote con el mismo correo. Pedí OTP nuevo después de corregir el lote.`
+          ? params.inviteExpectedDob === params.verificationSent
+            ? `SozuCredit y el enlace del lote coinciden en ${params.verificationSent}, pero SDP rechazó el hash. Suele ser: (1) otro registro de verificación más reciente para el mismo correo, (2) verificación DATE_OF_BIRTH ausente en el receiver que SDP usa al verificar, o (3) fecha confirmada en un registro anterior que no se puede cambiar sin un correo nuevo. Revisá batch_lookup en Debug SDP (requiere credenciales admin en SozuCredit).`
+            : `SozuCredit ya envió ${params.verificationSent} a SDP. Si el lote tiene otra fecha (revisá la columna DOB en SozuPay), usá esa exacta. También puede haber otro lote con el mismo correo. Pedí OTP nuevo después de corregir el lote.`
           : "Debe ser exactamente AAAA-MM-DD como en la columna «verification» del CSV (ej. 1997-08-05). Confirmá con la organización si no estás seguro. Pedí un OTP nuevo si pasaron más de 5 minutos.",
       };
     }
@@ -167,7 +171,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = await postSdpRegistrationVerify({
+  const result = await postSdpRegistrationVerifyWithCandidates({
     apiBase: session.apiBase,
     sep24Jwt: session.sep24Jwt,
     email: session.email,
@@ -203,7 +207,44 @@ export async function POST(request: Request) {
       sdpError: result.error,
       verificationField,
       verificationSent: verificationValue,
+      inviteExpectedDob: inviteExpected ?? null,
     });
+
+    let batchLookup: Awaited<ReturnType<typeof lookupReceiverVerificationByEmail>> | null =
+      null;
+    try {
+      batchLookup = await lookupReceiverVerificationByEmail(session.email, {
+        sep24TransactionId: session.invite.sep24TransactionId ?? undefined,
+      });
+    } catch (e) {
+      sdpDebugLog(
+        "registration/verify/route.ts:batch-lookup-failed",
+        "SDP admin lookup failed",
+        { error: e instanceof Error ? e.message : String(e) },
+        "A"
+      );
+    }
+
+    sdpDebugLog(
+      "registration/verify/route.ts:verify-failed",
+      "verify failed with batch context",
+      {
+        emailMasked: maskEmail(session.email),
+        verificationSent: verificationValue,
+        tenantName: session.tenantName || null,
+        transactionId: session.invite.sep24TransactionId ?? null,
+        batchLookupConfigured: batchLookup?.configured ?? false,
+        batchHitCount:
+          batchLookup && "count" in batchLookup ? batchLookup.count : null,
+        batchUniqueDobs:
+          batchLookup && "uniqueDobs" in batchLookup ? batchLookup.uniqueDobs : null,
+        inviteExpectedDob: inviteExpected ?? null,
+        candidatesTried:
+          "candidatesTried" in result ? result.candidatesTried : null,
+      },
+      "A"
+    );
+
     return NextResponse.json(
       {
         error: mapped.error,
@@ -217,16 +258,46 @@ export async function POST(request: Request) {
           dobSource: source,
           inviteExpectedDob: inviteExpected ?? null,
           transactionId: session.invite.sep24TransactionId ?? null,
+          tenantName: session.tenantName || null,
           batchDobIfCsvBlank: "2000-01-01",
+          candidatesTried:
+            "candidatesTried" in result ? result.candidatesTried : undefined,
+          batchLookup:
+            batchLookup && "count" in batchLookup
+              ? {
+                  count: batchLookup.count,
+                  duplicateEmail: batchLookup.duplicateEmail,
+                  uniqueDobs: batchLookup.uniqueDobs,
+                  transactionHit: batchLookup.transactionHit ?? null,
+                  hits: batchLookup.hits.map((h) => ({
+                    disbursementName: h.disbursementName,
+                    disbursementStatus: h.disbursementStatus,
+                    verificationDob: h.verificationDob,
+                    receiverId: h.receiverId,
+                    sep24TransactionId: h.sep24TransactionId,
+                    matchesCurrentTx: h.matchesCurrentTx,
+                  })),
+                  note: batchLookup.sdpVerifyNote,
+                }
+              : batchLookup?.configured === false
+                ? {
+                    note: "Set SDP_API_URL + SDP_ADMIN_EMAIL + SDP_ADMIN_PASSWORD on SozuCredit to auto-lookup batch DOB here.",
+                  }
+                : null,
         },
       },
       { status: result.status && result.status >= 400 ? result.status : 502 }
     );
   }
 
+  const verificationUsed =
+    result.ok && "verificationUsed" in result
+      ? result.verificationUsed
+      : verificationValue;
+
   const normalizedDob =
     verificationField === "DATE_OF_BIRTH"
-      ? normalizeDateOfBirth(verificationOverride || session.dateOfBirth)
+      ? normalizeDateOfBirth(verificationOverride || verificationUsed || session.dateOfBirth)
       : null;
 
   await persistInvitePayload({
@@ -242,8 +313,10 @@ export async function POST(request: Request) {
       sep24Account: session.sep24Account,
       clientDomain: session.clientDomain,
       verificationField,
-      verificationSent: verificationValue,
+      verificationSent: verificationUsed,
       transactionId: session.invite.sep24TransactionId ?? null,
+      candidatesTried:
+        result.ok && "candidatesTried" in result ? result.candidatesTried : undefined,
     },
   });
 }

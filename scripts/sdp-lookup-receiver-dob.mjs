@@ -78,7 +78,7 @@ async function sdpFetch(path, token) {
 async function login() {
   const headers = { "Content-Type": "application/json", Accept: "application/json" };
   if (tenant) headers["SDP-Tenant-Name"] = tenant;
-  const res = await fetch(`${apiUrl}/auth/login`, {
+  const res = await fetch(`${apiUrl}/login`, {
     method: "POST",
     headers,
     body: JSON.stringify({ email: adminEmail, password: adminPassword }),

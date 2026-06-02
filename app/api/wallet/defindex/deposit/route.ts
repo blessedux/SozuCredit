@@ -4,7 +4,7 @@
  * POST body: { amount?: number, strategyId?: "fixed" | "yieldblox" }
  *
  * Pre-deposit guards:
- *   - Wallet must have sufficient BlendUSDC balance
+ *   - Wallet must hold the vault deposit asset (resolved on-chain via get_assets)
  *   - amount >= VAULT_MIN_DEPOSIT
  *   - Leaves VAULT_NETWORK_FEE_BUFFER in wallet
  *
@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { depositToStrategy } from "@/lib/defindex/vault"
-import { getDeFindexConfig } from "@/lib/defindex/config"
+import { getResolvedDeFindexConfig } from "@/lib/defindex/config"
 import { getStellarWallet } from "@/lib/turnkey/stellar-wallet"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
 import type { StrategyId } from "@/lib/defindex/strategy-catalog"
@@ -38,16 +38,19 @@ export async function POST(request: NextRequest) {
     const rawStrategyId: StrategyId =
       body.strategyId === "yieldblox" ? "yieldblox" : "fixed"
 
-    const config = getDeFindexConfig(rawStrategyId)
+    const config = await getResolvedDeFindexConfig(rawStrategyId)
 
     const wallet = await getStellarWallet(user.id, true)
     if (!wallet) {
       return NextResponse.json({ error: "Wallet not found" }, { status: 404, headers: corsHeaders(request) })
     }
 
-    // Read depositable balance — BlendUSDC (Soroban token) on testnet, Circle USDC on mainnet
     const { getDepositableUsdcBalance } = await import("@/lib/stellar/soroban-token")
-    const walletBalance = await getDepositableUsdcBalance(wallet.publicKey, config.network)
+    const walletBalance = await getDepositableUsdcBalance(
+      wallet.publicKey,
+      config.network,
+      config.assetAddress,
+    )
 
     // Validate amount
     const requestedAmount: number | undefined = typeof body.amount === "number" ? body.amount : undefined
@@ -62,6 +65,7 @@ export async function POST(request: NextRequest) {
           error: "Insufficient balance",
           details: `Minimum deposit is $${config.minDepositAmount} USDC. Available: $${maxDepositable.toFixed(2)} USDC.`,
           walletBalance,
+          depositAsset: config.assetAddress,
           minDeposit: config.minDepositAmount,
           networkFeeBuffer: config.networkFeeBuffer,
         },

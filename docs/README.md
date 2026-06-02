@@ -32,6 +32,7 @@ Guides for developers and operators working in this repository. The root [README
 | **Credit marketplace & MUJERES 2000 campaigns** | [credit-marketplace-roadmap.md](./credit-marketplace-roadmap.md) |
 | Development (PWA, scripts, testing) | [development-guide.md](./development-guide.md) |
 | Project history (milestones) | [project-history.md](./project-history.md) |
+| **Ten-day dev log (May 23 – Jun 2, 2026)** | [development-log-2026-05-23-to-2026-06-02.md](./development-log-2026-05-23-to-2026-06-02.md) |
 
 ### SQL reference
 
