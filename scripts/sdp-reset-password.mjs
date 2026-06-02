@@ -74,19 +74,21 @@ if (cmd === "request") {
   const { res, data } = await postJson("/forgot-password", {
     email: config.adminEmail,
   });
-  console.log(`POST /forgot-password → HTTP ${res.status}`);
+  console.log(`POST /forgot-password → HTTP ${res.status} (email=${config.adminEmail})`);
   console.log(JSON.stringify(data, null, 2));
   if (!res.ok) process.exit(1);
   console.log(`
-Next steps (email is DRY_RUN on Railway — nothing arrives in inbox):
+If this email is NOT in SDP auth_users, Railway logs show:
+  level=error ... email not found
+  (API still returns 200 — no email/token is created.)
 
-1. Open Railway → project → service sdp-v2 (or sdp-api) → **Logs**
-2. Search for: reset-password   or   token=
-3. Copy the token from the URL, e.g. .../reset-password?token=XXXXXXXX
-4. Run:
-   node scripts/sdp-reset-password.mjs apply --token='XXXXXXXX' --password='YourNewPass2026!'
-5. Put that password in SDP_ADMIN_PASSWORD (SozuCredit + SozuPay .env.local + Vercel)
-6. node scripts/sdp-diagnose-admin-env.mjs  → should show "token received"
+List real operator emails:
+  node scripts/sdp-list-auth-users.mjs   (needs SDP_DATABASE_PUBLIC_URL)
+
+With EMAIL_SENDER_TYPE=TWILIO_EMAIL on Railway, a valid user gets a real reset email.
+
+Or read token from DB (valid ~20 min) and run apply:
+  node scripts/sdp-reset-password.mjs apply --token='...' --password='SozuAdmin2026!'
 `);
   process.exit(0);
 }

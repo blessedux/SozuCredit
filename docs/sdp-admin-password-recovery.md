@@ -6,6 +6,19 @@ SDP does **not** store plaintext passwords. There is no env var on Railway for `
 
 On Railway, `EMAIL_SENDER_TYPE=DRY_RUN` for the sdp-api service. The API returns HTTP 200, but the reset link is **logged**, not emailed.
 
+## Wrong email (common)
+
+`SDP_ADMIN_EMAIL` must match a row in `"sdp_<tenant>".auth_users`, not necessarily your SendGrid or invite address.
+
+List accounts:
+
+```bash
+# Add SDP_DATABASE_PUBLIC_URL from Railway → Postgres → DATABASE_PUBLIC_URL
+node scripts/sdp-list-auth-users.mjs
+```
+
+Production tenant `mujeres-admin` owner is typically the email used when the tenant was created (e.g. `jfarfantorres@gmail.com`), not `inboxblessedux@gmail.com` unless that user was added in SDP UI.
+
 ## Reset flow (recommended)
 
 From SozuCredit repo:
