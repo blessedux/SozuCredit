@@ -57,6 +57,10 @@ if (!apiUrl || !adminEmail || !adminPassword || adminPassword.startsWith("TODO")
   process.exit(1);
 }
 
+console.error(
+  `[env] api=${apiUrl} tenant=${tenant || "(none)"} email=${adminEmail} password_len=${adminPassword.length} sources=SozuCredit+.env.local then SozuPay_dashboard/.env.local`
+);
+
 async function sdpFetch(path, token) {
   const headers = {
     Accept: "application/json",
@@ -84,7 +88,11 @@ async function login() {
     body: JSON.stringify({ email: adminEmail, password: adminPassword }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`Login failed: ${JSON.stringify(data)}`);
+  if (!res.ok) {
+    throw new Error(
+      `Login failed (HTTP ${res.status}): ${JSON.stringify(data)}. Use the same password as SDP admin UI / SozuPay Vercel env (not TODO_).`
+    );
+  }
   return data.token;
 }
 

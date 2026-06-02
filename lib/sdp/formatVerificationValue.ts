@@ -20,14 +20,15 @@ export function normalizeVerificationField(
   return "DATE_OF_BIRTH";
 }
 
-/** ISO date → MM/DD/YYYY and DD/MM/YYYY (batch CSV often uses slashes). */
+/**
+ * SEP-24 verification accepts only YYYY-MM-DD for DATE_OF_BIRTH (SDP Extra_2).
+ * Slash formats return HTTP 400 with a generic "invalid in some way" message.
+ */
 export function dateOfBirthFormatCandidates(iso: string): string[] {
-  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return [iso];
-  const [, y, mo, d] = m;
-  const mmddyyyy = `${mo}/${d}/${y}`;
-  const ddmmyyyy = `${d}/${mo}/${y}`;
-  return [iso, mmddyyyy, ddmmyyyy];
+  const normalized = normalizeDateOfBirth(iso);
+  if (normalized) return [normalized];
+  const trimmed = iso.trim();
+  return trimmed ? [trimmed] : [];
 }
 
 /**

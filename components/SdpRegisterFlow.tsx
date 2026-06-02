@@ -75,6 +75,9 @@ type SdpDebug = {
   batchDobIfCsvBlank?: string;
   tenantName?: string | null;
   candidatesTried?: string[];
+  sdpHttpStatus?: number | null;
+  sdpErrorCode?: string | null;
+  sdpExtrasCodes?: string[] | null;
   batchLookup?: {
     count?: number;
     duplicateEmail?: boolean;
@@ -127,6 +130,11 @@ function DebugPanel({ debug }: { debug: SdpDebug | null }) {
         )}
         {debug.candidatesTried?.length ? (
           <li>candidates_tried: {debug.candidatesTried.join(" | ")}</li>
+        ) : null}
+        {debug.sdpHttpStatus != null && <li>sdp_http: {debug.sdpHttpStatus}</li>}
+        {debug.sdpErrorCode && <li>sdp_error_code: {debug.sdpErrorCode}</li>}
+        {debug.sdpExtrasCodes?.length ? (
+          <li>sdp_extras_codes: {debug.sdpExtrasCodes.join(", ")}</li>
         ) : null}
         {debug.batchLookup?.uniqueDobs?.length ? (
           <li>batch_dobs: {debug.batchLookup.uniqueDobs.join(", ")}</li>

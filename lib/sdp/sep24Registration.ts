@@ -5,8 +5,26 @@ import { maskEmail, sdpDebugLog } from "@/lib/sdp/debugLog";
 
 const SDP_NOT_FOUND = "The information you provided could not be found";
 
-function isSdpNotFoundError(error: string): boolean {
-  return error.includes(SDP_NOT_FOUND) || /could not be found/i.test(error);
+function parseSdpErrorFields(data: Record<string, unknown>): {
+  error: string;
+  errorCode?: string;
+  extrasCodes?: string[];
+} {
+  const error = typeof data.error === "string" ? data.error : "";
+  const errorCode =
+    typeof data.error_code === "string" ? data.error_code : undefined;
+  const extrasCodes = Array.isArray(data.extras_codes)
+    ? data.extras_codes.filter((c): c is string => typeof c === "string")
+    : undefined;
+  return { error, errorCode, extrasCodes };
+}
+
+function isSdpNotFoundError(error: string, errorCode?: string): boolean {
+  return (
+    errorCode === "400_2" ||
+    error.includes(SDP_NOT_FOUND) ||
+    /could not be found/i.test(error)
+  );
 }
 
 export type SdpSendOtpResult =
@@ -15,7 +33,13 @@ export type SdpSendOtpResult =
 
 export type SdpVerifyRegistrationResult =
   | { ok: true; message: string }
-  | { ok: false; error: string; status?: number };
+  | {
+      ok: false;
+      error: string;
+      status?: number;
+      sdpErrorCode?: string;
+      sdpExtrasCodes?: string[];
+    };
 
 export type SdpRegistrationInfoResult =
   | {
@@ -107,6 +131,7 @@ export async function postSdpRegistrationVerify(params: {
 
   const data = await readSdpJson(res);
   if (!res.ok) {
+    const { error, errorCode, extrasCodes } = parseSdpErrorFields(data);
     sdpDebugLog(
       "sep24Registration.ts:postSdpRegistrationVerify",
       "SDP verify HTTP error",
@@ -120,18 +145,24 @@ export async function postSdpRegistrationVerify(params: {
             ? "slash"
             : "other",
         httpStatus: res.status,
-        sdpError:
-          typeof data.error === "string" ? data.error.slice(0, 120) : "unknown",
+        sdpError: error.slice(0, 120) || "unknown",
+        sdpErrorCode: errorCode ?? null,
+        sdpExtrasCodes: extrasCodes ?? null,
       },
-      "A"
+      errorCode === "400_2"
+        ? "A"
+        : errorCode === "400_6" || errorCode === "400_5"
+          ? "B"
+          : extrasCodes?.includes("EXTRA_2")
+            ? "H1"
+            : "C"
     );
     return {
       ok: false,
       status: res.status,
-      error:
-        typeof data.error === "string"
-          ? data.error
-          : `SDP verification failed (HTTP ${res.status})`,
+      error: error || `SDP verification failed (HTTP ${res.status})`,
+      sdpErrorCode: errorCode,
+      sdpExtrasCodes: extrasCodes,
     };
   }
 
@@ -142,8 +173,7 @@ export async function postSdpRegistrationVerify(params: {
 }
 
 /**
- * POST /verification — tries ISO DOB first, then slash-format variants on SDP "not found".
- * OTP and DOB must use the same email; hash mismatch can still fail after all candidates.
+ * POST /verification — DATE_OF_BIRTH uses YYYY-MM-DD only (SDP rejects slashes).
  */
 export async function postSdpRegistrationVerifyWithCandidates(params: {
   apiBase: string;
@@ -155,7 +185,14 @@ export async function postSdpRegistrationVerifyWithCandidates(params: {
   tenantName?: string;
 }): Promise<
   | { ok: true; message: string; verificationUsed: string; candidatesTried: string[] }
-  | { ok: false; error: string; status?: number; candidatesTried: string[] }
+  | {
+      ok: false;
+      error: string;
+      status?: number;
+      candidatesTried: string[];
+      sdpErrorCode?: string;
+      sdpExtrasCodes?: string[];
+    }
 > {
   const field = params.verificationField;
   const candidates =
@@ -191,18 +228,24 @@ export async function postSdpRegistrationVerifyWithCandidates(params: {
         candidatesTried: candidates,
       };
     }
-    if (!isSdpNotFoundError(last.error)) {
-      return { ...last, candidatesTried: candidates };
+    if (!isSdpNotFoundError(last.error, last.sdpErrorCode)) {
+      return {
+        ...last,
+        candidatesTried: candidates,
+        sdpErrorCode: last.sdpErrorCode,
+        sdpExtrasCodes: last.sdpExtrasCodes,
+      };
     }
   }
 
   sdpDebugLog(
     "sep24Registration.ts:verify-candidates-exhausted",
-    "all DOB format candidates rejected by SDP",
+    "SDP verify not_found for ISO DOB",
     {
       emailMasked: maskEmail(params.email),
       candidatesTried: candidates,
       lastError: last.error.slice(0, 120),
+      sdpErrorCode: last.sdpErrorCode ?? null,
     },
     "A"
   );
@@ -212,6 +255,8 @@ export async function postSdpRegistrationVerifyWithCandidates(params: {
     error: last.error,
     status: last.status,
     candidatesTried: candidates,
+    sdpErrorCode: last.sdpErrorCode,
+    sdpExtrasCodes: last.sdpExtrasCodes,
   };
 }
 

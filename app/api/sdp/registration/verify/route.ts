@@ -15,14 +15,57 @@ const SDP_NOT_FOUND = "The information you provided could not be found";
 
 function mapSdpVerifyError(params: {
   sdpError: string;
+  sdpErrorCode?: string;
+  sdpExtrasCodes?: string[];
   verificationField: string;
   verificationSent?: string | null;
   inviteExpectedDob?: string | null;
 }): { error: string; hint: string } {
   const field = normalizeVerificationField(params.verificationField);
   const label = verificationFieldLabel(field);
+  const code = params.sdpErrorCode;
+  const extras = params.sdpExtrasCodes ?? [];
 
-  if (params.sdpError.includes(SDP_NOT_FOUND)) {
+  if (code === "400_6" || /invalid otp/i.test(params.sdpError)) {
+    return {
+      error: "Código OTP incorrecto.",
+      hint: "Pedí un código nuevo y usá el último que llegó al correo (6 dígitos).",
+    };
+  }
+
+  if (code === "400_5" || /expired/i.test(params.sdpError)) {
+    return {
+      error: "El OTP expiró.",
+      hint: "Pedí un código nuevo (válido 5 minutos).",
+    };
+  }
+
+  if (code === "400_4" || code === "400_3") {
+    return {
+      error: "Demasiados intentos de verificación.",
+      hint: "Pedí un OTP nuevo o contactá a la organización para resetear el receiver.",
+    };
+  }
+
+  if (code === "400_1") {
+    return {
+      error: "reCAPTCHA inválido en SDP.",
+      hint: "Reintentá en unos minutos o desde otra red/navegador.",
+    };
+  }
+
+  if (extras.includes("EXTRA_2") || extras.includes("EXTRA_3")) {
+    return {
+      error: "Formato de fecha inválido para SDP.",
+      hint: "Usá exactamente AAAA-MM-DD (ej. 1991-01-01). SDP no acepta barras ni otros formatos.",
+    };
+  }
+
+  if (
+    code === "400_2" ||
+    params.sdpError.includes(SDP_NOT_FOUND) ||
+    /could not be found/i.test(params.sdpError)
+  ) {
     if (field === "DATE_OF_BIRTH") {
       const sentIso =
         params.verificationSent &&
@@ -51,17 +94,11 @@ function mapSdpVerifyError(params: {
     };
   }
 
-  if (/invalid otp/i.test(params.sdpError)) {
+  if (/invalid in some way/i.test(params.sdpError)) {
     return {
-      error: "Código OTP incorrecto.",
-      hint: "Pedí un código nuevo y usá el último que llegó al correo.",
-    };
-  }
-
-  if (/expired/i.test(params.sdpError)) {
-    return {
-      error: "El OTP expiró.",
-      hint: "Pedí un código nuevo (válido 5 minutos).",
+      error: "SDP rechazó la solicitud (validación genérica).",
+      hint:
+        "Revisá OTP de 6 dígitos (el último recibido) y fecha AAAA-MM-DD. Si persiste, abrí Debug SDP: sdp_error_code y sdp_extras_codes indican OTP vs fecha.",
     };
   }
 
@@ -189,13 +226,20 @@ export async function POST(request: Request) {
       sdpStatus: result.ok ? 200 : (result.status ?? 502),
       sdpErrorCategory: result.ok
         ? "success"
-        : result.error.includes(SDP_NOT_FOUND)
+        : "sdpErrorCode" in result && result.sdpErrorCode === "400_2"
           ? "not_found"
-          : /invalid otp/i.test(result.error)
-            ? "invalid_otp"
-            : /expired/i.test(result.error)
-              ? "expired"
-              : "other",
+          : result.error.includes(SDP_NOT_FOUND)
+            ? "not_found"
+            : "sdpErrorCode" in result && result.sdpErrorCode === "400_6"
+              ? "invalid_otp"
+              : "sdpErrorCode" in result && result.sdpErrorCode === "400_5"
+                ? "expired"
+                : /invalid otp/i.test(result.error)
+                  ? "invalid_otp"
+                  : /expired/i.test(result.error)
+                    ? "expired"
+                    : "other",
+      sdpErrorCode: result.ok ? null : ("sdpErrorCode" in result ? result.sdpErrorCode : null),
       verificationSent: verificationValue,
       transactionId: session.invite.sep24TransactionId ?? null,
     },
@@ -205,6 +249,8 @@ export async function POST(request: Request) {
   if (!result.ok) {
     const mapped = mapSdpVerifyError({
       sdpError: result.error,
+      sdpErrorCode: "sdpErrorCode" in result ? result.sdpErrorCode : undefined,
+      sdpExtrasCodes: "sdpExtrasCodes" in result ? result.sdpExtrasCodes : undefined,
       verificationField,
       verificationSent: verificationValue,
       inviteExpectedDob: inviteExpected ?? null,
@@ -262,6 +308,10 @@ export async function POST(request: Request) {
           batchDobIfCsvBlank: "2000-01-01",
           candidatesTried:
             "candidatesTried" in result ? result.candidatesTried : undefined,
+          sdpHttpStatus: result.status ?? null,
+          sdpErrorCode: "sdpErrorCode" in result ? result.sdpErrorCode ?? null : null,
+          sdpExtrasCodes:
+            "sdpExtrasCodes" in result ? result.sdpExtrasCodes ?? null : null,
           batchLookup:
             batchLookup && "count" in batchLookup
               ? {
