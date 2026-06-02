@@ -17,6 +17,47 @@ const CTA_CLASS =
 const INPUT_CLASS =
   "w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-orange-400/40";
 
+const DOB_PLACEHOLDER = "1997-08-05";
+
+function DobIsoInput({
+  id,
+  label,
+  value,
+  onChange,
+  hint,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  hint?: string;
+}) {
+  const isoOk = /^\d{4}-\d{2}-\d{2}$/.test(value.trim());
+  return (
+    <div>
+      <label htmlFor={id} className="block text-sm text-white/70 mb-1">
+        {label}
+      </label>
+      <input
+        id={id}
+        type="text"
+        inputMode="numeric"
+        autoComplete="bday"
+        placeholder={DOB_PLACEHOLDER}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`${INPUT_CLASS} font-mono`}
+      />
+      {hint ? <p className="mt-1 text-xs text-white/40">{hint}</p> : null}
+      {isoOk ? (
+        <p className="mt-1 text-xs font-mono text-white/55">
+          Formato SDP: {value.trim()}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 type Step = "contact" | "passkey" | "otp" | "done";
 
 type SdpDebug = {
@@ -414,18 +455,13 @@ export function SdpRegisterFlow() {
               className={INPUT_CLASS}
             />
           </div>
-          <div>
-            <label htmlFor="sdp-dob" className="block text-sm text-white/70 mb-1">
-              Fecha de nacimiento
-            </label>
-            <input
-              id="sdp-dob"
-              type="date"
-              value={dateOfBirth}
-              onChange={(e) => setDateOfBirth(e.target.value)}
-              className={INPUT_CLASS}
-            />
-          </div>
+          <DobIsoInput
+            id="sdp-dob"
+            label="Fecha de nacimiento (AAAA-MM-DD)"
+            value={dateOfBirth}
+            onChange={setDateOfBirth}
+            hint="Usá año-mes-día con guiones, igual que en el lote de SozuPay."
+          />
         </div>
         <button
           type="button"
@@ -485,27 +521,22 @@ export function SdpRegisterFlow() {
       <p className="text-sm text-white/55 text-center">
         Código enviado a <span className="text-white/80">{email || "tu correo"}</span>
       </p>
+      <p className="text-xs text-white/45 text-center">
+        Si no ves el código, revisá la carpeta de spam o correo no deseado.
+      </p>
       {isTestnet && (
         <p className="text-xs text-orange-200/80 text-center">
           Testnet: probá OTP <span className="font-mono">000000</span>
         </p>
       )}
       {verificationField === "DATE_OF_BIRTH" ? (
-        <div>
-          <label htmlFor="sdp-dob-otp" className="block text-sm text-white/70 mb-1">
-            Fecha de nacimiento (AAAA-MM-DD, igual que el lote)
-          </label>
-          <input
-            id="sdp-dob-otp"
-            type="date"
-            value={dateOfBirth}
-            onChange={(e) => setDateOfBirth(e.target.value)}
-            className={INPUT_CLASS}
-          />
-          <p className="mt-1 text-xs text-white/40">
-            Debe coincidir con la columna «verification» del CSV en SozuPay.
-          </p>
-        </div>
+        <DobIsoInput
+          id="sdp-dob-otp"
+          label="Fecha de nacimiento (AAAA-MM-DD, igual que el lote)"
+          value={dateOfBirth}
+          onChange={setDateOfBirth}
+          hint="Debe coincidir con la columna «verification» del CSV en SozuPay."
+        />
       ) : verificationField === "YEAR_MONTH" ? (
         <div>
           <label htmlFor="sdp-ym-otp" className="block text-sm text-white/70 mb-1">
