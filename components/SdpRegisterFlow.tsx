@@ -42,6 +42,7 @@ export function SdpRegisterFlow() {
   const [requiresDateOfBirth, setRequiresDateOfBirth] = useState(false);
   const [hasInviteToken, setHasInviteToken] = useState(true);
   const [step, setStep] = useState<Step>("contact");
+  const [sdpDobHint, setSdpDobHint] = useState<string | null>(null);
   const [fullName, setFullName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [email, setEmail] = useState("");
@@ -69,7 +70,8 @@ export function SdpRegisterFlow() {
       if (!res.ok) return;
       const d = (await res.json().catch(() => ({}))) as {
         organizationName?: string;
-        needsEmailStep?: boolean;
+          needsContactStep?: boolean;
+          sdpDateOfBirthHint?: string | null;
         requiresFullName?: boolean;
         requiresDateOfBirth?: boolean;
         hasInviteToken?: boolean;
@@ -78,7 +80,8 @@ export function SdpRegisterFlow() {
       setRequiresFullName(Boolean(d.requiresFullName));
       setRequiresDateOfBirth(Boolean(d.requiresDateOfBirth));
       setHasInviteToken(d.hasInviteToken !== false);
-      setStep(d.needsEmailStep === false ? "funds" : "contact");
+        setSdpDobHint(d.sdpDateOfBirthHint ?? null);
+        setStep(d.needsContactStep === false ? "funds" : "contact");
     } catch {
       // non-fatal
     }
@@ -300,7 +303,7 @@ export function SdpRegisterFlow() {
       <div className="max-w-sm mx-auto mt-12 space-y-6">
         <h1 className="text-xl font-semibold text-white text-center">{paymentTitle}</h1>
         <p className="text-sm text-white/55 text-center">
-          Mismo correo que la organización tiene en el lote.
+          Correo y fecha de nacimiento del lote (formato AAAA-MM-DD).
         </p>
 
         <div className="space-y-4">
@@ -333,20 +336,18 @@ export function SdpRegisterFlow() {
               />
             </div>
           )}
-          {requiresDateOfBirth && (
-            <div>
-              <label htmlFor="sdp-dob" className="block text-sm text-white/70 mb-1">
-                Fecha de nacimiento
-              </label>
-              <input
-                id="sdp-dob"
-                type="date"
-                value={dateOfBirth}
-                onChange={(e) => setDateOfBirth(e.target.value)}
-                className={INPUT_CLASS}
-              />
-            </div>
-          )}
+          <div>
+            <label htmlFor="sdp-dob" className="block text-sm text-white/70 mb-1">
+              Fecha de nacimiento
+            </label>
+            <input
+              id="sdp-dob"
+              type="date"
+              value={dateOfBirth}
+              onChange={(e) => setDateOfBirth(e.target.value)}
+              className={INPUT_CLASS}
+            />
+          </div>
         </div>
 
         <button
@@ -404,10 +405,14 @@ export function SdpRegisterFlow() {
       )}
 
       {(status === "idle" || status === "error") && (
-        <p className="text-xs text-white/45 text-center">
-          En el siguiente paso solo ingresás el código OTP y tu fecha de nacimiento (ya
-          cargamos tu correo acá).
-        </p>
+        <div className="space-y-1 text-xs text-white/45 text-center">
+          <p>En SDP: mismo correo, código OTP, y la misma fecha de nacimiento.</p>
+          {sdpDobHint && (
+            <p>
+              Fecha para SDP: <span className="text-white/75 font-mono">{sdpDobHint}</span>
+            </p>
+          )}
+        </div>
       )}
 
       {error && (

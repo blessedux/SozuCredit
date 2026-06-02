@@ -30,17 +30,24 @@ export function resolveSep24DepositAccount(wallet: {
 }
 
 /**
- * Account sent to SEP-24 interactive deposit. Must match the SEP-10 JWT subject or SDP
- * OTP / verification returns 400 ("could not be found"). Default: G signer (stellarAccount).
- * Set SDP_SEP24_REGISTRATION_ACCOUNT=contract only when SDP issues JWT for the C account.
+ * Account on the SEP-24 JWT (SDP links OTP + payout to this address).
+ * Passkey wallets: default C (USDC lives on the smart account). Legacy G-only: use signer G.
+ * Override: SDP_SEP24_REGISTRATION_ACCOUNT=signer|contract
  */
 export function resolveSep24RegistrationAccount(params: {
   stellarAccount: string;
   depositAccount: string;
 }): string {
   const mode = process.env.SDP_SEP24_REGISTRATION_ACCOUNT?.trim().toLowerCase();
+  if (mode === "signer" || mode === "g") {
+    return params.stellarAccount;
+  }
   if (mode === "contract" || mode === "smart" || mode === "c") {
     return params.depositAccount;
+  }
+  const deposit = params.depositAccount.trim().toUpperCase();
+  if (deposit.startsWith("C") && deposit.length === 56) {
+    return deposit;
   }
   return params.stellarAccount;
 }

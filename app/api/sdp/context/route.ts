@@ -20,12 +20,6 @@ export async function GET() {
     );
   }
 
-  const requiresIdentityVerification = Boolean(
-    payload.expectedFullName ||
-      payload.expectedDateOfBirth ||
-      payload.expectedBeneficiaryEmail
-  );
-
   const maskEmail = (email: string) => {
     const at = email.indexOf("@");
     if (at < 2) return email;
@@ -37,18 +31,20 @@ export async function GET() {
 
   return NextResponse.json({
     organizationName,
-    needsEmailStep: !payload.verifiedEmail?.trim(),
+    needsContactStep:
+      !payload.verifiedEmail?.trim() || !payload.verifiedDateOfBirth?.trim(),
     asset: payload.asset,
     sdpHost: payload.sdpHost,
-    requiresIdentityVerification,
+    requiresIdentityVerification: true,
     hasInviteToken: Boolean(payload.token?.trim()),
     requiresFullName: Boolean(payload.expectedFullName?.trim()),
-    requiresDateOfBirth: Boolean(payload.expectedDateOfBirth?.trim()),
-    requiresEmail: Boolean(payload.expectedBeneficiaryEmail?.trim()),
+    requiresDateOfBirth: true,
+    requiresEmail: true,
     expectedEmailHint: payload.expectedBeneficiaryEmail
       ? maskEmail(payload.expectedBeneficiaryEmail.trim())
       : null,
-    expectedDateOfBirthHint:
+    sdpDateOfBirthHint:
+      payload.verifiedDateOfBirth?.trim() ||
       normalizeDateOfBirth(payload.expectedDateOfBirth?.trim() ?? "") ||
       payload.expectedDateOfBirth?.trim() ||
       null,

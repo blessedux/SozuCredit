@@ -37,22 +37,28 @@ export async function POST(request: Request) {
     typeof body.date_of_birth === "string" ? body.date_of_birth.trim() : "";
   const email = typeof body.email === "string" ? body.email.trim() : "";
 
-  const needsNameDob = Boolean(invite.expectedFullName || invite.expectedDateOfBirth);
-
   if (!email) {
     return NextResponse.json({ error: "Ingresá tu correo electrónico." }, { status: 400 });
   }
   if (!isValidEmail(email)) {
     return NextResponse.json({ error: "Ingresá un correo válido." }, { status: 400 });
   }
+  if (!dateOfBirth) {
+    return NextResponse.json(
+      { error: "Ingresá tu fecha de nacimiento (formato AAAA-MM-DD, igual que en SDP)." },
+      { status: 400 }
+    );
+  }
+  const normalizedDobInput = normalizeDateOfBirth(dateOfBirth);
+  if (!normalizedDobInput) {
+    return NextResponse.json(
+      { error: "Fecha inválida. Usá el formato AAAA-MM-DD (ej. 1990-03-15)." },
+      { status: 400 }
+    );
+  }
 
-  if (needsNameDob) {
-    if (invite.expectedFullName && !fullName) {
-      return NextResponse.json({ error: "Ingresá tu nombre completo." }, { status: 400 });
-    }
-    if (invite.expectedDateOfBirth && !dateOfBirth) {
-      return NextResponse.json({ error: "Ingresá tu fecha de nacimiento." }, { status: 400 });
-    }
+  if (invite.expectedFullName && !fullName) {
+    return NextResponse.json({ error: "Ingresá tu nombre completo." }, { status: 400 });
   }
 
   const result = verifyBeneficiaryIdentity({
@@ -60,7 +66,7 @@ export async function POST(request: Request) {
     expectedDateOfBirth: invite.expectedDateOfBirth,
     expectedEmail: invite.expectedBeneficiaryEmail,
     providedFullName: fullName || invite.expectedFullName || "",
-    providedDateOfBirth: dateOfBirth || invite.expectedDateOfBirth || "",
+    providedDateOfBirth: normalizedDobInput,
     providedEmail: email,
   });
 
@@ -68,14 +74,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: result.error }, { status: 403 });
   }
 
-  const normalizedDob = dateOfBirth ? normalizeDateOfBirth(dateOfBirth) : null;
   const normalizedEmail = email.trim().toLowerCase();
 
   const updated = {
     ...invite,
     verifiedEmail: normalizedEmail,
+    verifiedDateOfBirth: normalizedDobInput,
     ...(fullName ? { verifiedFullName: fullName } : {}),
-    ...(normalizedDob ? { verifiedDateOfBirth: normalizedDob } : {}),
   };
   cookieStore.set(SDP_INVITE_COOKIE_NAME, serializeInviteCookie(updated), {
     httpOnly: true,
