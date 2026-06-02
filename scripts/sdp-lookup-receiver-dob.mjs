@@ -102,7 +102,7 @@ const { data: disbursements } = await sdpFetch("/disbursements?page=1&page_limit
 const hits = [];
 for (const d of disbursements ?? []) {
   const { data: receivers } = await sdpFetch(
-    `/disbursements/${d.id}/receivers?page=1&page_limit=200`,
+    `/disbursements/${d.id}/receivers?page=1&page_limit=100`,
     token
   );
   for (const r of receivers ?? []) {

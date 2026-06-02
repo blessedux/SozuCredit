@@ -122,7 +122,7 @@ export async function lookupReceiverVerificationByEmail(
         payment?: { verification_field_value?: string; verification?: string } | null;
         receiver_wallet?: { status?: string; sep24_transaction_id?: string | null };
       }>;
-    }>(`/disbursements/${d.id}/receivers?page=1&page_limit=200`, token, apiUrl, tenantName);
+    }>(`/disbursements/${d.id}/receivers?page=1&page_limit=100`, token, apiUrl, tenantName);
 
     for (const r of receivers ?? []) {
       if (r.email?.trim().toLowerCase() !== normalized) continue;
