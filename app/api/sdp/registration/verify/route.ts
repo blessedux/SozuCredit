@@ -30,7 +30,7 @@ function mapSdpVerifyError(params: {
           ? `SDP rechazó la fecha ${params.verificationSent} aunque la ingresaste en formato correcto.`
           : "La fecha de nacimiento no coincide con la del lote en SozuPay.",
         hint: sentIso
-          ? "SozuCredit ya envió esa fecha a SDP. Si el CSV del lote nuevo también la tiene, lo más probable es que el mismo correo exista en otro lote anterior: SDP verifica contra el beneficiario más antiguo, no el lote nuevo. Pedí a la organización que elimine lotes viejos con este correo, actualice la fecha en todos los registros SDP, o probá con un correo único (ej. alias +1). Pedí un OTP nuevo después."
+          ? `SozuCredit ya envió ${params.verificationSent} a SDP. Si el lote tiene otra fecha (revisá la columna DOB en SozuPay), usá esa exacta. Si la celda verification del CSV quedó vacía, SozuPay subió 2000-01-01 por defecto — probá esa fecha para confirmarlo. También puede haber otro lote con el mismo correo. Pedí OTP nuevo después de corregir el lote.`
           : "Debe ser exactamente AAAA-MM-DD como en la columna «verification» del CSV (ej. 1997-08-05). Confirmá con la organización si no estás seguro. Pedí un OTP nuevo si pasaron más de 5 minutos.",
       };
     }
@@ -217,6 +217,7 @@ export async function POST(request: Request) {
           dobSource: source,
           inviteExpectedDob: inviteExpected ?? null,
           transactionId: session.invite.sep24TransactionId ?? null,
+          batchDobIfCsvBlank: "2000-01-01",
         },
       },
       { status: result.status && result.status >= 400 ? result.status : 502 }

@@ -72,6 +72,7 @@ type SdpDebug = {
   verificationSent?: string;
   dobSource?: string;
   inviteExpectedDob?: string | null;
+  batchDobIfCsvBlank?: string;
 };
 
 function orgPaymentLabel(orgName: string): string {
@@ -96,6 +97,9 @@ function DebugPanel({ debug }: { debug: SdpDebug | null }) {
         {debug.verificationSent && <li>verification_sent: {debug.verificationSent}</li>}
         {debug.dobSource && <li>dob_source: {debug.dobSource}</li>}
         {debug.inviteExpectedDob && <li>invite_bd: {debug.inviteExpectedDob}</li>}
+        {debug.batchDobIfCsvBlank && (
+          <li>batch_dob_if_csv_blank: {debug.batchDobIfCsvBlank}</li>
+        )}
       </ul>
     </details>
   );
