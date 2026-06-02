@@ -1,5 +1,7 @@
 import "server-only";
 
+import { maskEmail, sdpDebugLog } from "@/lib/sdp/debugLog";
+
 export type SdpSendOtpResult =
   | { ok: true; verificationField: string; message: string }
   | { ok: false; error: string; status?: number };
@@ -94,6 +96,24 @@ export async function postSdpRegistrationVerify(params: {
 
   const data = await readSdpJson(res);
   if (!res.ok) {
+    sdpDebugLog(
+      "sep24Registration.ts:postSdpRegistrationVerify",
+      "SDP verify HTTP error",
+      {
+        emailMasked: maskEmail(params.email),
+        verificationField: params.verificationField,
+        verificationLen: params.verificationValue.length,
+        verificationFormat: /^\d{4}-\d{2}-\d{2}$/.test(params.verificationValue)
+          ? "iso"
+          : params.verificationValue.includes("/")
+            ? "slash"
+            : "other",
+        httpStatus: res.status,
+        sdpError:
+          typeof data.error === "string" ? data.error.slice(0, 120) : "unknown",
+      },
+      "A"
+    );
     return {
       ok: false,
       status: res.status,

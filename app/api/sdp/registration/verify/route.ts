@@ -8,6 +8,7 @@ import {
   verificationFieldLabel,
 } from "@/lib/sdp/formatVerificationValue";
 import { normalizeDateOfBirth } from "@/lib/sdp/beneficiaryIdentity";
+import { maskEmail, sdpDebugLog } from "@/lib/sdp/debugLog";
 
 const SDP_NOT_FOUND = "The information you provided could not be found";
 
@@ -61,6 +62,16 @@ function mapSdpVerifyError(params: {
   };
 }
 
+function dobSource(params: {
+  verificationOverride: string;
+  inviteExpected: string | undefined;
+  sessionDob: string;
+}): "override" | "invite" | "session" {
+  if (params.verificationOverride) return "override";
+  if (params.inviteExpected?.trim()) return "invite";
+  return "session";
+}
+
 /** POST body: { otp: string, date_of_birth?: string, verification?: string } */
 export async function POST(request: Request) {
   const session = await requireSdpRegistrationSession();
@@ -82,16 +93,48 @@ export async function POST(request: Request) {
         ? body.date_of_birth.trim()
         : "";
 
+  const inviteExpected = session.invite.expectedDateOfBirth?.trim();
   const rawVerification =
-    verificationOverride ||
-    session.invite.expectedDateOfBirth?.trim() ||
-    session.dateOfBirth;
+    verificationOverride || inviteExpected || session.dateOfBirth;
+
+  const source = dobSource({
+    verificationOverride,
+    inviteExpected,
+    sessionDob: session.dateOfBirth,
+  });
 
   const verificationValue = formatVerificationValueForSdp(
     verificationField,
     rawVerification
   );
+
+  sdpDebugLog(
+    "registration/verify/route.ts:pre-sdp",
+    "verify inputs assembled",
+    {
+      emailMasked: maskEmail(session.email),
+      verificationField,
+      dobSource: source,
+      rawVerificationLen: rawVerification.length,
+      rawVerificationIso: /^\d{4}-\d{2}-\d{2}$/.test(rawVerification),
+      verificationNormalized: verificationValue,
+      inviteExpectedDob: inviteExpected ?? null,
+      sessionStoredDob: session.dateOfBirth,
+      overrideRawLen: verificationOverride.length,
+      transactionId: session.invite.sep24TransactionId ?? null,
+      clientDomain: session.clientDomain,
+      sep24Account: session.sep24Account,
+    },
+    "D"
+  );
+
   if (!verificationValue) {
+    sdpDebugLog(
+      "registration/verify/route.ts:invalid-dob",
+      "formatVerificationValueForSdp returned null",
+      { rawVerificationLen: rawVerification.length, dobSource: source },
+      "B"
+    );
     return NextResponse.json(
       {
         error:
@@ -105,6 +148,19 @@ export async function POST(request: Request) {
     );
   }
 
+  if (inviteExpected && inviteExpected !== verificationValue) {
+    sdpDebugLog(
+      "registration/verify/route.ts:invite-mismatch",
+      "invite bd differs from value sent to SDP",
+      {
+        inviteExpectedDob: inviteExpected,
+        verificationSent: verificationValue,
+        dobSource: source,
+      },
+      "A"
+    );
+  }
+
   const result = await postSdpRegistrationVerify({
     apiBase: session.apiBase,
     sep24Jwt: session.sep24Jwt,
@@ -113,6 +169,27 @@ export async function POST(request: Request) {
     verificationValue,
     verificationField,
   });
+
+  sdpDebugLog(
+    "registration/verify/route.ts:post-sdp",
+    "SDP verification response",
+    {
+      ok: result.ok,
+      sdpStatus: result.ok ? 200 : (result.status ?? 502),
+      sdpErrorCategory: result.ok
+        ? "success"
+        : result.error.includes(SDP_NOT_FOUND)
+          ? "not_found"
+          : /invalid otp/i.test(result.error)
+            ? "invalid_otp"
+            : /expired/i.test(result.error)
+              ? "expired"
+              : "other",
+      verificationSent: verificationValue,
+      transactionId: session.invite.sep24TransactionId ?? null,
+    },
+    result.ok ? "E" : "A"
+  );
 
   if (!result.ok) {
     const mapped = mapSdpVerifyError({
@@ -129,6 +206,9 @@ export async function POST(request: Request) {
           clientDomain: session.clientDomain,
           verificationField,
           verificationSent: verificationValue,
+          dobSource: source,
+          inviteExpectedDob: inviteExpected ?? null,
+          transactionId: session.invite.sep24TransactionId ?? null,
         },
       },
       { status: result.status && result.status >= 400 ? result.status : 502 }

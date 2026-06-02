@@ -70,6 +70,8 @@ type SdpDebug = {
   verifiedDateOfBirth?: string | null;
   verificationField?: string;
   verificationSent?: string;
+  dobSource?: string;
+  inviteExpectedDob?: string | null;
 };
 
 function orgPaymentLabel(orgName: string): string {
@@ -92,6 +94,8 @@ function DebugPanel({ debug }: { debug: SdpDebug | null }) {
         {debug.verifiedDateOfBirth && <li>dob: {debug.verifiedDateOfBirth}</li>}
         {debug.verificationField && <li>verification_field: {debug.verificationField}</li>}
         {debug.verificationSent && <li>verification_sent: {debug.verificationSent}</li>}
+        {debug.dobSource && <li>dob_source: {debug.dobSource}</li>}
+        {debug.inviteExpectedDob && <li>invite_bd: {debug.inviteExpectedDob}</li>}
       </ul>
     </details>
   );
@@ -361,9 +365,48 @@ export function SdpRegisterFlow() {
         verificationField?: string;
         debug?: SdpDebug;
       };
+      // #region agent log
+      fetch("http://127.0.0.1:7454/ingest/aec984e4-6773-4680-98b7-b535bc491a52", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Debug-Session-Id": "d5ebeb",
+        },
+        body: JSON.stringify({
+          sessionId: "d5ebeb",
+          location: "SdpRegisterFlow.tsx:verifyOtp",
+          message: "registration/verify response",
+          data: {
+            httpStatus: res.status,
+            ok: res.ok,
+            verificationSent: data.debug?.verificationSent ?? null,
+            dobSource: data.debug?.dobSource ?? null,
+            inviteExpectedDob: data.debug?.inviteExpectedDob ?? null,
+            verificationField: data.verificationField ?? verificationField,
+            hasDebug: Boolean(data.debug),
+          },
+          hypothesisId: "B",
+          timestamp: Date.now(),
+          runId: "pre-fix",
+        }),
+      }).catch(() => {});
+      // #endregion
       if (!res.ok) {
+        if (data.debug) {
+          setDebug((prev) => ({
+            ...prev,
+            ...data.debug,
+            verifiedEmail: email,
+            verifiedDateOfBirth: dateOfBirth,
+            verificationField: data.verificationField ?? verificationField,
+          }));
+        }
+        const sentNote = data.debug?.verificationSent
+          ? ` (enviado a SDP: ${data.debug.verificationSent})`
+          : "";
         throw new Error(
-          [data.error, data.hint].filter(Boolean).join(" ") || "Verificación falló"
+          ([data.error, data.hint].filter(Boolean).join(" ") || "Verificación falló") +
+            sentNote
         );
       }
       if (data.debug) {

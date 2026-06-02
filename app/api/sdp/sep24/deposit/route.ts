@@ -6,6 +6,7 @@ import { resolveSep24RegistrationAccount } from "@/lib/sdp/resolveSep10Account";
 import { postSep24DepositInteractive } from "@/lib/sdp/sep24Server";
 import { parseSep24SessionFromInteractiveUrl } from "@/lib/sdp/sep24Session";
 import { persistInvitePayload } from "@/lib/sdp/persistInvite";
+import { maskEmail, sdpDebugLog } from "@/lib/sdp/debugLog";
 
 /**
  * SEP-10 JWT → SEP-24 interactive session. Stores SEP-24 JWT for in-app OTP (no redirect).
@@ -87,6 +88,20 @@ export async function POST() {
     sep24TransactionId: session.transactionId,
   };
   await persistInvitePayload(updatedInvite);
+
+  sdpDebugLog(
+    "sep24/deposit/route.ts:session",
+    "SEP-24 interactive session created",
+    {
+      emailMasked: maskEmail(registrationEmail),
+      transactionId: session.transactionId,
+      verifiedDob: invite.verifiedDateOfBirth ?? null,
+      inviteExpectedDob: invite.expectedDateOfBirth ?? null,
+      clientDomain,
+      sep24Account,
+    },
+    "C"
+  );
 
   const debug = {
     sep24Account,

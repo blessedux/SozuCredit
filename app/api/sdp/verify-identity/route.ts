@@ -6,6 +6,7 @@ import {
   normalizeDateOfBirth,
   verifyBeneficiaryIdentity,
 } from "@/lib/sdp/beneficiaryIdentity";
+import { maskEmail, sdpDebugLog } from "@/lib/sdp/debugLog";
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -62,10 +63,36 @@ export async function POST(request: Request) {
   });
 
   if (!result.ok) {
+    sdpDebugLog(
+      "verify-identity/route.ts:rejected",
+      "invite identity check failed before passkey",
+      {
+        emailMasked: maskEmail(email),
+        normalizedDob: normalizedDobInput,
+        inviteExpectedDob: invite.expectedDateOfBirth ?? null,
+        inviteExpectedEmail: invite.expectedBeneficiaryEmail
+          ? maskEmail(invite.expectedBeneficiaryEmail)
+          : null,
+        error: result.error,
+      },
+      "A"
+    );
     return NextResponse.json({ error: result.error }, { status: 403 });
   }
 
   const normalizedEmail = email.trim().toLowerCase();
+
+  sdpDebugLog(
+    "verify-identity/route.ts:ok",
+    "identity stored for SEP-24 session",
+    {
+      emailMasked: maskEmail(normalizedEmail),
+      storedDob: normalizedDobInput,
+      inviteExpectedDob: invite.expectedDateOfBirth ?? null,
+      hasInviteBd: Boolean(invite.expectedDateOfBirth?.trim()),
+    },
+    "D"
+  );
 
   const updated = {
     ...invite,
