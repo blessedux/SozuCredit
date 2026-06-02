@@ -366,7 +366,8 @@ export function SdpRegisterFlow() {
         debug?: SdpDebug;
       };
       // #region agent log
-      fetch("http://127.0.0.1:7454/ingest/aec984e4-6773-4680-98b7-b535bc491a52", {
+      if (process.env.NODE_ENV === "development") {
+        fetch("http://127.0.0.1:7454/ingest/aec984e4-6773-4680-98b7-b535bc491a52", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -390,6 +391,7 @@ export function SdpRegisterFlow() {
           runId: "pre-fix",
         }),
       }).catch(() => {});
+      }
       // #endregion
       if (!res.ok) {
         if (data.debug) {

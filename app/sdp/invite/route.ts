@@ -10,6 +10,10 @@ import {
   SDP_INVITE_COOKIE_NAME,
   SDP_INVITE_COOKIE_MAX_AGE_SEC,
 } from "@/lib/sdp/invitePayload";
+import {
+  clearSdpSep10JwtCookie,
+  clearSdpSep24JwtCookie,
+} from "@/lib/sdp/jwtCookie";
 
 function htmlError(title: string, message: string, status: number): NextResponse {
   return new NextResponse(
@@ -112,6 +116,8 @@ export async function GET(request: NextRequest) {
 
   const cookieVal = serializeInviteCookie(payload);
   const cookieStore = await cookies();
+  await clearSdpSep10JwtCookie();
+  await clearSdpSep24JwtCookie();
   cookieStore.set(SDP_INVITE_COOKIE_NAME, cookieVal, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",

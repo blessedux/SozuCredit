@@ -14,6 +14,7 @@ export async function POST() {
     apiBase: session.apiBase,
     sep24Jwt: session.sep24Jwt,
     email: session.email,
+    tenantName: session.tenantName || undefined,
   });
 
   if (!result.ok) {

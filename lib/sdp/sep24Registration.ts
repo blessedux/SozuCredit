@@ -33,6 +33,7 @@ export async function postSdpRegistrationOtp(params: {
   apiBase: string;
   sep24Jwt: string;
   email: string;
+  tenantName?: string;
 }): Promise<SdpSendOtpResult> {
   const url = `${params.apiBase.replace(/\/?$/, "")}/otp`;
   const res = await fetch(url, {
@@ -41,6 +42,7 @@ export async function postSdpRegistrationOtp(params: {
       Accept: "application/json",
       "Content-Type": "application/json",
       Authorization: `Bearer ${params.sep24Jwt}`,
+      ...(params.tenantName ? { "SDP-Tenant-Name": params.tenantName } : {}),
     },
     body: JSON.stringify({ email: params.email.trim().toLowerCase() }),
     next: { revalidate: 0 },
@@ -76,6 +78,7 @@ export async function postSdpRegistrationVerify(params: {
   otp: string;
   verificationValue: string;
   verificationField: string;
+  tenantName?: string;
 }): Promise<SdpVerifyRegistrationResult> {
   const url = `${params.apiBase.replace(/\/?$/, "")}/verification`;
   const res = await fetch(url, {
@@ -84,6 +87,7 @@ export async function postSdpRegistrationVerify(params: {
       Accept: "application/json",
       "Content-Type": "application/json",
       Authorization: `Bearer ${params.sep24Jwt}`,
+      ...(params.tenantName ? { "SDP-Tenant-Name": params.tenantName } : {}),
     },
     body: JSON.stringify({
       email: params.email.trim().toLowerCase(),

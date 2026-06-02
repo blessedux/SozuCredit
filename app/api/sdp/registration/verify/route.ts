@@ -15,17 +15,23 @@ const SDP_NOT_FOUND = "The information you provided could not be found";
 function mapSdpVerifyError(params: {
   sdpError: string;
   verificationField: string;
+  verificationSent?: string | null;
 }): { error: string; hint: string } {
   const field = normalizeVerificationField(params.verificationField);
   const label = verificationFieldLabel(field);
 
   if (params.sdpError.includes(SDP_NOT_FOUND)) {
     if (field === "DATE_OF_BIRTH") {
+      const sentIso =
+        params.verificationSent &&
+        /^\d{4}-\d{2}-\d{2}$/.test(params.verificationSent);
       return {
-        error:
-          "La fecha de nacimiento no coincide con la del lote en SozuPay.",
-        hint:
-          "Debe ser exactamente AAAA-MM-DD como en la columna «verification» del CSV (ej. 1997-08-05). Confirmá con la organización si no estás seguro. Pedí un OTP nuevo si pasaron más de 5 minutos.",
+        error: sentIso
+          ? `SDP rechazó la fecha ${params.verificationSent} aunque la ingresaste en formato correcto.`
+          : "La fecha de nacimiento no coincide con la del lote en SozuPay.",
+        hint: sentIso
+          ? "SozuCredit ya envió esa fecha a SDP. Si el CSV del lote nuevo también la tiene, lo más probable es que el mismo correo exista en otro lote anterior: SDP verifica contra el beneficiario más antiguo, no el lote nuevo. Pedí a la organización que elimine lotes viejos con este correo, actualice la fecha en todos los registros SDP, o probá con un correo único (ej. alias +1). Pedí un OTP nuevo después."
+          : "Debe ser exactamente AAAA-MM-DD como en la columna «verification» del CSV (ej. 1997-08-05). Confirmá con la organización si no estás seguro. Pedí un OTP nuevo si pasaron más de 5 minutos.",
       };
     }
     if (field === "YEAR_MONTH") {
@@ -168,6 +174,7 @@ export async function POST(request: Request) {
     otp,
     verificationValue,
     verificationField,
+    tenantName: session.tenantName || undefined,
   });
 
   sdpDebugLog(
@@ -195,6 +202,7 @@ export async function POST(request: Request) {
     const mapped = mapSdpVerifyError({
       sdpError: result.error,
       verificationField,
+      verificationSent: verificationValue,
     });
     return NextResponse.json(
       {

@@ -19,6 +19,7 @@ export async function requireSdpRegistrationSession(): Promise<
       stellarAccount: string;
       depositAccount: string;
       sep24Account: string;
+      tenantName: string;
     }
   | { ok: false; status: number; error: string }
 > {
@@ -68,5 +69,6 @@ export async function requireSdpRegistrationSession(): Promise<
     stellarAccount: ctx.stellarAccount,
     depositAccount: ctx.depositAccount,
     sep24Account,
+    tenantName: ctx.tenantName,
   };
 }
