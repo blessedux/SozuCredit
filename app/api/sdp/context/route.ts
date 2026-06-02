@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { parseInviteCookie, SDP_INVITE_COOKIE_NAME } from "@/lib/sdp/invitePayload";
-import { normalizeDateOfBirth } from "@/lib/sdp/beneficiaryIdentity";
 import { decodeSdpOrganizationName } from "@/lib/sdp/displayName";
 
 /**
@@ -15,10 +14,24 @@ export async function GET() {
 
   if (!payload) {
     return NextResponse.json(
-      { organizationName: null, asset: null, requiresIdentityVerification: false },
+      { organizationName: null, asset: null, step: "invite_missing" },
       { status: 200 }
     );
   }
+
+  const organizationName =
+    decodeSdpOrganizationName(payload.organizationName) || payload.organizationName;
+
+  const hasContact = Boolean(
+    payload.verifiedEmail?.trim() && payload.verifiedDateOfBirth?.trim()
+  );
+  const hasPasskeySession = Boolean(payload.sep24TransactionId?.trim());
+  const isComplete = Boolean(payload.registrationCompletedAt);
+
+  let step: "contact" | "passkey" | "otp" | "done" = "contact";
+  if (isComplete) step = "done";
+  else if (hasPasskeySession) step = "otp";
+  else if (hasContact) step = "passkey";
 
   const maskEmail = (email: string) => {
     const at = email.indexOf("@");
@@ -26,28 +39,19 @@ export async function GET() {
     return `${email.slice(0, 2)}***${email.slice(at)}`;
   };
 
-  const organizationName =
-    decodeSdpOrganizationName(payload.organizationName) || payload.organizationName;
-
   return NextResponse.json({
     organizationName,
-    needsContactStep:
-      !payload.verifiedEmail?.trim() || !payload.verifiedDateOfBirth?.trim(),
     asset: payload.asset,
     sdpHost: payload.sdpHost,
-    requiresIdentityVerification: true,
+    step,
     hasInviteToken: Boolean(payload.token?.trim()),
-    requiresFullName: Boolean(payload.expectedFullName?.trim()),
-    requiresDateOfBirth: true,
-    requiresEmail: true,
-    expectedEmailHint: payload.expectedBeneficiaryEmail
-      ? maskEmail(payload.expectedBeneficiaryEmail.trim())
+    verifiedEmail: hasContact ? payload.verifiedEmail?.trim() || null : null,
+    verifiedEmailHint: payload.verifiedEmail
+      ? maskEmail(payload.verifiedEmail.trim())
       : null,
-    sdpDateOfBirthHint:
-      payload.verifiedDateOfBirth?.trim() ||
-      normalizeDateOfBirth(payload.expectedDateOfBirth?.trim() ?? "") ||
-      payload.expectedDateOfBirth?.trim() ||
-      null,
+    verifiedDateOfBirth: payload.verifiedDateOfBirth?.trim() || null,
+    transactionId: payload.sep24TransactionId ?? null,
+    verificationField: payload.sdpVerificationField ?? "DATE_OF_BIRTH",
     isTestnet:
       process.env.STELLAR_NETWORK !== "public" &&
       process.env.NEXT_PUBLIC_STELLAR_NETWORK !== "public",

@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import { getSdpApiContext } from "@/lib/sdp/sdpApiContext";
-import { getSdpSep10JwtCookie } from "@/lib/sdp/jwtCookie";
+import { getSdpSep10JwtCookie, setSdpSep24JwtCookie } from "@/lib/sdp/jwtCookie";
 import { parseSdpAssetParam } from "@/lib/sdp/assetParam";
 import { resolveSep24RegistrationAccount } from "@/lib/sdp/resolveSep10Account";
-import { postSep24DepositInteractive, augmentSdpInteractiveUrl } from "@/lib/sdp/sep24Server";
+import { postSep24DepositInteractive } from "@/lib/sdp/sep24Server";
+import { parseSep24SessionFromInteractiveUrl } from "@/lib/sdp/sep24Session";
+import { persistInvitePayload } from "@/lib/sdp/persistInvite";
 
+/**
+ * SEP-10 JWT → SEP-24 interactive session. Stores SEP-24 JWT for in-app OTP (no redirect).
+ */
 export async function POST() {
   const ctx = await getSdpApiContext();
   if (!ctx.ok) {
@@ -36,10 +41,6 @@ export async function POST() {
     );
   }
 
-  const extra: Record<string, string> = {};
-  if (invite.token) {
-    extra.token = invite.token;
-  }
   const registrationEmail = invite.verifiedEmail?.trim();
   if (!registrationEmail) {
     return NextResponse.json(
@@ -50,7 +51,11 @@ export async function POST() {
       { status: 400 }
     );
   }
-  extra.email = registrationEmail;
+
+  const extra: Record<string, string> = { email: registrationEmail };
+  if (invite.token) {
+    extra.token = invite.token;
+  }
 
   const res = await postSep24DepositInteractive({
     sep24Base: invite.sep24Base,
@@ -60,22 +65,45 @@ export async function POST() {
     assetIssuer: issuer,
     tenantName,
     lang: "es",
-    extra: Object.keys(extra).length ? extra : undefined,
+    extra,
   });
 
   if (!res.ok) {
     return NextResponse.json({ error: res.error }, { status: 502 });
   }
 
-  return NextResponse.json({
-    url: augmentSdpInteractiveUrl(res.url, {
-      tenantName,
-      lang: "es",
-      token: invite.token,
-    }),
-    clientDomain,
-    id: res.id ?? null,
+  const session = parseSep24SessionFromInteractiveUrl(res.url);
+  if (!session) {
+    return NextResponse.json(
+      { error: "SDP no devolvió una sesión de registro válida." },
+      { status: 502 }
+    );
+  }
+
+  await setSdpSep24JwtCookie(session.sep24Jwt);
+
+  const updatedInvite = {
+    ...invite,
+    sep24TransactionId: session.transactionId,
+  };
+  await persistInvitePayload(updatedInvite);
+
+  const debug = {
     sep24Account,
+    stellarAccount,
     depositAccount,
+    clientDomain,
+    sdpHost: invite.sdpHost,
+    transactionId: session.transactionId,
+    verifiedEmail: registrationEmail,
+    verifiedDateOfBirth: invite.verifiedDateOfBirth ?? null,
+    tenantName,
+    hasInviteToken: Boolean(invite.token?.trim()),
+  };
+
+  return NextResponse.json({
+    ok: true,
+    transactionId: session.transactionId,
+    debug,
   });
 }

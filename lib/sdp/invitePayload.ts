@@ -24,6 +24,12 @@ export type SdpInvitePayload = {
   verifiedFullName?: string;
   verifiedDateOfBirth?: string;
   verifiedEmail?: string;
+  /** SEP-24 interactive transaction id (after passkey step) */
+  sep24TransactionId?: string;
+  /** DATE_OF_BIRTH | PIN | … from SDP send-otp response */
+  sdpVerificationField?: string;
+  /** Set after successful SDP /verification */
+  registrationCompletedAt?: number;
   /** Epoch seconds */
   exp: number;
 };
@@ -111,6 +117,24 @@ export function parseInviteCookie(
       return null;
     }
     if (data.verifiedEmail !== undefined && typeof data.verifiedEmail !== "string") {
+      return null;
+    }
+    if (
+      data.sep24TransactionId !== undefined &&
+      typeof data.sep24TransactionId !== "string"
+    ) {
+      return null;
+    }
+    if (
+      data.sdpVerificationField !== undefined &&
+      typeof data.sdpVerificationField !== "string"
+    ) {
+      return null;
+    }
+    if (
+      data.registrationCompletedAt !== undefined &&
+      typeof data.registrationCompletedAt !== "number"
+    ) {
       return null;
     }
     if (data.exp < Math.floor(Date.now() / 1000)) {

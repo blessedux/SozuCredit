@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import {
-  parseInviteCookie,
-  serializeInviteCookie,
-  SDP_INVITE_COOKIE_NAME,
-  SDP_INVITE_COOKIE_MAX_AGE_SEC,
-} from "@/lib/sdp/invitePayload";
+import { parseInviteCookie, SDP_INVITE_COOKIE_NAME } from "@/lib/sdp/invitePayload";
+import { persistInvitePayload } from "@/lib/sdp/persistInvite";
 import {
   normalizeDateOfBirth,
   verifyBeneficiaryIdentity,
@@ -17,8 +13,8 @@ function isValidEmail(email: string): boolean {
 
 /**
  * POST /api/sdp/verify-identity
- * Body: { email?: string, full_name?: string, date_of_birth?: string }
- * Saves beneficiary email for SDP (before passkey). Optional name/DOB when invite includes bn/bd.
+ * Body: { email: string, date_of_birth: string }
+ * Saves beneficiary email + DOB for SDP (before passkey). Validated against invite when present.
  */
 export async function POST(request: Request) {
   const cookieStore = await cookies();
@@ -32,7 +28,6 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => ({}));
-  const fullName = typeof body.full_name === "string" ? body.full_name.trim() : "";
   const dateOfBirth =
     typeof body.date_of_birth === "string" ? body.date_of_birth.trim() : "";
   const email = typeof body.email === "string" ? body.email.trim() : "";
@@ -57,15 +52,11 @@ export async function POST(request: Request) {
     );
   }
 
-  if (invite.expectedFullName && !fullName) {
-    return NextResponse.json({ error: "Ingresá tu nombre completo." }, { status: 400 });
-  }
-
   const result = verifyBeneficiaryIdentity({
     expectedFullName: invite.expectedFullName,
     expectedDateOfBirth: invite.expectedDateOfBirth,
     expectedEmail: invite.expectedBeneficiaryEmail,
-    providedFullName: fullName || invite.expectedFullName || "",
+    providedFullName: invite.expectedFullName || "",
     providedDateOfBirth: normalizedDobInput,
     providedEmail: email,
   });
@@ -80,15 +71,8 @@ export async function POST(request: Request) {
     ...invite,
     verifiedEmail: normalizedEmail,
     verifiedDateOfBirth: normalizedDobInput,
-    ...(fullName ? { verifiedFullName: fullName } : {}),
   };
-  cookieStore.set(SDP_INVITE_COOKIE_NAME, serializeInviteCookie(updated), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: SDP_INVITE_COOKIE_MAX_AGE_SEC,
-    path: "/",
-  });
+  await persistInvitePayload(updated);
 
   return NextResponse.json({ ok: true });
 }

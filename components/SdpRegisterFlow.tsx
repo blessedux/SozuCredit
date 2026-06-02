@@ -17,52 +17,59 @@ const CTA_CLASS =
 const INPUT_CLASS =
   "w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-orange-400/40";
 
-type WalletState = {
-  publicKey: string | null;
-  credentialId: string | null;
-  userId: string | null;
-};
+type Step = "contact" | "passkey" | "otp" | "done";
 
-type Status = "idle" | "busy" | "done" | "error";
-type Step = "contact" | "funds";
+type SdpDebug = {
+  sep24Account?: string;
+  stellarAccount?: string;
+  depositAccount?: string;
+  clientDomain?: string;
+  transactionId?: string | null;
+  verifiedEmail?: string;
+  verifiedDateOfBirth?: string | null;
+};
 
 function orgPaymentLabel(orgName: string): string {
   const label = decodeSdpOrganizationName(orgName) || orgName.trim();
   return label ? `Recibir pago de ${label}` : "Recibir tu pago";
 }
 
+function DebugPanel({ debug }: { debug: SdpDebug | null }) {
+  if (!debug) return null;
+  return (
+    <details className="rounded-lg border border-white/10 bg-black/40 p-3 text-xs text-white/50">
+      <summary className="cursor-pointer text-white/70">Debug SDP</summary>
+      <ul className="mt-2 space-y-1 font-mono break-all">
+        {debug.clientDomain && <li>client_domain: {debug.clientDomain}</li>}
+        {debug.sep24Account && <li>sep24_account: {debug.sep24Account}</li>}
+        {debug.stellarAccount && <li>signer_G: {debug.stellarAccount}</li>}
+        {debug.depositAccount && <li>wallet_C: {debug.depositAccount}</li>}
+        {debug.transactionId && <li>tx_id: {debug.transactionId}</li>}
+        {debug.verifiedEmail && <li>email: {debug.verifiedEmail}</li>}
+        {debug.verifiedDateOfBirth && <li>dob: {debug.verifiedDateOfBirth}</li>}
+      </ul>
+    </details>
+  );
+}
+
 export function SdpRegisterFlow() {
-  const [wallet, setWallet] = useState<WalletState>({
-    publicKey: null,
-    credentialId: null,
-    userId: null,
-  });
   const [orgName, setOrgName] = useState("");
-  const [requiresFullName, setRequiresFullName] = useState(false);
-  const [requiresDateOfBirth, setRequiresDateOfBirth] = useState(false);
-  const [hasInviteToken, setHasInviteToken] = useState(true);
   const [step, setStep] = useState<Step>("contact");
-  const [sdpDobHint, setSdpDobHint] = useState<string | null>(null);
-  const [fullName, setFullName] = useState("");
-  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [hasInviteToken, setHasInviteToken] = useState(true);
+  const [isTestnet, setIsTestnet] = useState(false);
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<Status>("idle");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [status, setStatus] = useState<"idle" | "busy" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
+  const [debug, setDebug] = useState<SdpDebug | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
   const [hasWalletSession, setHasWalletSession] = useState(false);
+  const [walletUserId, setWalletUserId] = useState<string | null>(null);
+  const [walletCredentialId, setWalletCredentialId] = useState<string | null>(null);
 
   const paymentTitle = orgPaymentLabel(orgName);
-
-  const refreshWallet = useCallback(async () => {
-    const session = await loadClientWalletSession();
-    setWallet({
-      publicKey: session.publicKey,
-      credentialId: session.credentialId,
-      userId: session.userId,
-    });
-    setHasWalletSession(session.isAuthenticated);
-    setSessionReady(true);
-  }, []);
 
   const loadContext = useCallback(async () => {
     try {
@@ -70,47 +77,44 @@ export function SdpRegisterFlow() {
       if (!res.ok) return;
       const d = (await res.json().catch(() => ({}))) as {
         organizationName?: string;
-          needsContactStep?: boolean;
-          sdpDateOfBirthHint?: string | null;
-        requiresFullName?: boolean;
-        requiresDateOfBirth?: boolean;
+        step?: Step | "invite_missing";
         hasInviteToken?: boolean;
+        isTestnet?: boolean;
+        verifiedEmail?: string | null;
+        verifiedDateOfBirth?: string | null;
+        transactionId?: string | null;
       };
       if (d.organizationName) setOrgName(d.organizationName);
-      setRequiresFullName(Boolean(d.requiresFullName));
-      setRequiresDateOfBirth(Boolean(d.requiresDateOfBirth));
       setHasInviteToken(d.hasInviteToken !== false);
-        setSdpDobHint(d.sdpDateOfBirthHint ?? null);
-        setStep(d.needsContactStep === false ? "funds" : "contact");
+      setIsTestnet(Boolean(d.isTestnet));
+      if (d.verifiedEmail) setEmail(d.verifiedEmail);
+      if (d.verifiedDateOfBirth) setDateOfBirth(d.verifiedDateOfBirth);
+      if (d.step && d.step !== "invite_missing") setStep(d.step);
+      if (d.transactionId) {
+        setDebug((prev) => ({ ...prev, transactionId: d.transactionId }));
+      }
     } catch {
       // non-fatal
     }
   }, []);
 
   useEffect(() => {
-    void refreshWallet();
+    void (async () => {
+      const session = await loadClientWalletSession();
+      setHasWalletSession(session.isAuthenticated);
+      setWalletUserId(session.userId);
+      setWalletCredentialId(session.credentialId);
+      setSessionReady(true);
+    })();
     void loadContext();
-
-    const onVisible = () => {
-      if (document.visibilityState === "visible") void refreshWallet();
-    };
-    window.addEventListener("storage", () => void refreshWallet());
-    window.addEventListener("focus", () => void refreshWallet());
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      window.removeEventListener("storage", () => void refreshWallet());
-      window.removeEventListener("focus", () => void refreshWallet());
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [refreshWallet, loadContext]);
+  }, [loadContext]);
 
   const saveContact = async () => {
     setError(null);
-    if (!email.trim()) {
-      setError("Ingresá el correo que registró la organización.");
+    if (!email.trim() || !dateOfBirth.trim()) {
+      setError("Ingresá correo y fecha de nacimiento (AAAA-MM-DD).");
       return;
     }
-
     setStatus("busy");
     try {
       const res = await fetch("/api/sdp/verify-identity", {
@@ -119,85 +123,51 @@ export function SdpRegisterFlow() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: email.trim(),
-          ...(fullName.trim() ? { full_name: fullName.trim() } : {}),
-          ...(dateOfBirth.trim() ? { date_of_birth: dateOfBirth.trim() } : {}),
+          date_of_birth: dateOfBirth.trim(),
         }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(data.error ?? "No pudimos guardar tu correo.");
-
-      setStep("funds");
+      if (!res.ok) throw new Error(data.error ?? "No pudimos guardar tus datos.");
+      setStep("passkey");
       setStatus("idle");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Algo salió mal. Intentá de nuevo.");
+      setError(e instanceof Error ? e.message : "Error");
       setStatus("error");
     }
   };
 
-  const ensureWalletReadyForSdp = async (
-    userId: string,
-    credentialId?: string
-  ): Promise<{ publicKey: string; credentialId: string }> => {
-    const cred =
-      credentialId?.trim() ||
-      (typeof window !== "undefined"
-        ? sessionStorage.getItem("credential_id") ?? localStorage.getItem("credential_id")
-        : null) ||
-      undefined;
-
-    if (!cred) {
-      throw new Error(
-        "No encontramos tu passkey. Cerrá sesión e iniciá de nuevo con passkey."
-      );
-    }
-
-    const { alignWalletMaterialAfterLogin } = await import(
-      "@/lib/storage/post-login-wallet"
-    );
-    const aligned = await alignWalletMaterialAfterLogin(userId, cred);
-    if (aligned.needsWalletSync || !aligned.publicKey) {
-      throw new Error(
-        aligned.setupError ??
-          "Tu billetera aún no está lista. Completá la configuración en la app e intentá de nuevo."
-      );
-    }
-
-    persistClientWalletSession({
-      userId,
-      publicKey: aligned.publicKey,
-      credentialId: cred,
-    });
-
-    return { publicKey: aligned.publicKey, credentialId: cred };
-  };
-
-  const requestFunds = async () => {
+  const linkWalletWithPasskey = async () => {
     setError(null);
     setStatus("busy");
-
     try {
-      const freshSession = await loadClientWalletSession();
-      const userId = freshSession.userId ?? wallet.userId ?? "";
-      const credentialId =
-        freshSession.credentialId ?? wallet.credentialId ?? undefined;
-
-      if (!userId) {
+      const userId = walletUserId;
+      const credentialId = walletCredentialId;
+      if (!userId || !credentialId) {
         throw new Error("Iniciá sesión con passkey primero.");
       }
 
-      const walletReady = await ensureWalletReadyForSdp(userId, credentialId);
+      const { alignWalletMaterialAfterLogin } = await import(
+        "@/lib/storage/post-login-wallet"
+      );
+      const aligned = await alignWalletMaterialAfterLogin(userId, credentialId);
+      if (aligned.needsWalletSync || !aligned.publicKey) {
+        throw new Error(aligned.setupError ?? "Billetera no lista.");
+      }
+      persistClientWalletSession({
+        userId,
+        publicKey: aligned.publicKey,
+        credentialId,
+      });
+
       const { prepareSdpSigningMaterial } = await import(
         "@/lib/stellar/ensure-passkey-signer"
       );
-      const syncedSigner = await prepareSdpSigningMaterial(
-        userId,
-        walletReady.credentialId
-      );
+      const syncedSigner = await prepareSdpSigningMaterial(userId, credentialId);
 
       const authHeaders: HeadersInit = {
         "x-user-id": userId,
         "x-sep10-signer": syncedSigner.publicKey,
-        "x-stellar-public-key": walletReady.publicKey,
+        "x-stellar-public-key": aligned.publicKey,
       };
 
       const chRes = await fetch("/api/sdp/sep10/challenge", {
@@ -213,7 +183,7 @@ export function SdpRegisterFlow() {
         home_domains?: string[];
         error?: string;
       };
-      if (!chRes.ok) throw new Error(chData.error ?? "No se pudo iniciar la autenticación");
+      if (!chRes.ok) throw new Error(chData.error ?? "Challenge falló");
 
       const networkPassphrase =
         chData.network_passphrase ??
@@ -225,9 +195,7 @@ export function SdpRegisterFlow() {
       const userSignerG = syncedSigner.publicKey.trim().toUpperCase();
       const challengeClientG = getSep10ClientAccountId(tx);
       if (challengeClientG && challengeClientG !== userSignerG) {
-        throw new Error(
-          "La billetera del desafío no coincide con la tuya. Contactá soporte."
-        );
+        throw new Error("La billetera del desafío no coincide con la tuya.");
       }
 
       const { signTransactionWithPasskeyApproval } = await import(
@@ -253,25 +221,95 @@ export function SdpRegisterFlow() {
         }),
       });
       const tokData = (await tokRes.json().catch(() => ({}))) as { error?: string };
-      if (!tokRes.ok) throw new Error(tokData.error ?? "No se pudo completar la autenticación");
+      if (!tokRes.ok) throw new Error(tokData.error ?? "Token SEP-10 falló");
 
       const depRes = await fetch("/api/sdp/sep24/deposit", {
         method: "POST",
         credentials: "include",
         headers: authHeaders,
       });
-      const depData = (await depRes.json().catch(() => ({}))) as { url?: string; error?: string };
-      if (!depRes.ok) throw new Error(depData.error ?? "No se pudo iniciar la verificación");
+      const depData = (await depRes.json().catch(() => ({}))) as {
+        error?: string;
+        debug?: SdpDebug;
+        transactionId?: string;
+      };
+      if (!depRes.ok) throw new Error(depData.error ?? "SEP-24 falló");
 
-      if (typeof depData.url === "string" && depData.url.startsWith("http")) {
-        setStatus("done");
-        window.location.assign(depData.url);
-      } else {
-        throw new Error("No se recibió la URL de verificación");
-      }
+      setDebug(depData.debug ?? null);
+      setStep("otp");
+      setStatus("idle");
+      void sendOtp();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Algo salió mal. Intentá de nuevo.");
+      setError(e instanceof Error ? e.message : "Error");
       setStatus("error");
+    }
+  };
+
+  const sendOtp = async () => {
+    setError(null);
+    setStatus("busy");
+    try {
+      const res = await fetch("/api/sdp/registration/otp", {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        message?: string;
+      };
+      if (!res.ok) throw new Error(data.error ?? "No se pudo enviar el código.");
+      setOtpSent(true);
+      setStatus("idle");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error");
+      setStatus("error");
+    }
+  };
+
+  const verifyOtp = async () => {
+    setError(null);
+    if (!otp.trim()) {
+      setError("Ingresá el código de 6 dígitos.");
+      return;
+    }
+    setStatus("busy");
+    try {
+      const res = await fetch("/api/sdp/registration/verify", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ otp: otp.trim() }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        hint?: string;
+        debug?: SdpDebug;
+      };
+      if (!res.ok) {
+        throw new Error(
+          [data.error, data.hint].filter(Boolean).join(" ") || "Verificación falló"
+        );
+      }
+      if (data.debug) setDebug((prev) => ({ ...prev, ...data.debug }));
+      setStep("done");
+      setStatus("idle");
+      void pollStatus();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error");
+      setStatus("error");
+    }
+  };
+
+  const pollStatus = async () => {
+    try {
+      const res = await fetch("/api/sdp/registration/status", {
+        credentials: "include",
+      });
+      if (!res.ok) return;
+      const d = (await res.json()) as { completed?: boolean; transactionStatus?: string };
+      if (d.completed) setStep("done");
+    } catch {
+      // ignore
     }
   };
 
@@ -287,13 +325,27 @@ export function SdpRegisterFlow() {
     return (
       <div className="max-w-sm mx-auto mt-12 space-y-6 text-center">
         <h1 className="text-xl font-semibold text-white">{paymentTitle}</h1>
-        <p className="text-sm text-white/55">
-          Entrá con passkey para continuar.
-        </p>
+        <p className="text-sm text-white/55">Entrá con passkey para continuar.</p>
         <Link href="/auth?sdpInvite=1" className={CTA_CLASS}>
           <Fingerprint className="w-4 h-4 shrink-0 opacity-80" aria-hidden />
           Entrar con passkey
         </Link>
+      </div>
+    );
+  }
+
+  if (step === "done") {
+    return (
+      <div className="max-w-sm mx-auto mt-12 space-y-6 text-center">
+        <h1 className="text-xl font-semibold text-white">{paymentTitle}</h1>
+        <p className="text-sm text-green-300/90">
+          Billetera vinculada. La organización puede iniciar o continuar el desembolso en
+          SozuPay.
+        </p>
+        <Link href="/home" className={CTA_CLASS}>
+          Ir a mi billetera
+        </Link>
+        <DebugPanel debug={debug} />
       </div>
     );
   }
@@ -303,13 +355,12 @@ export function SdpRegisterFlow() {
       <div className="max-w-sm mx-auto mt-12 space-y-6">
         <h1 className="text-xl font-semibold text-white text-center">{paymentTitle}</h1>
         <p className="text-sm text-white/55 text-center">
-          Correo y fecha de nacimiento del lote (formato AAAA-MM-DD).
+          Datos del lote (una sola vez). No los pedimos de nuevo en SDP.
         </p>
-
         <div className="space-y-4">
           <div>
             <label htmlFor="sdp-email" className="block text-sm text-white/70 mb-1">
-              Correo electrónico
+              Correo del beneficiario
             </label>
             <input
               id="sdp-email"
@@ -317,25 +368,9 @@ export function SdpRegisterFlow() {
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="correo@ejemplo.com"
               className={INPUT_CLASS}
             />
           </div>
-          {requiresFullName && (
-            <div>
-              <label htmlFor="sdp-full-name" className="block text-sm text-white/70 mb-1">
-                Nombre completo
-              </label>
-              <input
-                id="sdp-full-name"
-                type="text"
-                autoComplete="name"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                className={INPUT_CLASS}
-              />
-            </div>
-          )}
           <div>
             <label htmlFor="sdp-dob" className="block text-sm text-white/70 mb-1">
               Fecha de nacimiento
@@ -349,7 +384,6 @@ export function SdpRegisterFlow() {
             />
           </div>
         </div>
-
         <button
           type="button"
           onClick={() => void saveContact()}
@@ -358,31 +392,31 @@ export function SdpRegisterFlow() {
         >
           {status === "busy" ? "Guardando…" : "Continuar"}
         </button>
-
-        {error && (
-          <div className="rounded-lg bg-red-950/50 border border-red-800/50 p-3">
-            <p className="text-sm text-red-400">{error}</p>
-          </div>
+        {!hasInviteToken && (
+          <p className="text-xs text-amber-300/90 text-center">
+            Abrí el enlace completo del correo de la organización.
+          </p>
         )}
+        {error && <p className="text-sm text-red-400 text-center">{error}</p>}
       </div>
     );
   }
 
-  return (
-    <div className="max-w-sm mx-auto mt-12 space-y-6">
-      <h1 className="text-xl font-semibold text-white text-center">
-        {status === "done" ? "Redirigiendo…" : paymentTitle}
-      </h1>
-
-      {status !== "done" && (
+  if (step === "passkey") {
+    return (
+      <div className="max-w-sm mx-auto mt-12 space-y-6">
+        <h1 className="text-xl font-semibold text-white text-center">{paymentTitle}</h1>
+        <p className="text-sm text-white/55 text-center">
+          Vinculá tu billetera con passkey para recibir el pago.
+        </p>
         <button
           type="button"
-          onClick={() => void requestFunds()}
+          onClick={() => void linkWalletWithPasskey()}
           disabled={status === "busy"}
           className={CTA_CLASS}
         >
           {status === "busy" ? (
-            "Autenticando…"
+            "Vinculando…"
           ) : (
             <>
               <Fingerprint className="w-4 h-4 shrink-0 opacity-80" aria-hidden />
@@ -390,51 +424,62 @@ export function SdpRegisterFlow() {
             </>
           )}
         </button>
-      )}
+        {status === "busy" && (
+          <p className="text-xs text-white/45 text-center">
+            Firmá con huella, rostro o PIN.
+          </p>
+        )}
+        <DebugPanel debug={debug} />
+        {error && <p className="text-sm text-red-400 text-center">{error}</p>}
+      </div>
+    );
+  }
 
-      {status === "busy" && (
-        <p className="text-xs text-white/45 text-center">
-          Confirmá con huella, rostro o PIN del dispositivo.
+  // step === "otp"
+  return (
+    <div className="max-w-sm mx-auto mt-12 space-y-6">
+      <h1 className="text-xl font-semibold text-white text-center">{paymentTitle}</h1>
+      <p className="text-sm text-white/55 text-center">
+        Código enviado a <span className="text-white/80">{email || "tu correo"}</span>
+      </p>
+      {isTestnet && (
+        <p className="text-xs text-orange-200/80 text-center">
+          Testnet: probá OTP <span className="font-mono">000000</span>
         </p>
       )}
-
-      {!hasInviteToken && (status === "idle" || status === "error") && (
-        <p className="text-xs text-amber-300/90 text-center">
-          Abrí de nuevo el enlace completo del correo de la organización.
-        </p>
-      )}
-
-      {(status === "idle" || status === "error") && (
-        <div className="space-y-1 text-xs text-white/45 text-center">
-          <p>En SDP: mismo correo, código OTP, y la misma fecha de nacimiento.</p>
-          {sdpDobHint && (
-            <p>
-              Fecha para SDP: <span className="text-white/75 font-mono">{sdpDobHint}</span>
-            </p>
-          )}
-        </div>
-      )}
-
-      {error && (
-        <div className="rounded-lg bg-red-950/50 border border-red-800/50 p-3">
-          <p className="text-sm text-red-400">{error}</p>
-          {error.includes("billetera") || error.includes("passkey") ? (
-            <button
-              type="button"
-              className="text-xs text-red-300 underline mt-1 block"
-              onClick={() => {
-                void (async () => {
-                  const { clearClientSession } = await import("@/lib/storage/clear-session");
-                  clearClientSession();
-                  window.location.href = "/auth?sdpInvite=1";
-                })();
-              }}
-            >
-              Cerrar sesión e intentar de nuevo
-            </button>
-          ) : null}
-        </div>
-      )}
+      <div>
+        <label htmlFor="sdp-otp" className="block text-sm text-white/70 mb-1">
+          Código OTP
+        </label>
+        <input
+          id="sdp-otp"
+          type="text"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          maxLength={6}
+          value={otp}
+          onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+          className={INPUT_CLASS}
+        />
+      </div>
+      <button
+        type="button"
+        onClick={() => void verifyOtp()}
+        disabled={status === "busy"}
+        className={CTA_CLASS}
+      >
+        {status === "busy" ? "Verificando…" : "Confirmar registro"}
+      </button>
+      <button
+        type="button"
+        onClick={() => void sendOtp()}
+        disabled={status === "busy"}
+        className="text-sm text-white/50 underline w-full text-center"
+      >
+        {otpSent ? "Reenviar código" : "Enviar código"}
+      </button>
+      <DebugPanel debug={debug} />
+      {error && <p className="text-sm text-red-400 text-center">{error}</p>}
     </div>
   );
 }
