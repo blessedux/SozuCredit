@@ -9,35 +9,20 @@
  *   SDP_API_URL, SDP_ADMIN_EMAIL, SDP_ADMIN_PASSWORD, SDP_TENANT_NAME (optional)
  */
 
-import { readFileSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import {
+  getSdpAdminConfig,
+  loadMergedSdpEnv,
+  sdpAdminLogin,
+  sdpPasswordPolicyIssues,
+} from "./lib/sdp-env.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
 const dashboardEnv = join(root, "..", "SozuPay_dashboard", ".env.local");
 
-function loadEnvFile(path) {
-  if (!existsSync(path)) return;
-  for (const line of readFileSync(path, "utf8").split("\n")) {
-    const t = line.trim();
-    if (!t || t.startsWith("#")) continue;
-    const i = t.indexOf("=");
-    if (i < 0) continue;
-    const k = t.slice(0, i).trim();
-    let v = t.slice(i + 1).trim();
-    if (
-      (v.startsWith('"') && v.endsWith('"')) ||
-      (v.startsWith("'") && v.endsWith("'"))
-    ) {
-      v = v.slice(1, -1);
-    }
-    if (process.env[k] === undefined) process.env[k] = v;
-  }
-}
-
-loadEnvFile(join(root, ".env.local"));
-loadEnvFile(dashboardEnv);
+const { merged } = loadMergedSdpEnv(join(root, ".env.local"), dashboardEnv);
 
 const emailArg = process.argv[2]?.trim().toLowerCase();
 if (!emailArg) {
@@ -45,29 +30,33 @@ if (!emailArg) {
   process.exit(1);
 }
 
-const apiUrl = (process.env.SDP_API_URL ?? "").replace(/\/$/, "");
-const adminEmail = process.env.SDP_ADMIN_EMAIL?.trim() ?? "";
-const adminPassword = process.env.SDP_ADMIN_PASSWORD?.trim() ?? "";
-const tenant = process.env.SDP_TENANT_NAME?.trim() ?? "";
+const config = getSdpAdminConfig(merged);
 
-if (!apiUrl || !adminEmail || !adminPassword || adminPassword.startsWith("TODO")) {
+if (!config.apiUrl || !config.adminEmail || !config.adminPassword) {
   console.error(
     "Set SDP_API_URL, SDP_ADMIN_EMAIL, SDP_ADMIN_PASSWORD (real password, not TODO) in .env.local"
   );
   process.exit(1);
 }
 
+const policyIssues = sdpPasswordPolicyIssues(config.adminPassword);
 console.error(
-  `[env] api=${apiUrl} tenant=${tenant || "(none)"} email=${adminEmail} password_len=${adminPassword.length} sources=SozuCredit+.env.local then SozuPay_dashboard/.env.local`
+  `[env] api=${config.apiUrl} tenant=${config.tenantName} email=${config.adminEmail} password_len=${config.adminPassword.length} policy_ok=${policyIssues.length === 0}`
 );
+if (policyIssues.length) {
+  console.error(
+    `[warn] SDP_ADMIN_PASSWORD fails SDP policy (${policyIssues.join(", ")}). ` +
+      "A random string in .env alone does not update SDP — use forgot-password or SDP UI, then sync .env."
+  );
+}
 
 async function sdpFetch(path, token) {
   const headers = {
     Accept: "application/json",
     Authorization: `Bearer ${token}`,
+    "SDP-Tenant-Name": config.tenantName,
   };
-  if (tenant) headers["SDP-Tenant-Name"] = tenant;
-  const res = await fetch(`${apiUrl}${path}`, { headers });
+  const res = await fetch(`${config.apiUrl}${path}`, { headers });
   const text = await res.text();
   let data;
   try {
@@ -80,20 +69,23 @@ async function sdpFetch(path, token) {
 }
 
 async function login() {
-  const headers = { "Content-Type": "application/json", Accept: "application/json" };
-  if (tenant) headers["SDP-Tenant-Name"] = tenant;
-  const res = await fetch(`${apiUrl}/login`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ email: adminEmail, password: adminPassword }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
+  const { res, data } = await sdpAdminLogin(config);
+  if (res.ok && data.token) return data.token;
+  if (res.ok && data.message?.includes("MFA")) {
     throw new Error(
-      `Login failed (HTTP ${res.status}): ${JSON.stringify(data)}. Use the same password as SDP admin UI / SozuPay Vercel env (not TODO_).`
+      `Login requires MFA (${data.message}). Complete MFA in SDP UI, or disable MFA for this user on Railway.`
     );
   }
-  return data.token;
+  if (!res.ok) {
+    const hint =
+      policyIssues.length > 0
+        ? " Password in .env may never have been accepted by SDP (policy). Run: node scripts/sdp-forgot-password.mjs"
+        : " Password in .env does not match SDP database. Run forgot-password or reset in SDP UI, then copy the same password into .env.";
+    throw new Error(
+      `Login failed (HTTP ${res.status}): ${JSON.stringify(data)}.${hint}`
+    );
+  }
+  throw new Error(`Login OK but no token: ${JSON.stringify(data)}`);
 }
 
 function dobFromReceiver(r) {
