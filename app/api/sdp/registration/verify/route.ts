@@ -20,6 +20,10 @@ function mapSdpVerifyError(params: {
   verificationField: string;
   verificationSent?: string | null;
   inviteExpectedDob?: string | null;
+  batchLookupNote?: string | null;
+  sep24Linked?: boolean | null;
+  receiverWalletStatus?: string | null;
+  disbursementStatus?: string | null;
 }): { error: string; hint: string } {
   const field = normalizeVerificationField(params.verificationField);
   const label = verificationFieldLabel(field);
@@ -66,17 +70,31 @@ function mapSdpVerifyError(params: {
     params.sdpError.includes(SDP_NOT_FOUND) ||
     /could not be found/i.test(params.sdpError)
   ) {
+    if (
+      field === "DATE_OF_BIRTH" &&
+      params.receiverWalletStatus?.toUpperCase() === "DRAFT"
+    ) {
+      return {
+        error: "El lote aún no está iniciado en SDP (wallet del beneficiario en DRAFT).",
+        hint:
+          "En SozuPay, abrí el lote y habilitá Hotlink o iniciá pagos con passkey (STARTED). SDP solo permite registrar beneficiarios cuando el wallet pasa de DRAFT → READY. Después reenviá el invite y pedí OTP nuevo en SozuCredit.",
+      };
+    }
     if (field === "DATE_OF_BIRTH") {
       const sentIso =
         params.verificationSent &&
         /^\d{4}-\d{2}-\d{2}$/.test(params.verificationSent);
       return {
         error: sentIso
-          ? `SDP rechazó la fecha ${params.verificationSent} aunque la ingresaste en formato correcto.`
+          ? params.inviteExpectedDob === params.verificationSent
+            ? `SDP no aceptó la verificación (${params.verificationSent}).`
+            : `SDP rechazó la fecha ${params.verificationSent}.`
           : "La fecha de nacimiento no coincide con la del lote en SozuPay.",
         hint: sentIso
           ? params.inviteExpectedDob === params.verificationSent
-            ? `SozuCredit y el enlace del lote coinciden en ${params.verificationSent}, pero SDP rechazó el hash. Suele ser: (1) otro registro de verificación más reciente para el mismo correo, (2) verificación DATE_OF_BIRTH ausente en el receiver que SDP usa al verificar, o (3) fecha confirmada en un registro anterior que no se puede cambiar sin un correo nuevo. Revisá batch_lookup en Debug SDP (requiere credenciales admin en SozuCredit).`
+            ? params.sep24Linked === false
+              ? `La DOB ${params.verificationSent} coincide con el enlace del lote. SDP guarda la fecha como hash (el admin API la muestra vacía aunque esté bien). Tu sesión SEP-24 aún no está vinculada al wallet del lote — es normal antes de terminar. Pedí un OTP nuevo, usá el último código en cuanto llegue (~5 min) y reintentá.`
+              : `La DOB ${params.verificationSent} coincide con el enlace del lote. Si SDP sigue con 400_2, pedí OTP nuevo (vence en ~5 min) o abrí un enlace de invitación recién enviado. ${params.batchLookupNote ? `Debug: ${params.batchLookupNote}` : ""}`.trim()
             : `SozuCredit ya envió ${params.verificationSent} a SDP. Si el lote tiene otra fecha (revisá la columna DOB en SozuPay), usá esa exacta. También puede haber otro lote con el mismo correo. Pedí OTP nuevo después de corregir el lote.`
           : "Debe ser exactamente AAAA-MM-DD como en la columna «verification» del CSV (ej. 1997-08-05). Confirmá con la organización si no estás seguro. Pedí un OTP nuevo si pasaron más de 5 minutos.",
       };
@@ -247,15 +265,6 @@ export async function POST(request: Request) {
   );
 
   if (!result.ok) {
-    const mapped = mapSdpVerifyError({
-      sdpError: result.error,
-      sdpErrorCode: "sdpErrorCode" in result ? result.sdpErrorCode : undefined,
-      sdpExtrasCodes: "sdpExtrasCodes" in result ? result.sdpExtrasCodes : undefined,
-      verificationField,
-      verificationSent: verificationValue,
-      inviteExpectedDob: inviteExpected ?? null,
-    });
-
     let batchLookup: Awaited<ReturnType<typeof lookupReceiverVerificationByEmail>> | null =
       null;
     try {
@@ -271,10 +280,36 @@ export async function POST(request: Request) {
       );
     }
 
+    const mapped = mapSdpVerifyError({
+      sdpError: result.error,
+      sdpErrorCode: "sdpErrorCode" in result ? result.sdpErrorCode : undefined,
+      sdpExtrasCodes: "sdpExtrasCodes" in result ? result.sdpExtrasCodes : undefined,
+      verificationField,
+      verificationSent: verificationValue,
+      inviteExpectedDob: inviteExpected ?? null,
+      batchLookupNote:
+        batchLookup && "sdpVerifyNote" in batchLookup ? batchLookup.sdpVerifyNote : null,
+      sep24Linked:
+        batchLookup && "hits" in batchLookup
+          ? batchLookup.transactionHit?.sep24Linked ??
+            batchLookup.hits?.[0]?.sep24Linked ??
+            null
+          : null,
+      receiverWalletStatus:
+        batchLookup && "hits" in batchLookup
+          ? batchLookup.hits?.[0]?.walletStatus ?? null
+          : null,
+      disbursementStatus:
+        batchLookup && "hits" in batchLookup
+          ? batchLookup.hits?.[0]?.disbursementStatus ?? null
+          : null,
+    });
+
     sdpDebugLog(
       "registration/verify/route.ts:verify-failed",
       "verify failed with batch context",
       {
+        runId: "post-fix",
         emailMasked: maskEmail(session.email),
         verificationSent: verificationValue,
         tenantName: session.tenantName || null,
@@ -285,10 +320,21 @@ export async function POST(request: Request) {
         batchUniqueDobs:
           batchLookup && "uniqueDobs" in batchLookup ? batchLookup.uniqueDobs : null,
         inviteExpectedDob: inviteExpected ?? null,
+        sep24Linked:
+          batchLookup && "hits" in batchLookup
+            ? batchLookup.hits?.[0]?.sep24Linked ?? null
+            : null,
+        batchLookupNote:
+          batchLookup && "sdpVerifyNote" in batchLookup ? batchLookup.sdpVerifyNote : null,
         candidatesTried:
           "candidatesTried" in result ? result.candidatesTried : null,
+        sepErrorCode: "sdpErrorCode" in result ? result.sdpErrorCode : null,
+        receiverWalletStatus:
+          batchLookup && "hits" in batchLookup
+            ? batchLookup.hits?.[0]?.walletStatus ?? null
+            : null,
       },
-      "A"
+      "H3"
     );
 
     return NextResponse.json(
@@ -324,7 +370,9 @@ export async function POST(request: Request) {
                     disbursementStatus: h.disbursementStatus,
                     verificationDob: h.verificationDob,
                     receiverId: h.receiverId,
+                    walletStatus: h.walletStatus,
                     sep24TransactionId: h.sep24TransactionId,
+                    sep24Linked: h.sep24Linked,
                     matchesCurrentTx: h.matchesCurrentTx,
                   })),
                   note: batchLookup.sdpVerifyNote,

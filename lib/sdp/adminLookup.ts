@@ -10,6 +10,7 @@ type ReceiverHit = {
   walletStatus?: string;
   sep24TransactionId?: string | null;
   matchesCurrentTx?: boolean;
+  sep24Linked?: boolean;
 };
 
 function readSdpAdminEnv() {
@@ -137,6 +138,7 @@ export async function lookupReceiverVerificationByEmail(
         walletStatus: r.receiver_wallet?.status,
         sep24TransactionId: sep24Tx,
         matchesCurrentTx: Boolean(txId && sep24Tx && sep24Tx === txId),
+        sep24Linked: Boolean(sep24Tx?.trim()),
       });
     }
   }
@@ -161,9 +163,13 @@ export async function lookupReceiverVerificationByEmail(
         : duplicateEmail
           ? "SDP verify picks receivers[0] from GetByContacts(email), while OTP uses GetLatestByContactInfo — multiple batch rows for the same email can desync hashes."
           : txId && !transactionHit
-            ? `No receiver_wallet linked to tx_id ${txId}. SEP-24 session may not match this batch row.`
+            ? hits.length === 1 && hits[0]!.walletStatus?.toUpperCase() === "DRAFT"
+              ? `Receiver wallet is DRAFT — start the batch in SozuPay (Hotlink or Start payments) before beneficiaries can verify. Batch status: ${hits[0]!.disbursementStatus}.`
+              : hits.length === 1 && !hits[0]!.sep24Linked
+                ? `SEP-24 tx ${txId} not linked on receiver_wallet yet (normal before registration completes). Verify uses email+OTP+DOB — request a fresh OTP and retry immediately.`
+                : `No receiver_wallet linked to tx_id ${txId}. SEP-24 session may not match this batch row.`
             : hits.length === 1 && hits[0]!.verificationDob.includes("empty")
-              ? "DOB not returned in admin API (hashed). SozuPay uploaded DOB is the source of truth for what you sent."
-              : "If invite_bd matches verification_sent and SDP still fails, the bcrypt hash on the receiver SDP uses at verify does not match — try a fresh email alias.",
+              ? "DOB not returned in admin API (bcrypt hash only). Empty here does NOT mean blank upload — confirm DOB in SozuPay batch column or re-save DOB on the beneficiary."
+              : "If invite_bd matches verification_sent and SDP still fails, request a fresh OTP (expires ~5 min) or try a new invite link.",
   };
 }
