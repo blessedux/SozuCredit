@@ -15,3 +15,32 @@ export function resolveSep10StellarAccount(wallet: {
 
   return null;
 }
+
+/**
+ * SEP-24 deposit registration should target where funds are received.
+ * Passkey smart wallets hold USDC on C…; SEP-10 still uses the G signer separately.
+ */
+export function resolveSep24DepositAccount(wallet: {
+  publicKey: string;
+  signerPublicKey?: string | null;
+}): string | null {
+  const pk = wallet.publicKey.trim().toUpperCase();
+  if (pk.startsWith("C") && pk.length === 56) return pk;
+  return resolveSep10StellarAccount(wallet);
+}
+
+/**
+ * Account sent to SEP-24 interactive deposit. Must match the SEP-10 JWT subject or SDP
+ * OTP / verification returns 400 ("could not be found"). Default: G signer (stellarAccount).
+ * Set SDP_SEP24_REGISTRATION_ACCOUNT=contract only when SDP issues JWT for the C account.
+ */
+export function resolveSep24RegistrationAccount(params: {
+  stellarAccount: string;
+  depositAccount: string;
+}): string {
+  const mode = process.env.SDP_SEP24_REGISTRATION_ACCOUNT?.trim().toLowerCase();
+  if (mode === "contract" || mode === "smart" || mode === "c") {
+    return params.depositAccount;
+  }
+  return params.stellarAccount;
+}

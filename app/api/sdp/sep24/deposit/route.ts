@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSdpApiContext } from "@/lib/sdp/sdpApiContext";
 import { getSdpSep10JwtCookie } from "@/lib/sdp/jwtCookie";
 import { parseSdpAssetParam } from "@/lib/sdp/assetParam";
+import { resolveSep24RegistrationAccount } from "@/lib/sdp/resolveSep10Account";
 import { postSep24DepositInteractive, augmentSdpInteractiveUrl } from "@/lib/sdp/sep24Server";
 
 export async function POST() {
@@ -18,7 +19,11 @@ export async function POST() {
     );
   }
 
-  const { invite, stellarAccount, tenantName } = ctx;
+  const { invite, stellarAccount, depositAccount, tenantName } = ctx;
+  const sep24Account = resolveSep24RegistrationAccount({
+    stellarAccount,
+    depositAccount,
+  });
   const { code, issuer } = parseSdpAssetParam(invite.asset);
 
   if (!tenantName) {
@@ -39,7 +44,7 @@ export async function POST() {
   const res = await postSep24DepositInteractive({
     sep24Base: invite.sep24Base,
     jwt,
-    account: stellarAccount,
+    account: sep24Account,
     assetCode: code,
     assetIssuer: issuer,
     tenantName,
@@ -52,7 +57,13 @@ export async function POST() {
   }
 
   return NextResponse.json({
-    url: augmentSdpInteractiveUrl(res.url, { tenantName, lang: "es" }),
+    url: augmentSdpInteractiveUrl(res.url, {
+      tenantName,
+      lang: "es",
+      token: invite.token,
+    }),
     id: res.id ?? null,
+    sep24Account,
+    depositAccount,
   });
 }

@@ -37,16 +37,28 @@ export function namesMatch(expected: string, provided: string): boolean {
   return nameToSlug(provided) === e.replace(/\s+/g, "_") || nameToSlug(expected) === p.replace(/\s+/g, "_");
 }
 
+function normalizeEmail(input: string): string {
+  return input.trim().toLowerCase();
+}
+
 export function verifyBeneficiaryIdentity(params: {
   expectedFullName?: string;
   expectedDateOfBirth?: string;
+  expectedEmail?: string;
   providedFullName: string;
   providedDateOfBirth: string;
+  providedEmail?: string;
 }): { ok: true } | { ok: false; error: string } {
-  const { expectedFullName, expectedDateOfBirth, providedFullName, providedDateOfBirth } =
-    params;
+  const {
+    expectedFullName,
+    expectedDateOfBirth,
+    expectedEmail,
+    providedFullName,
+    providedDateOfBirth,
+    providedEmail,
+  } = params;
 
-  if (!expectedFullName && !expectedDateOfBirth) {
+  if (!expectedFullName && !expectedDateOfBirth && !expectedEmail) {
     return { ok: true };
   }
 
@@ -67,6 +79,23 @@ export function verifyBeneficiaryIdentity(params: {
       return {
         ok: false,
         error: "La fecha de nacimiento no coincide con la registrada para este pago.",
+      };
+    }
+  }
+
+  if (expectedEmail) {
+    const expectedNorm = normalizeEmail(expectedEmail);
+    const providedNorm = providedEmail ? normalizeEmail(providedEmail) : "";
+    if (!providedNorm) {
+      return {
+        ok: false,
+        error: "Ingresá el mismo correo que la organización registró para este beneficiario.",
+      };
+    }
+    if (expectedNorm !== providedNorm) {
+      return {
+        ok: false,
+        error: "El correo no coincide con el registrado para este pago.",
       };
     }
   }

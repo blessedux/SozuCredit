@@ -36,9 +36,14 @@ export function SdpRegisterFlow() {
   const [expectedDobHint, setExpectedDobHint] = useState<string | null>(null);
   const [isTestnet, setIsTestnet] = useState(false);
   const [requiresIdentity, setRequiresIdentity] = useState(false);
+  const [requiresFullName, setRequiresFullName] = useState(false);
+  const [requiresDateOfBirth, setRequiresDateOfBirth] = useState(false);
+  const [requiresEmail, setRequiresEmail] = useState(false);
+  const [hasInviteToken, setHasInviteToken] = useState(true);
   const [step, setStep] = useState<Step>("identity");
   const [fullName, setFullName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
+  const [email, setEmail] = useState("");
   const [identityVerified, setIdentityVerified] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +68,10 @@ export function SdpRegisterFlow() {
         const d = (await res.json().catch(() => ({}))) as {
           organizationName?: string;
           requiresIdentityVerification?: boolean;
+          requiresFullName?: boolean;
+          requiresDateOfBirth?: boolean;
+          requiresEmail?: boolean;
+          hasInviteToken?: boolean;
           expectedEmailHint?: string | null;
           expectedDateOfBirthHint?: string | null;
           isTestnet?: boolean;
@@ -71,6 +80,10 @@ export function SdpRegisterFlow() {
         setExpectedEmailHint(d.expectedEmailHint ?? null);
         setExpectedDobHint(d.expectedDateOfBirthHint ?? null);
         setIsTestnet(Boolean(d.isTestnet));
+        setRequiresFullName(Boolean(d.requiresFullName));
+        setRequiresDateOfBirth(Boolean(d.requiresDateOfBirth));
+        setRequiresEmail(Boolean(d.requiresEmail));
+        setHasInviteToken(d.hasInviteToken !== false);
         const needsIdentity = Boolean(d.requiresIdentityVerification);
         setRequiresIdentity(needsIdentity);
         setStep(needsIdentity ? "identity" : "funds");
@@ -99,8 +112,16 @@ export function SdpRegisterFlow() {
 
   const verifyIdentity = async () => {
     setError(null);
-    if (!fullName.trim() || !dateOfBirth.trim()) {
-      setError("Completá tu nombre completo y fecha de nacimiento.");
+    if (requiresFullName && !fullName.trim()) {
+      setError("Ingresá tu nombre completo.");
+      return;
+    }
+    if (requiresDateOfBirth && !dateOfBirth.trim()) {
+      setError("Ingresá tu fecha de nacimiento.");
+      return;
+    }
+    if (requiresEmail && !email.trim()) {
+      setError("Ingresá el correo que la organización registró para este beneficiario.");
       return;
     }
 
@@ -113,6 +134,7 @@ export function SdpRegisterFlow() {
         body: JSON.stringify({
           full_name: fullName.trim(),
           date_of_birth: dateOfBirth.trim(),
+          ...(email.trim() ? { email: email.trim() } : {}),
         }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -310,37 +332,68 @@ export function SdpRegisterFlow() {
             </p>
           )}
           <p className="text-xs text-white/45 text-center pt-1">
-            Ingresá los mismos datos que la organización registró para este beneficiario.
+            Usá los mismos datos del lote de la organización. En la pantalla de SDP después
+            vas a repetir correo y fecha de nacimiento (no confundas el código OTP con la fecha).
           </p>
         </div>
 
         <div className="space-y-4">
-          <div>
-            <label htmlFor="sdp-full-name" className="block text-sm text-white/70 mb-1">
-              Nombre completo
-            </label>
-            <input
-              id="sdp-full-name"
-              type="text"
-              autoComplete="name"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="Ej. María García"
-              className={INPUT_CLASS}
-            />
-          </div>
-          <div>
-            <label htmlFor="sdp-dob" className="block text-sm text-white/70 mb-1">
-              Fecha de nacimiento
-            </label>
-            <input
-              id="sdp-dob"
-              type="date"
-              value={dateOfBirth}
-              onChange={(e) => setDateOfBirth(e.target.value)}
-              className={INPUT_CLASS}
-            />
-          </div>
+          {requiresEmail && (
+            <div>
+              <label htmlFor="sdp-email" className="block text-sm text-white/70 mb-1">
+                Correo electrónico
+              </label>
+              <input
+                id="sdp-email"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder={expectedEmailHint ?? "correo@ejemplo.com"}
+                className={INPUT_CLASS}
+              />
+              {expectedEmailHint && (
+                <p className="text-xs text-white/40 mt-1">
+                  Debe coincidir con el del lote: {expectedEmailHint}
+                </p>
+              )}
+            </div>
+          )}
+          {requiresFullName && (
+            <div>
+              <label htmlFor="sdp-full-name" className="block text-sm text-white/70 mb-1">
+                Nombre completo
+              </label>
+              <input
+                id="sdp-full-name"
+                type="text"
+                autoComplete="name"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Ej. María García"
+                className={INPUT_CLASS}
+              />
+            </div>
+          )}
+          {requiresDateOfBirth && (
+            <div>
+              <label htmlFor="sdp-dob" className="block text-sm text-white/70 mb-1">
+                Fecha de nacimiento
+              </label>
+              <input
+                id="sdp-dob"
+                type="date"
+                value={dateOfBirth}
+                onChange={(e) => setDateOfBirth(e.target.value)}
+                className={INPUT_CLASS}
+              />
+              {expectedDobHint && (
+                <p className="text-xs text-white/40 mt-1">
+                  Mismo formato que en SDP: {expectedDobHint}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         <button
@@ -408,30 +461,36 @@ export function SdpRegisterFlow() {
         </p>
       )}
 
+      {!hasInviteToken && (status === "idle" || status === "error") && (
+        <p className="text-xs text-amber-300/90 text-center">
+          Este enlace no incluye el token del beneficiario. Abrí de nuevo el enlace del correo de
+          la organización (no solo /sdp/register).
+        </p>
+      )}
+
       {(status === "idle" || status === "error") && (
         <div className="space-y-2 text-xs text-white/45 text-center">
           <p>Firmá con passkey para autorizar la recepción del pago en tu billetera Sozu.</p>
           <p className="text-white/35">
-            Después de firmar, te redirigimos al operador de pagos (SDP) para completar el
-            registro. Ahí podés pedir verificación por correo — es un paso aparte de Sozu, no
-            el login de esta pantalla.
+            En SDP hay dos pasos distintos: (1) código OTP al correo del lote, (2) fecha de
+            nacimiento o PIN de verificación — no uses el OTP en el campo de fecha.
           </p>
-          {expectedDobHint && (
-            <p>
-              Fecha de nacimiento esperada:{" "}
-              <span className="text-white/70">{expectedDobHint}</span>
-            </p>
-          )}
           {expectedEmailHint && (
             <p>
-              Si SDP pide correo, debería coincidir con:{" "}
+              Correo del lote (usalo en SDP):{" "}
               <span className="text-white/70">{expectedEmailHint}</span>
+            </p>
+          )}
+          {expectedDobHint && (
+            <p>
+              Fecha de nacimiento del lote (campo aparte del OTP):{" "}
+              <span className="text-white/70">{expectedDobHint}</span>
             </p>
           )}
           {isTestnet && (
             <p className="text-orange-200/70">
-              Testnet (solo en la pantalla de SDP, después de firmar): si no llega el código por
-              correo, probá <span className="font-mono text-white/80">000000</span>.
+              Testnet en SDP: si no llega el OTP por correo, probá{" "}
+              <span className="font-mono text-white/80">000000</span>.
             </p>
           )}
         </div>

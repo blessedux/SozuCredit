@@ -8,7 +8,7 @@ import {
   SDP_INVITE_COOKIE_NAME,
   type SdpInvitePayload,
 } from "./invitePayload";
-import { resolveSep10StellarAccount } from "./resolveSep10Account";
+import { resolveSep10StellarAccount, resolveSep24DepositAccount } from "./resolveSep10Account";
 
 export type SdpApiContext =
   | {
@@ -16,7 +16,10 @@ export type SdpApiContext =
       invite: SdpInvitePayload;
       clientDomain: string;
       clientSigningSecret: string;
+      /** G… used for SEP-10 challenge + signing */
       stellarAccount: string;
+      /** C… or G… registered with SDP SEP-24 (where disbursement is sent) */
+      depositAccount: string;
       userId: string;
       /** SDP-Tenant-Name header value — required for multi-tenant SDP */
       tenantName: string;
@@ -81,6 +84,7 @@ export async function getSdpApiContext(): Promise<SdpApiContext> {
   // preserved because SEP-10 requires the user to sign a challenge with the
   // matching private key — a fake key would fail token exchange.
   let stellarAccount: string | null = null;
+  const headerKey = hdrs.get("x-stellar-public-key")?.trim().toUpperCase() ?? null;
 
   if (headerSep10Signer?.startsWith("G") && headerSep10Signer.length === 56) {
     stellarAccount = headerSep10Signer;
@@ -92,7 +96,6 @@ export async function getSdpApiContext(): Promise<SdpApiContext> {
   }
 
   if (!stellarAccount) {
-    const headerKey = hdrs.get("x-stellar-public-key")?.trim().toUpperCase() ?? null;
     if (headerKey?.startsWith("G") && headerKey.length === 56) {
       stellarAccount = headerKey;
     }
@@ -110,6 +113,11 @@ export async function getSdpApiContext(): Promise<SdpApiContext> {
     };
   }
 
+  const depositAccount =
+    (wallet ? resolveSep24DepositAccount(wallet) : null) ??
+    (headerKey?.startsWith("C") && headerKey.length === 56 ? headerKey : null) ??
+    stellarAccount;
+
   // SDP multi-tenant header: prefer value from invite cookie, then env var
   const tenantName =
     invite.tenantName?.trim() ||
@@ -122,6 +130,7 @@ export async function getSdpApiContext(): Promise<SdpApiContext> {
     clientDomain,
     clientSigningSecret,
     stellarAccount,
+    depositAccount,
     userId,
     tenantName,
   };

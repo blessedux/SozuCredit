@@ -20,6 +20,10 @@ export type SdpInvitePayload = {
   expectedFullName?: string;
   /** Expected DOB YYYY-MM-DD from NGO batch verification column */
   expectedDateOfBirth?: string;
+  /** Confirmed on Sozu before SEP-24 (optional, set by verify-identity) */
+  verifiedFullName?: string;
+  verifiedDateOfBirth?: string;
+  verifiedEmail?: string;
   /** Epoch seconds */
   exp: number;
 };
@@ -95,6 +99,18 @@ export function parseInviteCookie(
       data.expectedDateOfBirth !== undefined &&
       typeof data.expectedDateOfBirth !== "string"
     ) {
+      return null;
+    }
+    if (data.verifiedFullName !== undefined && typeof data.verifiedFullName !== "string") {
+      return null;
+    }
+    if (
+      data.verifiedDateOfBirth !== undefined &&
+      typeof data.verifiedDateOfBirth !== "string"
+    ) {
+      return null;
+    }
+    if (data.verifiedEmail !== undefined && typeof data.verifiedEmail !== "string") {
       return null;
     }
     if (data.exp < Math.floor(Date.now() / 1000)) {

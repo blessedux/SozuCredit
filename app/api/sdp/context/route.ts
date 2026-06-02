@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { parseInviteCookie, SDP_INVITE_COOKIE_NAME } from "@/lib/sdp/invitePayload";
+import { normalizeDateOfBirth } from "@/lib/sdp/beneficiaryIdentity";
 
 /**
  * GET /api/sdp/context
@@ -19,7 +20,9 @@ export async function GET() {
   }
 
   const requiresIdentityVerification = Boolean(
-    payload.expectedFullName || payload.expectedDateOfBirth
+    payload.expectedFullName ||
+      payload.expectedDateOfBirth ||
+      payload.expectedBeneficiaryEmail
   );
 
   const maskEmail = (email: string) => {
@@ -33,10 +36,17 @@ export async function GET() {
     asset: payload.asset,
     sdpHost: payload.sdpHost,
     requiresIdentityVerification,
+    hasInviteToken: Boolean(payload.token?.trim()),
+    requiresFullName: Boolean(payload.expectedFullName?.trim()),
+    requiresDateOfBirth: Boolean(payload.expectedDateOfBirth?.trim()),
+    requiresEmail: Boolean(payload.expectedBeneficiaryEmail?.trim()),
     expectedEmailHint: payload.expectedBeneficiaryEmail
       ? maskEmail(payload.expectedBeneficiaryEmail.trim())
       : null,
-    expectedDateOfBirthHint: payload.expectedDateOfBirth?.trim() || null,
+    expectedDateOfBirthHint:
+      normalizeDateOfBirth(payload.expectedDateOfBirth?.trim() ?? "") ||
+      payload.expectedDateOfBirth?.trim() ||
+      null,
     isTestnet:
       process.env.STELLAR_NETWORK !== "public" &&
       process.env.NEXT_PUBLIC_STELLAR_NETWORK !== "public",
