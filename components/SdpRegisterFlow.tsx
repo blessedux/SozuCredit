@@ -8,6 +8,7 @@ import {
   loadClientWalletSession,
   persistClientWalletSession,
 } from "@/lib/client-wallet-session";
+import { clearClientSession } from "@/lib/storage/clear-session";
 import { getSep10ClientAccountId } from "@/lib/sdp/sep10ClientAccount";
 import { decodeSdpOrganizationName } from "@/lib/sdp/displayName";
 
@@ -56,6 +57,24 @@ function DobIsoInput({
       ) : null}
     </div>
   );
+}
+
+function isPasskeyUserCancel(error: unknown): boolean {
+  if (error instanceof DOMException) {
+    return error.name === "NotAllowedError" || error.name === "AbortError";
+  }
+  const msg = error instanceof Error ? error.message : String(error);
+  return (
+    /cancel/i.test(msg) ||
+    /not allowed/i.test(msg) ||
+    /NotAllowedError/i.test(msg) ||
+    /AbortError/i.test(msg)
+  );
+}
+
+function goToAccountPicker(): void {
+  clearClientSession();
+  window.location.href = "/auth?sdpInvite=1&showTag=1";
 }
 
 type Step = "contact" | "passkey" | "otp" | "done";
@@ -173,6 +192,7 @@ export function SdpRegisterFlow() {
   const [walletUserId, setWalletUserId] = useState<string | null>(null);
   const [walletCredentialId, setWalletCredentialId] = useState<string | null>(null);
   const [verificationField, setVerificationField] = useState("DATE_OF_BIRTH");
+  const [showAccountAlternatives, setShowAccountAlternatives] = useState(false);
 
   const paymentTitle = orgPaymentLabel(orgName);
 
@@ -348,6 +368,12 @@ export function SdpRegisterFlow() {
       void loadRegistrationInfo();
       void sendOtp();
     } catch (e) {
+      if (isPasskeyUserCancel(e)) {
+        setShowAccountAlternatives(true);
+        setError(null);
+        setStatus("idle");
+        return;
+      }
       setError(e instanceof Error ? e.message : "Error");
       setStatus("error");
     }
@@ -420,34 +446,6 @@ export function SdpRegisterFlow() {
         verificationField?: string;
         debug?: SdpDebug;
       };
-      // #region agent log
-      if (process.env.NODE_ENV === "development") {
-        fetch("http://127.0.0.1:7454/ingest/aec984e4-6773-4680-98b7-b535bc491a52", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Debug-Session-Id": "d5ebeb",
-        },
-        body: JSON.stringify({
-          sessionId: "d5ebeb",
-          location: "SdpRegisterFlow.tsx:verifyOtp",
-          message: "registration/verify response",
-          data: {
-            httpStatus: res.status,
-            ok: res.ok,
-            verificationSent: data.debug?.verificationSent ?? null,
-            dobSource: data.debug?.dobSource ?? null,
-            inviteExpectedDob: data.debug?.inviteExpectedDob ?? null,
-            verificationField: data.verificationField ?? verificationField,
-            hasDebug: Boolean(data.debug),
-          },
-          hypothesisId: "B",
-          timestamp: Date.now(),
-          runId: "pre-fix",
-        }),
-      }).catch(() => {});
-      }
-      // #endregion
       if (!res.ok) {
         if (data.debug) {
           setDebug((prev) => ({
@@ -509,11 +507,16 @@ export function SdpRegisterFlow() {
     return (
       <div className="max-w-sm mx-auto mt-12 space-y-6 text-center">
         <h1 className="text-xl font-semibold text-white">{paymentTitle}</h1>
-        <p className="text-sm text-white/55">Entrá con passkey para continuar.</p>
+        <p className="text-sm text-white/55">
+          Entrá con passkey o con tu $tag y PIN si ya tenés cuenta Sozu.
+        </p>
         <Link href="/auth?sdpInvite=1" className={CTA_CLASS}>
           <Fingerprint className="w-4 h-4 shrink-0 opacity-80" aria-hidden />
           Entrar con passkey
         </Link>
+        <button type="button" onClick={goToAccountPicker} className={CTA_CLASS}>
+          Usar otra passkey o $tag + PIN
+        </button>
       </div>
     );
   }
@@ -588,21 +591,43 @@ export function SdpRegisterFlow() {
         <p className="text-sm text-white/55 text-center">
           Vinculá tu billetera con passkey para recibir el pago.
         </p>
-        <button
-          type="button"
-          onClick={() => void linkWalletWithPasskey()}
-          disabled={status === "busy"}
-          className={CTA_CLASS}
-        >
-          {status === "busy" ? (
-            "Vinculando…"
-          ) : (
-            <>
+        {!showAccountAlternatives ? (
+          <button
+            type="button"
+            onClick={() => void linkWalletWithPasskey()}
+            disabled={status === "busy"}
+            className={CTA_CLASS}
+          >
+            {status === "busy" ? (
+              "Vinculando…"
+            ) : (
+              <>
+                <Fingerprint className="w-4 h-4 shrink-0 opacity-80" aria-hidden />
+                Confirmar con passkey
+              </>
+            )}
+          </button>
+        ) : (
+          <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4 text-center">
+            <p className="text-sm text-white/70">
+              Cancelaste la passkey. Podés probar otra o entrar con una cuenta Sozu existente.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setShowAccountAlternatives(false);
+                setError(null);
+              }}
+              className={CTA_CLASS}
+            >
               <Fingerprint className="w-4 h-4 shrink-0 opacity-80" aria-hidden />
-              Confirmar con passkey
-            </>
-          )}
-        </button>
+              Reintentar con passkey
+            </button>
+            <button type="button" onClick={goToAccountPicker} className={CTA_CLASS}>
+              Otra passkey o $tag + PIN
+            </button>
+          </div>
+        )}
         {status === "busy" && (
           <p className="text-xs text-white/45 text-center">
             Firmá con huella, rostro o PIN.
@@ -681,6 +706,13 @@ export function SdpRegisterFlow() {
         className="text-sm text-white/50 underline w-full text-center"
       >
         {otpSent ? "Reenviar código" : "Enviar código"}
+      </button>
+      <button
+        type="button"
+        onClick={goToAccountPicker}
+        className="text-sm text-white/45 underline w-full text-center"
+      >
+        Cambiar passkey o cuenta Sozu
       </button>
       <DebugPanel debug={debug} />
       {error && <p className="text-sm text-red-400 text-center">{error}</p>}

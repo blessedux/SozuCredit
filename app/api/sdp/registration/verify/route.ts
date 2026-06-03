@@ -24,6 +24,7 @@ function mapSdpVerifyError(params: {
   sep24Linked?: boolean | null;
   receiverWalletStatus?: string | null;
   disbursementStatus?: string | null;
+  sdpHttpStatus?: number | null;
 }): { error: string; hint: string } {
   const field = normalizeVerificationField(params.verificationField);
   const label = verificationFieldLabel(field);
@@ -117,6 +118,32 @@ function mapSdpVerifyError(params: {
       error: "SDP rechazó la solicitud (validación genérica).",
       hint:
         "Revisá OTP de 6 dígitos (el último recibido) y fecha AAAA-MM-DD. Si persiste, abrí Debug SDP: sdp_error_code y sdp_extras_codes indican OTP vs fecha.",
+    };
+  }
+
+  if (
+    code === "500_0" ||
+    params.sdpHttpStatus === 500 ||
+    /internal error occurred/i.test(params.sdpError)
+  ) {
+    if (params.receiverWalletStatus?.toUpperCase() === "REGISTERED") {
+      return {
+        error: "Este correo ya completó el registro en SDP.",
+        hint:
+          "Entrá con la passkey o $tag de esa cuenta Sozu (tocá «Otra passkey o $tag + PIN»). Si fue un error, la organización debe resetear el receiver en SozuPay.",
+      };
+    }
+    const started =
+      params.disbursementStatus === "STARTED" || params.disbursementStatus === "PAUSED";
+    const dupNote = params.batchLookupNote?.includes("multiple batch rows")
+      ? " Hay más de un lote con este correo en SDP — la org debe usar un correo único o eliminar filas duplicadas."
+      : "";
+    return {
+      error: "SDP tuvo un error interno al completar el registro.",
+      hint:
+        (started
+          ? "Pedí un OTP nuevo y reintentá en cuanto llegue (~5 min). Si ya tenés cuenta Sozu con otra passkey, volvé al paso anterior y tocá «Otra passkey o $tag + PIN»."
+          : "El lote puede no estar iniciado: en SozuPay tocá «Send invites», pedí OTP nuevo y reintentá.") + dupNote,
     };
   }
 
@@ -303,6 +330,7 @@ export async function POST(request: Request) {
         batchLookup && "hits" in batchLookup
           ? batchLookup.hits?.[0]?.disbursementStatus ?? null
           : null,
+      sdpHttpStatus: result.status ?? null,
     });
 
     sdpDebugLog(

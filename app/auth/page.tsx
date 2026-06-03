@@ -25,6 +25,7 @@ import {
   persistAuthIdentitySession,
   persistClientWalletSession,
 } from "@/lib/client-wallet-session"
+import { clearClientSession } from "@/lib/storage/clear-session"
 import { signalBootstrapReady } from "@/lib/app-ready"
 
 function AuthPageContent() {
@@ -54,6 +55,17 @@ function AuthPageContent() {
 
   useEffect(() => {
     if (redirectingRef.current || isAuthenticating || isAuthenticated) return
+
+    const showTagPicker =
+      searchParams.get("showTag") === "1" || searchParams.get("switch") === "1"
+    if (showTagPicker) {
+      clearClientSession()
+      setShowTagModal(true)
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => signalBootstrapReady())
+      })
+      return
+    }
 
     let cancelled = false
     void (async () => {
