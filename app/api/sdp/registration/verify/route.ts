@@ -133,6 +133,16 @@ function mapSdpVerifyError(params: {
           "Entrá con la passkey o $tag de esa cuenta Sozu (tocá «Otra passkey o $tag + PIN»). Si fue un error, la organización debe resetear el receiver en SozuPay.",
       };
     }
+    if (
+      params.receiverWalletStatus?.toUpperCase() === "READY" &&
+      params.sep24Linked === false
+    ) {
+      return {
+        error: "SDP no pudo completar el registro con la sesión actual.",
+        hint:
+          "Volvé al paso «Re-vincular passkey», confirmá con la passkey de esta cuenta, pedí un OTP nuevo e intentá de nuevo en cuanto llegue (~5 min). Si cambiaste de cuenta Sozu, usá «Cambiar passkey o cuenta Sozu» primero.",
+      };
+    }
     const started =
       params.disbursementStatus === "STARTED" || params.disbursementStatus === "PAUSED";
     const dupNote = params.batchLookupNote?.includes("multiple batch rows")

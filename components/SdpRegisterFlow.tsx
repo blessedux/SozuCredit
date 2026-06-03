@@ -74,7 +74,19 @@ function isPasskeyUserCancel(error: unknown): boolean {
 
 function goToAccountPicker(): void {
   clearClientSession();
-  window.location.href = "/auth?sdpInvite=1&showTag=1";
+  void fetch("/api/sdp/reset-wallet-link", {
+    method: "POST",
+    credentials: "include",
+  }).finally(() => {
+    window.location.href = "/auth?sdpInvite=1&showTag=1";
+  });
+}
+
+async function resetWalletLinkSession(): Promise<void> {
+  await fetch("/api/sdp/reset-wallet-link", {
+    method: "POST",
+    credentials: "include",
+  });
 }
 
 type Step = "contact" | "passkey" | "otp" | "done";
@@ -267,6 +279,8 @@ export function SdpRegisterFlow() {
     setError(null);
     setStatus("busy");
     try {
+      await resetWalletLinkSession();
+
       const userId = walletUserId;
       const credentialId = walletCredentialId;
       if (!userId || !credentialId) {
@@ -364,9 +378,11 @@ export function SdpRegisterFlow() {
 
       setDebug(depData.debug ?? null);
       setStep("otp");
-      setStatus("idle");
+      setOtpSent(false);
+      setOtp("");
+      setStatus("busy");
       void loadRegistrationInfo();
-      void sendOtp();
+      await sendOtp();
     } catch (e) {
       if (isPasskeyUserCancel(e)) {
         setShowAccountAlternatives(true);
@@ -713,6 +729,22 @@ export function SdpRegisterFlow() {
         className="text-sm text-white/45 underline w-full text-center"
       >
         Cambiar passkey o cuenta Sozu
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          void (async () => {
+            await resetWalletLinkSession();
+            setStep("passkey");
+            setOtp("");
+            setOtpSent(false);
+            setError(null);
+            setShowAccountAlternatives(false);
+          })();
+        }}
+        className="text-sm text-white/45 underline w-full text-center"
+      >
+        Re-vincular passkey
       </button>
       <DebugPanel debug={debug} />
       {error && <p className="text-sm text-red-400 text-center">{error}</p>}

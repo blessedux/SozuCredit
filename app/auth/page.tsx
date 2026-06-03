@@ -60,6 +60,10 @@ function AuthPageContent() {
       searchParams.get("showTag") === "1" || searchParams.get("switch") === "1"
     if (showTagPicker) {
       clearClientSession()
+      void fetch("/api/sdp/reset-wallet-link", {
+        method: "POST",
+        credentials: "include",
+      })
       setShowTagModal(true)
       requestAnimationFrame(() => {
         requestAnimationFrame(() => signalBootstrapReady())

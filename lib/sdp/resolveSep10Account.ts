@@ -41,5 +41,13 @@ export function resolveSep24RegistrationAccount(params: {
   if (mode === "contract" || mode === "smart" || mode === "c") {
     return params.depositAccount;
   }
+  if (mode === "signer" || mode === "g") {
+    return params.stellarAccount;
+  }
+  // Smart wallets receive disbursements on C…; register that address with SDP by default.
+  const deposit = params.depositAccount.trim().toUpperCase();
+  if (deposit.startsWith("C") && deposit.length === 56) {
+    return deposit;
+  }
   return params.stellarAccount;
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { parseInviteCookie, SDP_INVITE_COOKIE_NAME } from "@/lib/sdp/invitePayload";
 import { decodeSdpOrganizationName } from "@/lib/sdp/displayName";
+import { getSdpSep24JwtCookie } from "@/lib/sdp/jwtCookie";
 
 /**
  * GET /api/sdp/context
@@ -25,7 +26,10 @@ export async function GET() {
   const hasContact = Boolean(
     payload.verifiedEmail?.trim() && payload.verifiedDateOfBirth?.trim()
   );
-  const hasPasskeySession = Boolean(payload.sep24TransactionId?.trim());
+  const sep24Jwt = await getSdpSep24JwtCookie();
+  const hasPasskeySession = Boolean(
+    payload.sep24TransactionId?.trim() && sep24Jwt?.trim()
+  );
   const isComplete = Boolean(payload.registrationCompletedAt);
 
   let step: "contact" | "passkey" | "otp" | "done" = "contact";
