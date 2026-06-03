@@ -77,7 +77,7 @@ function mapSdpVerifyError(params: {
       return {
         error: "El lote aún no está iniciado en SDP (wallet del beneficiario en DRAFT).",
         hint:
-          "En SozuPay, abrí el lote y habilitá Hotlink o iniciá pagos con passkey (STARTED). SDP solo permite registrar beneficiarios cuando el wallet pasa de DRAFT → READY. Después reenviá el invite y pedí OTP nuevo en SozuCredit.",
+          "En SozuPay, abrí el lote y tocá «Send invites» — eso inicia la campaña (STARTED) y abre el registro en SozuCredit. SDP solo permite registrar cuando el wallet pasa de DRAFT → READY. Después pedí OTP nuevo.",
       };
     }
     if (field === "DATE_OF_BIRTH") {

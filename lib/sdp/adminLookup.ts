@@ -164,7 +164,7 @@ export async function lookupReceiverVerificationByEmail(
           ? "SDP verify picks receivers[0] from GetByContacts(email), while OTP uses GetLatestByContactInfo — multiple batch rows for the same email can desync hashes."
           : txId && !transactionHit
             ? hits.length === 1 && hits[0]!.walletStatus?.toUpperCase() === "DRAFT"
-              ? `Receiver wallet is DRAFT — start the batch in SozuPay (Hotlink or Start payments) before beneficiaries can verify. Batch status: ${hits[0]!.disbursementStatus}.`
+              ? `Receiver wallet is DRAFT — send invites in SozuPay to start the campaign (STARTED) before beneficiaries can verify. Batch status: ${hits[0]!.disbursementStatus}.`
               : hits.length === 1 && !hits[0]!.sep24Linked
                 ? `SEP-24 tx ${txId} not linked on receiver_wallet yet (normal before registration completes). Verify uses email+OTP+DOB — request a fresh OTP and retry immediately.`
                 : `No receiver_wallet linked to tx_id ${txId}. SEP-24 session may not match this batch row.`
