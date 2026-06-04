@@ -25,6 +25,7 @@ const MOCK_FX: Record<ReferenceFiat, MockFxEntry> = {
   ARS: { spotRate: 1100, change30dPct: 4.5 }, // high-volatility regime (illustrative)
   BRL: { spotRate: 5.65, change30dPct: 0.6 },
   COP: { spotRate: 4200, change30dPct: 0.8 },
+  USD: { spotRate: 1, change30dPct: 0 },
 }
 
 /**

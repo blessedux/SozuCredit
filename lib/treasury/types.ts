@@ -1,11 +1,12 @@
 /**
  * Treasury Purchasing Power Engine — shared types
  *
- * USDC is canonical state. Reference fiats (CLP, ARS, BRL, COP) are
+ * USDC is canonical state. Reference fiats (CLP, ARS, BRL, COP, USD) are
  * display/context layers only — never source of truth.
  */
 
-export type ReferenceFiat = "CLP" | "ARS" | "BRL" | "COP"
+export const REFERENCE_FIAT_OPTIONS = ["CLP", "ARS", "BRL", "COP", "USD"] as const
+export type ReferenceFiat = (typeof REFERENCE_FIAT_OPTIONS)[number]
 
 export type TreasuryMode = "efficient" | "balanced" | "fast"
 

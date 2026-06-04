@@ -37,6 +37,7 @@ const PurchasingPowerPnlChart = dynamic(
 )
 
 function referenceDisplayValue(balanceUsdc: number, referenceFiat: ReferenceFiat): number {
+  if (referenceFiat === "USD") return balanceUsdc
   const local = balanceUsdc * getFxSpotRate(referenceFiat)
   return referenceFiat === "CLP" || referenceFiat === "ARS" ? Math.round(local) : local
 }

@@ -12,7 +12,8 @@ import {
   Languages,
 } from "lucide-react"
 import { loadTreasuryPrefs, saveTreasuryPrefs } from "@/lib/treasury/prefs-storage"
-import type { TreasuryPrefs, ReferenceFiat, TreasuryMode } from "@/lib/treasury/types"
+import type { TreasuryPrefs, TreasuryMode } from "@/lib/treasury/types"
+import { REFERENCE_FIAT_OPTIONS } from "@/lib/treasury/types"
 import { TREASURY_MODE_CONFIG } from "@/lib/treasury/treasury-modes"
 import { useYieldPrefs } from "@/hooks/use-yield-prefs"
 import { getStrategyCatalog } from "@/lib/defindex/strategy-catalog"
@@ -261,8 +262,8 @@ export default function SettingsPage() {
               <p className="text-xs text-white/45">
                 Este es el monto grande en la tarjeta de saldo. El USDC real queda en la línea pequeña.
               </p>
-              <div className="grid grid-cols-4 gap-2">
-                {(["CLP", "ARS", "BRL", "COP"] as ReferenceFiat[]).map((fiat) => (
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+                {REFERENCE_FIAT_OPTIONS.map((fiat) => (
                   <button
                     key={fiat}
                     type="button"

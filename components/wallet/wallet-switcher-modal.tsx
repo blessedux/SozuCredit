@@ -4,6 +4,7 @@ import { useCallback, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Check, Copy, LogOut, Plus, X } from "lucide-react"
 import { createClient as createSupabaseClient } from "@/lib/supabase/client"
+import { SozuShaderAvatar } from "@/components/ui/sozu-shader-avatar"
 
 interface WalletSwitcherModalProps {
   isOpen: boolean
@@ -20,21 +21,14 @@ function abbrev(address: string | null): string {
 
 function WalletAvatar({ address, tag }: { address: string | null; tag?: string | null }) {
   const seed = address ?? "default"
-  const hue1 = seed.split("").slice(1, 5).reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360
-  const hue2 = (hue1 + 140) % 360
   const initials = tag
     ? tag.replace(/^[@$]/, "").slice(0, 2).toUpperCase()
     : seed.slice(1, 3).toUpperCase()
 
   return (
-    <div
-      className="h-16 w-16 shrink-0 rounded-2xl flex items-center justify-center text-[17px] font-bold text-white/95 shadow-xl"
-      style={{
-        background: `linear-gradient(145deg, hsl(${hue1},65%,50%), hsl(${hue2},72%,38%))`,
-      }}
-    >
+    <SozuShaderAvatar className="h-16 w-16 shrink-0 rounded-2xl text-[17px] font-bold">
       {initials}
-    </div>
+    </SozuShaderAvatar>
   )
 }
 

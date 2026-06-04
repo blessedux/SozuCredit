@@ -9,8 +9,9 @@ import {
 import { getInflationRate } from "../lib/treasury/mock-inflation"
 import { getFxSpotRate, getFxPeriodChange } from "../lib/treasury/mock-rates"
 import type { ReferenceFiat, TreasuryMode } from "../lib/treasury/types"
+import { REFERENCE_FIAT_OPTIONS } from "../lib/treasury/types"
 
-const FIATS: ReferenceFiat[] = ["CLP", "ARS", "BRL", "COP"]
+const FIATS: ReferenceFiat[] = [...REFERENCE_FIAT_OPTIONS]
 const MODES: TreasuryMode[] = ["efficient", "balanced", "fast"]
 const DAYS = [7, 14, 30, 90] as const
 const PROTOCOL_APY = 16.76

@@ -8,7 +8,7 @@
  *
  * Query params:
  *   balance       — USDC balance (number, required)
- *   referenceFiat — CLP | ARS | BRL | COP  (default: CLP)
+ *   referenceFiat — CLP | ARS | BRL | COP | USD  (default: CLP)
  *   mode          — efficient | balanced | fast  (default: balanced)
  *   holdingDays   — 7 | 14 | 30 | 90  (default: 30)
  */
@@ -21,11 +21,11 @@ import { computeTreasuryProjection, emptyProjection } from "@/lib/treasury/proje
 import { getInflationRate } from "@/lib/treasury/mock-inflation"
 import { getFxSpotRate, getFxPeriodChange } from "@/lib/treasury/mock-rates"
 import type { ReferenceFiat, TreasuryMode, TreasuryPrefs } from "@/lib/treasury/types"
-import { TREASURY_PREFS_DEFAULTS } from "@/lib/treasury/types"
+import { REFERENCE_FIAT_OPTIONS, TREASURY_PREFS_DEFAULTS } from "@/lib/treasury/types"
 
 export const dynamic = "force-dynamic"
 
-const VALID_FIATS: ReferenceFiat[] = ["CLP", "ARS", "BRL", "COP"]
+const VALID_FIATS: ReferenceFiat[] = [...REFERENCE_FIAT_OPTIONS]
 const VALID_MODES: TreasuryMode[] = ["efficient", "balanced", "fast"]
 const VALID_DAYS: Array<7 | 14 | 30 | 90> = [7, 14, 30, 90]
 

@@ -19,11 +19,7 @@ type DepositModalProps = {
   walletNetwork?: "testnet" | "mainnet"
 }
 
-type QrMode = "tag" | "address"
-
-function buildTagQrPayload(sozuTag: string): string {
-  return `$${sozuTag}`
-}
+type CopyMode = "tag" | "address"
 
 function buildAddressQrPayload(address: string): string {
   return address
@@ -46,7 +42,7 @@ export function DepositModal({
     "prop" | "storage" | "sync" | "legacy"
   >("storage")
   const [sozuTag, setSozuTag] = useState<string>("")
-  const [qrMode, setQrMode] = useState<QrMode>("tag")
+  const [copyMode, setCopyMode] = useState<CopyMode>("tag")
   const [tagCopied, setTagCopied] = useState(false)
   const [addressCopied, setAddressCopied] = useState(false)
   const [visible, setVisible] = useState(false)
@@ -73,7 +69,7 @@ export function DepositModal({
       setSozuTag(tag)
     }
 
-    setQrMode(tag ? "tag" : "address")
+    setCopyMode(tag ? "tag" : "address")
 
     setSetupError(
       typeof window !== "undefined"
@@ -114,28 +110,23 @@ export function DepositModal({
     address.startsWith("C") ? address : propIsC ? walletAddressProp!.trim().toUpperCase() : address
   const hasTag = Boolean(sozuTag)
   const canShowTagQr = hasTag
-  const activeMode: QrMode = canShowTagQr ? qrMode : "address"
+  const activeCopyMode: CopyMode = canShowTagQr ? copyMode : "address"
 
   const qrPayload = useMemo(() => {
-    if (activeMode === "tag" && sozuTag) return buildTagQrPayload(sozuTag)
     if (effectiveAddress) return buildAddressQrPayload(effectiveAddress)
-    if (sozuTag) return buildTagQrPayload(sozuTag)
     return ""
-  }, [activeMode, effectiveAddress, sozuTag])
+  }, [effectiveAddress])
 
   const addressLabel = useMemo(
     () => (effectiveAddress ? formatAddress(effectiveAddress, 6, 6) : ""),
     [effectiveAddress],
   )
 
-  const qrCaption =
-    activeMode === "tag" && sozuTag
-      ? formatWalletText(t.depositTagCaption, { tag: sozuTag })
-      : effectiveAddress
-        ? effectiveAddress.startsWith("C")
-          ? `${formatWalletText(t.depositAddressCaption, { addr: addressLabel })} · ${t.depositSmartAccountHint}`
-          : formatWalletText(t.depositAddressCaption, { addr: addressLabel })
-        : t.depositConnectWallet
+  const qrCaption = effectiveAddress
+    ? effectiveAddress.startsWith("C")
+      ? `${formatWalletText(t.depositAddressCaption, { addr: addressLabel })} · ${t.depositSmartAccountHint}`
+      : formatWalletText(t.depositAddressCaption, { addr: addressLabel })
+    : t.depositConnectWallet
 
   const handleCopyTag = async () => {
     if (!sozuTag) return
@@ -199,17 +190,17 @@ export function DepositModal({
             aria-hidden
             className={cn(
               "pointer-events-none absolute inset-y-1 w-[calc(50%-0.25rem)] rounded-full bg-white/12 shadow-[0_0_0_1px_rgba(255,255,255,0.06)] transition-[left] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
-              activeMode === "tag" ? "left-1" : "left-[calc(50%+0.125rem)]",
+              activeCopyMode === "tag" ? "left-1" : "left-[calc(50%+0.125rem)]",
             )}
           />
           <button
             type="button"
             role="tab"
-            aria-selected={activeMode === "tag"}
-            onClick={() => setQrMode("tag")}
+            aria-selected={activeCopyMode === "tag"}
+            onClick={() => setCopyMode("tag")}
             className={cn(
               "relative z-10 rounded-full px-3 py-2 text-[10px] font-medium uppercase tracking-wider transition-colors",
-              activeMode === "tag" ? "text-white" : "text-white/45 hover:text-white/70",
+              activeCopyMode === "tag" ? "text-white" : "text-white/45 hover:text-white/70",
             )}
           >
             {t.depositQrTag}
@@ -217,11 +208,11 @@ export function DepositModal({
           <button
             type="button"
             role="tab"
-            aria-selected={activeMode === "address"}
-            onClick={() => setQrMode("address")}
+            aria-selected={activeCopyMode === "address"}
+            onClick={() => setCopyMode("address")}
             className={cn(
               "relative z-10 rounded-full px-3 py-2 text-[10px] font-medium uppercase tracking-wider transition-colors",
-              activeMode === "address" ? "text-white" : "text-white/45 hover:text-white/70",
+              activeCopyMode === "address" ? "text-white" : "text-white/45 hover:text-white/70",
             )}
           >
             {t.depositQrStellar}
@@ -263,7 +254,7 @@ export function DepositModal({
           touchAction: "manipulation",
         }}
       >
-        {activeMode === "tag" && sozuTag ? (
+        {activeCopyMode === "tag" && sozuTag ? (
           <button
             type="button"
             onClick={handleCopyTag}
@@ -284,7 +275,7 @@ export function DepositModal({
           </button>
         ) : null}
 
-        {activeMode === "address" ? (
+        {activeCopyMode === "address" ? (
           <button
             type="button"
             onClick={handleCopyAddress}

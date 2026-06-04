@@ -15,6 +15,7 @@ const MOCK_INFLATION: Record<ReferenceFiat, number> = {
   ARS: 80.0,  // Argentina — high-frequency devaluation environment
   BRL: 4.0,   // Banco do Brasil target range
   COP: 5.0,   // Banco de la República Colombia
+  USD: 2.5,   // US CPI (illustrative)
 }
 
 /**
