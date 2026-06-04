@@ -39,6 +39,7 @@ import { TransactionHistory } from "@/components/wallet/transaction-history"
 import { BottomMenuBar } from "@/components/wallet/bottom-menu-bar"
 import { PullToRefreshIndicator } from "@/components/wallet/pull-to-refresh-indicator"
 import { CashflowSummaryCard } from "@/components/wallet/cashflow-summary-card"
+import { LedgerResumenPreview } from "@/components/wallet/ledger-resumen-preview"
 import { UniversalCommandBar } from "@/components/home/universal-command-bar"
 import type { PaymentReceipt } from "@/lib/payment/payment-receipt"
 import { transactionToPaymentReceipt } from "@/lib/payment/transaction-to-receipt"
@@ -842,6 +843,8 @@ export function WalletScreen({
                     : defindexBalance?.apy ?? null
                 }
               />
+
+              <LedgerResumenPreview className="mt-5" />
 
               <TransactionHistory
                 variant="history"

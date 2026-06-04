@@ -76,6 +76,7 @@ export type WalletTexts = {
   loadingTransactions: string;
   noTransactions: string;
   recentActivity: string;
+  onChainActivity: string;
   showLess: string;
   showAll: string;
   transactions: string;
@@ -462,6 +463,7 @@ export const walletTexts = {
     loadingTransactions: "Cargando transacciones...",
     noTransactions: "Aún no hay transacciones",
     recentActivity: "Actividad reciente",
+    onChainActivity: "Actividad on-chain",
     showLess: "Mostrar menos",
     showAll: "Ver todas",
     transactions: "transacciones",
@@ -826,6 +828,7 @@ export const walletTexts = {
     loadingTransactions: "Loading transactions...",
     noTransactions: "No transactions yet",
     recentActivity: "Recent activity",
+    onChainActivity: "On-chain activity",
     showLess: "Show less",
     showAll: "View all",
     transactions: "transactions",

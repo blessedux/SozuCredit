@@ -75,7 +75,7 @@ export const TransactionHistory = memo(function TransactionHistory({
       aria-expanded={hasMore ? isExpanded : undefined}
     >
       <span className="text-xs font-medium uppercase tracking-[0.2em] text-white/50">
-        {t.recentActivity}
+        {isHistory ? t.onChainActivity : t.recentActivity}
       </span>
       {hasMore ? (
         <span className="inline-flex items-center gap-1 text-sm text-white/70">

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { Horizon } from "@stellar/stellar-sdk"
 import { getStellarConfig } from "@/lib/turnkey/config"
 import { getStellarWallet } from "@/lib/turnkey/stellar-wallet"
+import { getSorobanWalletTransactions } from "@/lib/stellar/soroban-transfer-history"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
 
@@ -81,14 +82,19 @@ export async function GET(request: NextRequest) {
     console.log("[Transaction History API] Fetching transactions for account:", publicKeyToUse.substring(0, 10) + "...")
     console.log("[Transaction History API] Network:", stellarConfig.network, "USDC Issuer:", usdcIssuer)
 
-    // C smart accounts: Horizon payments API is for classic G accounts only.
+    // C smart accounts: Soroban token transfer events (Horizon payments are G-only).
     if (publicKeyToUse.startsWith("C")) {
+      const transactions = await getSorobanWalletTransactions(publicKeyToUse, limit)
+      console.log(
+        "[Transaction History API] Soroban transfers for C account:",
+        publicKeyToUse.substring(0, 10) + "...",
+        transactions.length,
+      )
       return NextResponse.json(
         {
           success: true,
-          transactions: [],
-          count: 0,
-          note: "Smart account (C) — classic payment history not available via Horizon",
+          transactions,
+          count: transactions.length,
         },
         { headers: corsHeaders(request as any) },
       )
