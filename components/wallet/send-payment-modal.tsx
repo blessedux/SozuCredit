@@ -51,6 +51,9 @@ interface SendPaymentModalProps {
   referenceFiat: ReferenceFiat
   onSuccess: (receipt: PaymentReceipt) => void
   onRefresh: () => void | Promise<void>
+  /** When true, opens the QR scanner as soon as the modal mounts. */
+  openScannerOnMount?: boolean
+  onScannerOpenConsumed?: () => void
 }
 
 export const SendPaymentModal = memo(function SendPaymentModal({
@@ -62,6 +65,8 @@ export const SendPaymentModal = memo(function SendPaymentModal({
   referenceFiat,
   onSuccess,
   onRefresh,
+  openScannerOnMount = false,
+  onScannerOpenConsumed,
 }: SendPaymentModalProps) {
   const { t } = useWalletLanguage()
 
@@ -119,6 +124,12 @@ export const SendPaymentModal = memo(function SendPaymentModal({
     refreshOnOpenRef.current = true
     void Promise.resolve(onRefresh())
   }, [isOpen, onRefresh])
+
+  useEffect(() => {
+    if (!isOpen || !openScannerOnMount) return
+    setIsScannerOpen(true)
+    onScannerOpenConsumed?.()
+  }, [isOpen, openScannerOnMount, onScannerOpenConsumed])
 
   // Warm up kit + credential storage as soon as modal opens so the passkey
   // prompt can appear quickly when the user taps Send.

@@ -6,6 +6,7 @@ Guides for developers and operators working in this repository. The root [README
 
 ## Reading order
 
+0. **[PROJECT-CHANGELOG-MASTER-REPORT.md](./PROJECT-CHANGELOG-MASTER-REPORT.md)** — Full project changelog (Oct 2025 – Jun 2026) and **4-week report** (6 May – 3 Jun 2026) for distribution.
 1. **[architecture-and-platform.md](./architecture-and-platform.md)** — Custody, API layer, schema source of truth.
 2. **[credit-marketplace-roadmap.md](./credit-marketplace-roadmap.md)** — Credit marketplace vision; MUJERES 2000 campaign → distribution → open LnB Pool → crowdfund URL → public stats.
 3. **[privacy-wallet-roadmap.md](./privacy-wallet-roadmap.md)** — Phased privacy + compliance stack (Phases 1–10); ecosystem map with Sozu Pay and privacy protocol.
@@ -33,6 +34,8 @@ Guides for developers and operators working in this repository. The root [README
 | Development (PWA, scripts, testing) | [development-guide.md](./development-guide.md) |
 | Project history (milestones) | [project-history.md](./project-history.md) |
 | **Ten-day dev log (May 23 – Jun 2, 2026)** | [development-log-2026-05-23-to-2026-06-02.md](./development-log-2026-05-23-to-2026-06-02.md) |
+| **Master changelog & 4-week report** | [PROJECT-CHANGELOG-MASTER-REPORT.md](./PROJECT-CHANGELOG-MASTER-REPORT.md) |
+| **Ten-day changelog (May 24 – Jun 3, 2026)** | [changelog-2026-05-24-to-2026-06-03.md](./changelog-2026-05-24-to-2026-06-03.md) |
 
 ### SQL reference
 

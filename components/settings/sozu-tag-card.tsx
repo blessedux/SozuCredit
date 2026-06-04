@@ -1,13 +1,17 @@
 "use client"
 
 import { useState, useCallback, useRef, useEffect } from "react"
-import { Check, Loader2 } from "lucide-react"
+import { Check, ChevronRight, Loader2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { getUserId } from "@/lib/wallet-utils"
 
-export function SozuTagCard() {
+type SozuTagCardProps = {
+  onOpenAccountSettings?: () => void
+}
+
+export function SozuTagCard({ onOpenAccountSettings }: SozuTagCardProps) {
   const [currentTag, setCurrentTag] = useState("")
   const [tag, setTag] = useState("")
   const [tagStatus, setTagStatus] = useState<"idle" | "checking" | "available" | "taken" | "error" | "own">("idle")
@@ -119,11 +123,23 @@ export function SozuTagCard() {
 
   return (
     <Card className="border-white/15 bg-black/55 backdrop-blur-xl">
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-white text-sm flex items-center gap-2">
-          Sozu Tag
+          Account
           {saved && <span className="text-[10px] font-normal text-green-400 flex items-center gap-1"><Check className="h-3 w-3" /> Saved</span>}
         </CardTitle>
+        {onOpenAccountSettings ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onOpenAccountSettings}
+            className="h-8 px-2 text-white/60 hover:text-white hover:bg-white/10"
+          >
+            Settings
+            <ChevronRight className="ml-0.5 h-4 w-4" />
+          </Button>
+        ) : null}
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="relative">

@@ -8,7 +8,7 @@
 
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import dynamic from "next/dynamic"
-import { ChevronLeft, TrendingUp } from "lucide-react"
+import { ChevronLeft, Eye, EyeOff, TrendingUp } from "lucide-react"
 import { SlidingNumber } from "@/components/ui/sliding-number"
 import { BalanceAuditPanel } from "@/components/wallet/balance-audit-panel"
 import { formatBalance, maskBalance } from "@/lib/wallet-utils"
@@ -90,6 +90,7 @@ export const BalanceDisplay = memo(function BalanceDisplay({
   const collapsedHeightRef = useRef(168)
   const [auditExpanded, setAuditExpanded] = useState(false)
   const [expandedHeight, setExpandedHeight] = useState(0)
+  const [metricIndex, setMetricIndex] = useState(0)
 
   const measureCollapsedHeight = useCallback(() => {
     const card = cardRef.current
@@ -167,6 +168,16 @@ export const BalanceDisplay = memo(function BalanceDisplay({
         ? t.apyBlendLabel
         : null
 
+  const showMetricCarousel = !auditExpanded && (hasTreasury || yieldApy !== null)
+
+  useEffect(() => {
+    if (!showMetricCarousel) return
+    const id = window.setInterval(() => {
+      setMetricIndex((current) => (current + 1) % 2)
+    }, 4500)
+    return () => window.clearInterval(id)
+  }, [showMetricCarousel])
+
   useLayoutEffect(() => {
     if (!inlineAudit || auditExpanded) return
     measureCollapsedHeight()
@@ -238,6 +249,24 @@ export const BalanceDisplay = memo(function BalanceDisplay({
     event.stopPropagation()
   }, [])
 
+  const handleCardClick = useCallback(() => {
+    if (auditExpanded) return
+    if (inlineAudit && canInlineExpand) {
+      handleAuditToggle()
+      return
+    }
+    onOpenBalanceAudit?.()
+  }, [auditExpanded, canInlineExpand, handleAuditToggle, inlineAudit, onOpenBalanceAudit])
+
+  const handleCardKeyDown = useCallback(
+    (event: React.KeyboardEvent) => {
+      if (auditExpanded || (event.key !== "Enter" && event.key !== " ")) return
+      event.preventDefault()
+      handleCardClick()
+    },
+    [auditExpanded, handleCardClick],
+  )
+
   return (
     <div
       ref={wrapperRef}
@@ -251,8 +280,14 @@ export const BalanceDisplay = memo(function BalanceDisplay({
         ref={cardRef}
         style={inlineAudit ? { maxHeight: inlineCardMaxHeight } : undefined}
         onTransitionEnd={inlineAudit ? handleCardTransitionEnd : undefined}
+        onClick={!auditExpanded ? handleCardClick : undefined}
+        onKeyDown={!auditExpanded ? handleCardKeyDown : undefined}
+        role={!auditExpanded ? "button" : undefined}
+        tabIndex={!auditExpanded ? 0 : undefined}
+        aria-label={!auditExpanded ? t.auditBreakdown : undefined}
         className={cn(
           "flex w-full flex-col rounded-[1.25rem] border border-white/10 bg-black/20 text-center shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur-md",
+          !auditExpanded && "cursor-pointer",
           inlineAudit &&
             "min-h-0 self-start transition-[max-height] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] will-change-[max-height]",
           inlineAudit && !auditExpanded && "overflow-hidden",
@@ -263,23 +298,8 @@ export const BalanceDisplay = memo(function BalanceDisplay({
         <div
           className={cn(
             "flex min-w-0 shrink-0 select-none gap-3",
-            !auditExpanded && "cursor-pointer",
             auditExpanded ? "flex-col items-center lg:items-start" : "flex-row items-center justify-between",
           )}
-          onClick={auditExpanded ? undefined : onToggleVisibility}
-          onKeyDown={
-            auditExpanded
-              ? undefined
-              : (e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault()
-                    onToggleVisibility()
-                  }
-                }
-          }
-          role={auditExpanded ? undefined : "button"}
-          tabIndex={auditExpanded ? undefined : 0}
-          aria-label={auditExpanded ? undefined : isBalanceVisible ? t.hideBalance : t.showBalance}
         >
           <div className={cn("min-w-0 flex-1", auditExpanded ? "w-full" : "text-left")}>
             <div
@@ -301,6 +321,23 @@ export const BalanceDisplay = memo(function BalanceDisplay({
               <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-white/40">
                 {referenceFiat}
               </span>
+              {!auditExpanded ? (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onToggleVisibility()
+                  }}
+                  className="ml-auto shrink-0 rounded-md p-1 text-white/35 transition-colors hover:bg-white/5 hover:text-white/70"
+                  aria-label={isBalanceVisible ? t.hideBalance : t.showBalance}
+                >
+                  {isBalanceVisible ? (
+                    <EyeOff className="h-4 w-4" aria-hidden />
+                  ) : (
+                    <Eye className="h-4 w-4" aria-hidden />
+                  )}
+                </button>
+              ) : null}
             </div>
 
             <p
@@ -313,59 +350,75 @@ export const BalanceDisplay = memo(function BalanceDisplay({
             </p>
           </div>
 
-          {!auditExpanded && hasTreasury ? (
-            <div className="shrink-0 transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]">
-              <PurchasingPowerPnlChart
-                projection={treasuryProjection}
-                loading={treasuryLoading}
-                variant="mini"
-                className="self-center"
-              />
+          {showMetricCarousel ? (
+            <div
+              className="relative h-[4.5rem] w-[5.75rem] shrink-0 overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]"
+              onClick={(event) => {
+                event.stopPropagation()
+                setMetricIndex((current) => (current + 1) % 2)
+              }}
+              onKeyDown={(event) => event.stopPropagation()}
+              role="presentation"
+            >
+              <div
+                className="flex h-full transition-transform duration-500 ease-in-out"
+                style={{ transform: `translateX(-${metricIndex * 50}%)`, width: "200%" }}
+              >
+                <div className="flex h-full w-1/2 shrink-0 items-center justify-center p-1">
+                  {hasTreasury ? (
+                    <PurchasingPowerPnlChart
+                      projection={treasuryProjection}
+                      loading={treasuryLoading}
+                      variant="mini"
+                      className="self-center"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-[10px] text-white/40">
+                      PNL
+                    </div>
+                  )}
+                </div>
+                <div className="flex h-full w-1/2 shrink-0 flex-col items-center justify-center gap-0.5 px-1 text-green-400">
+                  <TrendingUp className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                  <span className="text-sm font-semibold tabular-nums">{primaryBadge}</span>
+                  {sublineBadge ? (
+                    <span className="max-w-full truncate text-center text-[9px] leading-tight text-white/45">
+                      {sublineBadge}
+                    </span>
+                  ) : (
+                    <span className="text-[9px] uppercase tracking-wide text-white/40">APY</span>
+                  )}
+                </div>
+              </div>
             </div>
           ) : null}
         </div>
 
+        {auditExpanded ? (
         <div
           className={cn(
             "shrink-0 border-t border-white/15",
-            inlineAudit ? "mt-4 pt-4" : auditExpanded ? "mt-3 pt-3" : "mt-auto pt-4 lg:pt-5",
+            inlineAudit ? "mt-4 pt-4" : "mt-3 pt-3",
           )}
         >
           <button
             type="button"
-            onClick={handleAuditToggle}
-            className={cn(
-              "inline-flex min-h-[36px] w-full items-center justify-center gap-2 rounded-lg px-2 py-1.5 text-green-400 transition-colors hover:bg-white/5 hover:text-green-300 lg:min-h-[40px] lg:justify-start lg:px-1",
-              auditExpanded && "justify-start",
-            )}
-            aria-label={auditExpanded ? t.closeTreasury : t.auditBreakdown}
+            onClick={(event) => {
+              event.stopPropagation()
+              handleAuditToggle()
+            }}
+            className="inline-flex min-h-[36px] w-full items-center justify-center gap-2 rounded-lg px-2 py-1.5 text-green-400 transition-colors hover:bg-white/5 hover:text-green-300 lg:min-h-[40px] lg:justify-start lg:px-1 justify-start"
+            aria-label={t.closeTreasury}
             aria-expanded={canInlineExpand ? auditExpanded : undefined}
           >
-            {auditExpanded ? (
-              <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden />
-            ) : (
-              <TrendingUp className="h-4 w-4 shrink-0" aria-hidden />
-            )}
+            <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden />
             <span className="text-sm font-semibold tabular-nums">{primaryBadge}</span>
-            {!auditExpanded && sublineBadge ? (
-              <span
-                className={cn(
-                  "text-[10px] text-white/45 transition-opacity duration-300",
-                  auditExpanded ? "opacity-0" : "opacity-100",
-                )}
-              >
-                {sublineBadge}
-              </span>
-            ) : null}
             <span className="text-[10px] leading-snug text-white/45 lg:ml-auto">
-              {auditExpanded
-                ? t.backToBalance
-                : hasTreasury
-                  ? t.auditBreakdown
-                  : t.balanceAudit}
+              {t.backToBalance}
             </span>
           </button>
         </div>
+        ) : null}
 
         {canInlineExpand && auditExpanded ? (
           <div

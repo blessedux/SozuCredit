@@ -1,6 +1,7 @@
 "use client"
 
 import { cn } from "@/lib/utils"
+import { SozuDesktopAmbientWaves } from "@/components/ui/sozu-desktop-ambient-waves"
 import { GrainGradient } from "@paper-design/shaders-react"
 import type { ShaderTier } from "@/hooks/use-shader-performance-tier"
 import {
@@ -23,7 +24,7 @@ type AuthOrangeOrbShaderProps = {
   variant?: "orb" | "blobs"
   /** Performance tier — passed down from PaperShaderBackgroundShell */
   tier?: ShaderTier
-  /** Smaller orb at bottom on tablet/desktop; phone keeps full-width arc (auth, home, wallet, …) */
+  /** Phone = bottom arc; md+ = centered orb (1.5× prior compact size) */
   orbCompact?: boolean
 }
 
@@ -84,6 +85,7 @@ export function AuthOrangeOrbShader({
             ].join(""),
           }}
         />
+        <SozuDesktopAmbientWaves />
         {/* Static orb circle */}
         <div
           className={cn("sozu-orb-breathe rounded-full", orbWrapClass)}
@@ -125,6 +127,8 @@ export function AuthOrangeOrbShader({
           ].join(""),
         }}
       />
+
+      <SozuDesktopAmbientWaves />
 
       {/*
         ── Atmosphere overlay: CSS-animated warm glow ───────────────────────

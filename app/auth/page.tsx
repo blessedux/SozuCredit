@@ -1,5 +1,6 @@
 "use client"
 
+import { ScfCommunityFundToast } from "@/components/scf-community-fund-toast"
 import { WelcomeModal } from "@/components/welcome-modal"
 import { TagInputModal } from "@/components/tag-input-modal"
 import { WalletSkeleton } from "@/components/ui/wallet-skeleton"
@@ -836,6 +837,8 @@ function AuthPageContent() {
 
         {/* PWA banner placeholder — actual banner is fixed at top, rendered below */}
       </div>
+
+      <ScfCommunityFundToast visible={!isAuthenticated && !isAuthenticating} />
 
       {/* Welcome Modal - Shows on first visit */}
       <WelcomeModal />

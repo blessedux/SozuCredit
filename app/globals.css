@@ -272,6 +272,11 @@
   50%       { transform: translateX(-50%) scale(1.04); }
 }
 
+@keyframes orb-breathe-centered {
+  0%, 100% { transform: translate(-50%, calc(-50% + 10vh)) scale(1); }
+  50%       { transform: translate(-50%, calc(-50% + 10vh)) scale(1.04); }
+}
+
 @keyframes ambient-drift {
   0%, 100% { opacity: 0.55; }
   40%       { opacity: 0.80; }
@@ -282,7 +287,7 @@
   animation: orb-breathe 10s ease-in-out infinite;
 }
 
-/* Orb placement: phone = large bottom arc; tablet/desktop = compact footer orb (auth, home, wallet, …) */
+/* Orb placement: phone = large bottom arc; md+ = centered orb (see --compact-md) */
 .sozu-orb-wrap {
   position: absolute;
   left: 50%;
@@ -294,21 +299,26 @@
 
 @media (min-width: 768px) {
   .sozu-orb-wrap--compact-md {
-    bottom: -5rem;
-    width: min(26rem, 50vw);
-    height: min(26rem, 50vw);
-    max-width: 26rem;
-    max-height: 26rem;
+    top: 50%;
+    bottom: auto;
+    left: 50%;
+    width: min(39rem, 75vw);
+    height: min(39rem, 75vw);
+    max-width: 39rem;
+    max-height: 39rem;
+  }
+
+  .sozu-orb-wrap--compact-md.sozu-orb-breathe {
+    animation-name: orb-breathe-centered;
   }
 }
 
 @media (min-width: 1024px) {
   .sozu-orb-wrap--compact-md {
-    bottom: -4rem;
-    width: min(22rem, 34vw);
-    height: min(22rem, 34vw);
-    max-width: 22rem;
-    max-height: 22rem;
+    width: min(33rem, 51vw);
+    height: min(33rem, 51vw);
+    max-width: 33rem;
+    max-height: 33rem;
   }
 }
 
@@ -318,7 +328,98 @@
 
 @media (prefers-reduced-motion: reduce) {
   .sozu-orb-breathe,
-  .sozu-ambient-drift {
+  .sozu-ambient-drift,
+  .sozu-desktop-waves__layer {
     animation: none;
+  }
+}
+
+/* ── Desktop ambient color waves (CSS only, md+) ─────────────────────────── */
+
+.sozu-desktop-waves {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .sozu-desktop-waves {
+    display: block;
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    isolation: isolate;
+  }
+
+  .sozu-desktop-waves__layer {
+    position: absolute;
+    inset: -25%;
+    opacity: 0.32;
+    transform: translate3d(0, 0, 0);
+    will-change: transform, opacity;
+    contain: layout style paint;
+  }
+
+  .sozu-desktop-waves__layer--a {
+    background:
+      radial-gradient(ellipse 90% 55% at 22% 38%, hsl(38, 100%, 32%) 0%, transparent 68%),
+      radial-gradient(ellipse 70% 45% at 78% 62%, hsl(18, 95%, 22%) 0%, transparent 72%);
+    animation: sozu-wave-a 26s ease-in-out infinite;
+  }
+
+  .sozu-desktop-waves__layer--b {
+    background:
+      radial-gradient(ellipse 85% 50% at 68% 28%, hsl(28, 100%, 38%) 0%, transparent 65%),
+      radial-gradient(ellipse 60% 40% at 12% 72%, hsl(350, 55%, 20%) 0%, transparent 70%);
+    animation: sozu-wave-b 34s ease-in-out infinite;
+  }
+
+  .sozu-desktop-waves__layer--c {
+    background:
+      radial-gradient(ellipse 100% 60% at 50% 50%, hsl(44, 100%, 42%) 0%, transparent 62%),
+      radial-gradient(ellipse 55% 35% at 40% 18%, hsl(14, 90%, 16%) 0%, transparent 75%);
+    animation: sozu-wave-c 42s ease-in-out infinite;
+    mix-blend-mode: screen;
+    opacity: 0.22;
+  }
+}
+
+@keyframes sozu-wave-a {
+  0%, 100% {
+    transform: translate3d(-5%, 3%, 0) scale(1);
+    opacity: 0.22;
+  }
+  35% {
+    transform: translate3d(7%, -4%, 0) scale(1.06);
+    opacity: 0.38;
+  }
+  70% {
+    transform: translate3d(-3%, 6%, 0) scale(0.97);
+    opacity: 0.28;
+  }
+}
+
+@keyframes sozu-wave-b {
+  0%, 100% {
+    transform: translate3d(6%, -2%, 0) scale(1.02);
+    opacity: 0.18;
+  }
+  40% {
+    transform: translate3d(-8%, 5%, 0) scale(1.08);
+    opacity: 0.34;
+  }
+  75% {
+    transform: translate3d(4%, -6%, 0) scale(0.95);
+    opacity: 0.24;
+  }
+}
+
+@keyframes sozu-wave-c {
+  0%, 100% {
+    transform: translate3d(0, 4%, 0) scale(1);
+    opacity: 0.14;
+  }
+  50% {
+    transform: translate3d(-6%, -5%, 0) scale(1.1);
+    opacity: 0.26;
   }
 }

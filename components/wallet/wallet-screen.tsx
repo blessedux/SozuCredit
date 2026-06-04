@@ -116,6 +116,8 @@ export function WalletScreen({
   // UI State
   const [isWalletSwitcherOpen, setIsWalletSwitcherOpen] = useState(false)
   const swipeUpStartY = useRef<number | null>(null)
+  const swipeUpStartX = useRef<number | null>(null)
+  const [openPayScannerOnMount, setOpenPayScannerOnMount] = useState(false)
   const [isBalanceVisible, setIsBalanceVisible] = useState(true)
   const [animatedBalance, setAnimatedBalance] = useState<number>(0)
   const [isTrustModalOpen, setIsTrustModalOpen] = useState(false)
@@ -635,6 +637,8 @@ export function WalletScreen({
           referenceFiat={treasuryData.prefs.referenceFiat}
           onSuccess={handleSendSuccess}
           onRefresh={handleSendModalRefresh}
+          openScannerOnMount={openPayScannerOnMount}
+          onScannerOpenConsumed={() => setOpenPayScannerOnMount(false)}
         />
       </Suspense>
 
@@ -742,19 +746,26 @@ export function WalletScreen({
             className="flex h-full flex-col overflow-hidden"
             onTouchStart={(e) => {
               pullHandlers.onTouchStart(e)
-              // Record start Y for swipe-up-to-open wallet switcher
               swipeUpStartY.current = e.touches[0].clientY
+              swipeUpStartX.current = e.touches[0].clientX
             }}
             onTouchMove={pullHandlers.onTouchMove}
             onTouchEnd={(e) => {
               pullHandlers.onTouchEnd(e)
-              if (swipeUpStartY.current === null) return
+              if (swipeUpStartY.current === null || swipeUpStartX.current === null) return
               const startY = swipeUpStartY.current
+              const startX = swipeUpStartX.current
               swipeUpStartY.current = null
+              swipeUpStartX.current = null
               const dy = startY - e.changedTouches[0].clientY
-              // Only open if swipe starts in the top header zone (≤140px from top)
-              // and finger moves up at least 32px
-              if (dy > 32 && startY < 140) setIsWalletSwitcherOpen(true)
+              const dx = Math.abs(e.changedTouches[0].clientX - startX)
+              if (dx > 48) return
+              if (dy > 32 && startY < 140) {
+                setIsWalletSwitcherOpen(true)
+              } else if (dy > 48 && startY >= 140 && !isBalanceAuditExpanded) {
+                setOpenPayScannerOnMount(true)
+                setSendModalOpen(true)
+              }
             }}
             onMouseDown={pullHandlers.onMouseDown}
             onMouseMove={pullHandlers.onMouseMove}

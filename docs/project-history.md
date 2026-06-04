@@ -12,5 +12,7 @@ When you complete a major milestone, append a short dated bullet here rather tha
 
 ## Milestones
 
+- **2026-06-03** — **Master changelog report** (full project Oct 2025 – Jun 2026, 4-week distribution): [PROJECT-CHANGELOG-MASTER-REPORT.md](./PROJECT-CHANGELOG-MASTER-REPORT.md).
+- **2026-06-03** — Ten-day changelog (86 commits, infra/signing/passkey/SDP E2E): [changelog-2026-05-24-to-2026-06-03.md](./changelog-2026-05-24-to-2026-06-03.md).
 - **2026-06-02** — Full ten-day development log (mobile PWA, OZ C-wallet, SDP in-app registration, DeFindex): [development-log-2026-05-23-to-2026-06-02.md](./development-log-2026-05-23-to-2026-06-02.md).
 - **2026-05-31** — Added canonical [privacy-wallet-roadmap.md](./privacy-wallet-roadmap.md) (Phases 1–10) and [docs/README.md](./README.md) index; distinguished from product roadmap in root README.
