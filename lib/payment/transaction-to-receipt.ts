@@ -3,15 +3,6 @@ import { formatAddress } from "@/lib/wallet-utils"
 import type { PaymentReceipt } from "@/lib/payment/payment-receipt"
 import { getSenderDisplayLabel } from "@/lib/payment/payment-receipt"
 
-function formatCounterpartyLabel(
-  address: string,
-  addressToTagMap: Record<string, string>,
-): string {
-  const tag = addressToTagMap[address]
-  if (tag) return `$${tag.replace(/^\$+/, "")}`
-  return formatAddress(address, 6, 6)
-}
-
 export function transactionToPaymentReceipt(
   tx: Transaction,
   walletAddress: string,
@@ -21,9 +12,20 @@ export function transactionToPaymentReceipt(
   const paymentOp = tx.operations.find((op) => op.type === "payment")
   if (!paymentOp) return null
 
-  const isSent = paymentOp.from === walletAddress
+  const wallet = walletAddress.trim().toUpperCase()
+  const from = paymentOp.from.trim().toUpperCase()
+  const to = paymentOp.to.trim().toUpperCase()
+  const isSent = from === wallet
   const otherAddress = isSent ? paymentOp.to : paymentOp.from
-  const otherLabel = formatCounterpartyLabel(otherAddress, addressToTagMap)
+  const otherKey = otherAddress.trim().toUpperCase()
+  const tag =
+    addressToTagMap[otherKey] ??
+    addressToTagMap[otherAddress] ??
+    addressToTagMap[paymentOp.from] ??
+    addressToTagMap[paymentOp.to]
+  const otherLabel = tag
+    ? `$${tag.replace(/^\$+/, "")}`
+    : formatAddress(otherAddress, 6, 6)
   const selfLabel = getSenderDisplayLabel()
 
   return {
@@ -31,7 +33,7 @@ export function transactionToPaymentReceipt(
     currency: "USDC",
     fromLabel: isSent ? selfLabel : otherLabel,
     toLabel: isSent ? otherLabel : selfLabel,
-    toAddress: isSent ? otherAddress : walletAddress,
+    toAddress: isSent ? otherAddress : walletAddress.trim(),
     transactionHash: tx.hash,
     network: walletNetwork,
     memo: tx.memo ?? paymentOp.memo ?? null,

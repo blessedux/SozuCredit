@@ -1,12 +1,15 @@
 import "server-only"
 
-import { Address, Horizon, xdr } from "@stellar/stellar-sdk"
+import { Address, xdr } from "@stellar/stellar-sdk"
 import * as rpc from "@stellar/stellar-sdk/rpc"
 import { getAssetRegistry } from "@/lib/stellar/asset-registry"
 import { getStellarConfig } from "@/lib/turnkey/config"
 import type { StellarNetwork } from "@/lib/stellar/asset-types"
 
 const STROOPS_PER_UNIT = 10_000_000
+const EVENTS_PAGE_SIZE = 100
+const MAX_EVENT_PAGES = 24
+const LEDGER_LOOKBACK = 12_000
 
 export type SorobanWalletTransaction = {
   id: string
@@ -45,6 +48,14 @@ function coerceScVal(raw: unknown): xdr.ScVal | null {
   return null
 }
 
+function scValSymbolText(val: xdr.ScVal): string {
+  if (val.switch().name !== "scvSymbol") return ""
+  const sym = val.sym() as string | Buffer | undefined
+  if (typeof sym === "string") return sym
+  if (Buffer.isBuffer(sym)) return sym.toString("utf8")
+  return sym != null ? String(sym) : ""
+}
+
 function scValI128ToBigInt(val: xdr.ScVal): bigint {
   if (val.switch().name !== "scvI128") return BigInt(0)
   const parts = val.i128()
@@ -67,26 +78,6 @@ function resolveSorobanRpcUrl(network: StellarNetwork): string {
   )
 }
 
-type SorobanEventsRequest = {
-  startLedger: number
-  filters: Array<{ type: "contract"; contractIds: string[] }>
-  pagination: { limit: number }
-}
-
-type SorobanEvent = {
-  ledger?: number
-  txHash?: string
-  contractId?: string
-  topic?: unknown[]
-  value?: unknown
-}
-
-type SorobanEventsResponse = { events?: SorobanEvent[] }
-
-type RpcServerWithEvents = rpc.Server & {
-  getEvents: (req: SorobanEventsRequest) => Promise<SorobanEventsResponse>
-}
-
 /**
  * USDC transfer events involving the user's smart account (C…) from registered Soroban tokens.
  */
@@ -97,7 +88,7 @@ export async function getSorobanWalletTransactions(
   const holder = holderAddress.trim().toUpperCase()
   if (!holder.startsWith("C") || holder.length !== 56) return []
 
-  const { network, horizonUrl } = getStellarConfig()
+  const { network } = getStellarConfig()
   const contractIds = [
     ...new Set(
       getAssetRegistry(network)
@@ -110,17 +101,9 @@ export async function getSorobanWalletTransactions(
   const rpcUrl = resolveSorobanRpcUrl(network)
   const server = new rpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith("http://") })
   const latest = await server.getLatestLedger()
-  const startLedger = Math.max(1, (latest.sequence ?? 1) - 4000)
+  const endLedger = latest.sequence ?? 1
+  const startLedger = Math.max(1, endLedger - LEDGER_LOOKBACK)
 
-  const res = await (server as unknown as RpcServerWithEvents).getEvents({
-    startLedger,
-    filters: [{ type: "contract", contractIds }],
-    pagination: { limit: Math.min(200, Math.max(40, limit * 12)) },
-  })
-
-  const events = res?.events ?? []
-  const horizon = new Horizon.Server(horizonUrl, { allowHttp: network === "testnet" })
-  const dateCache = new Map<string, string>()
   const assetByContract = new Map(
     getAssetRegistry(network).map((a) => [a.contractId.trim().toUpperCase(), a.symbol]),
   )
@@ -128,79 +111,87 @@ export async function getSorobanWalletTransactions(
   const byHash = new Map<string, SorobanWalletTransaction>()
   const seen = new Set<string>()
 
-  for (const ev of events) {
-    if (!ev?.txHash || typeof ev.txHash !== "string") continue
-    if (!ev?.topic || !Array.isArray(ev.topic) || ev.topic.length < 3) continue
+  for (const contractId of contractIds) {
+    let cursor: string | undefined
 
-    let t0: xdr.ScVal | null = null
-    let from: string | null = null
-    let to: string | null = null
-    try {
-      t0 = coerceScVal(ev.topic[0])
-      const t1 = coerceScVal(ev.topic[1])
-      const t2 = coerceScVal(ev.topic[2])
-      if (t1?.switch().name === "scvAddress") from = Address.fromScVal(t1).toString().toUpperCase()
-      if (t2?.switch().name === "scvAddress") to = Address.fromScVal(t2).toString().toUpperCase()
-    } catch {
-      continue
-    }
+    for (let page = 0; page < MAX_EVENT_PAGES; page++) {
+      const res = cursor
+        ? await server.getEvents({
+            filters: [{ type: "contract", contractIds: [contractId] }],
+            cursor,
+            limit: EVENTS_PAGE_SIZE,
+          })
+        : await server.getEvents({
+            startLedger,
+            endLedger,
+            filters: [{ type: "contract", contractIds: [contractId] }],
+            limit: EVENTS_PAGE_SIZE,
+          })
 
-    if (!t0 || t0.switch().name !== "scvSymbol" || t0.sym() !== "transfer") continue
-    if (!from || !to) continue
-    if (from !== holder && to !== holder) continue
+      const events = res?.events ?? []
+      if (events.length === 0) break
 
-    const dedupeKey = `${ev.txHash}:${from}:${to}`
-    if (seen.has(dedupeKey)) continue
-    seen.add(dedupeKey)
+      for (const ev of events) {
+        if (!ev?.txHash || typeof ev.txHash !== "string") continue
+        const topic = ev.topic
+        if (!topic || !Array.isArray(topic) || topic.length < 3) continue
 
-    const val = coerceScVal(ev.value)
-    const amount = val ? stroopsToAmount(scValI128ToBigInt(val)) : 0
-    const contractId = (ev.contractId ?? "").trim().toUpperCase()
-    const asset = assetByContract.get(contractId) ?? "USDC"
-
-    let createdAt = dateCache.get(ev.txHash) ?? ""
-    if (!createdAt) {
-      try {
-        const tx = (await horizon.transactions().transaction(ev.txHash).call()) as {
-          created_at?: string
+        let t0: xdr.ScVal | null = null
+        let from: string | null = null
+        let to: string | null = null
+        try {
+          t0 = coerceScVal(topic[0])
+          const t1 = coerceScVal(topic[1])
+          const t2 = coerceScVal(topic[2])
+          if (t1?.switch().name === "scvAddress") {
+            from = Address.fromScVal(t1).toString().toUpperCase()
+          }
+          if (t2?.switch().name === "scvAddress") {
+            to = Address.fromScVal(t2).toString().toUpperCase()
+          }
+        } catch {
+          continue
         }
-        createdAt = String(tx?.created_at ?? new Date().toISOString())
-      } catch {
-        createdAt = new Date().toISOString()
+
+        if (!t0 || scValSymbolText(t0) !== "transfer") continue
+        if (!from || !to) continue
+        if (from !== holder && to !== holder) continue
+
+        const dedupeKey = `${ev.txHash}:${from}:${to}:${contractId}`
+        if (seen.has(dedupeKey)) continue
+        seen.add(dedupeKey)
+
+        const val = coerceScVal(ev.value)
+        const amount = val ? stroopsToAmount(scValI128ToBigInt(val)) : 0
+        const asset = assetByContract.get(contractId) ?? "USDC"
+        const createdAt =
+          typeof ev.ledgerClosedAt === "string" && ev.ledgerClosedAt
+            ? ev.ledgerClosedAt
+            : new Date().toISOString()
+
+        const existing = byHash.get(ev.txHash)
+        if (existing) {
+          existing.operations.push({ type: "payment", from, to, amount, asset })
+          continue
+        }
+
+        byHash.set(ev.txHash, {
+          id: ev.txHash,
+          hash: ev.txHash,
+          createdAt,
+          successful: true,
+          memo: null,
+          operations: [{ type: "payment", from, to, amount, asset }],
+        })
       }
-      dateCache.set(ev.txHash, createdAt)
+
+      if (byHash.size >= limit) break
+
+      cursor = typeof res.cursor === "string" && res.cursor.length > 0 ? res.cursor : undefined
+      if (!cursor) break
     }
 
-    const existing = byHash.get(ev.txHash)
-    if (existing) {
-      existing.operations.push({
-        type: "payment",
-        from,
-        to,
-        amount,
-        asset,
-      })
-      continue
-    }
-
-    byHash.set(ev.txHash, {
-      id: ev.txHash,
-      hash: ev.txHash,
-      createdAt,
-      successful: true,
-      memo: null,
-      operations: [
-        {
-          type: "payment",
-          from,
-          to,
-          amount,
-          asset,
-        },
-      ],
-    })
-
-    if (byHash.size >= limit * 2) break
+    if (byHash.size >= limit) break
   }
 
   return Array.from(byHash.values())

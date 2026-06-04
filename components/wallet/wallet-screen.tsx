@@ -28,6 +28,7 @@ import { useNotifications } from "@/hooks/use-notifications"
 import { useSwipeGestures } from "@/hooks/use-swipe-gestures"
 import { useTreasuryProjection } from "@/hooks/use-treasury-projection"
 import { useCashflowSummary } from "@/hooks/use-cashflow-summary"
+import { useWalletActivity } from "@/hooks/use-wallet-activity"
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh"
 import { signalAppReady } from "@/lib/app-ready" // kept for analytics/telemetry consumers
 import { useSetOnboardingOverlayOpen } from "@/lib/onboarding-overlay-context"
@@ -39,8 +40,9 @@ import { TransactionHistory } from "@/components/wallet/transaction-history"
 import { BottomMenuBar } from "@/components/wallet/bottom-menu-bar"
 import { PullToRefreshIndicator } from "@/components/wallet/pull-to-refresh-indicator"
 import { CashflowSummaryCard } from "@/components/wallet/cashflow-summary-card"
-import { LedgerResumenPreview } from "@/components/wallet/ledger-resumen-preview"
+import { WalletActivityList } from "@/components/wallet/wallet-activity-list"
 import { UniversalCommandBar } from "@/components/home/universal-command-bar"
+import type { WalletActivityItem } from "@/hooks/use-wallet-activity"
 import type { PaymentReceipt } from "@/lib/payment/payment-receipt"
 import { transactionToPaymentReceipt } from "@/lib/payment/transaction-to-receipt"
 import type { Transaction } from "@/hooks/use-wallet-data"
@@ -201,6 +203,19 @@ export function WalletScreen({
   const treasuryData = useTreasuryProjection(animatedBalance)
   const cashflowSummary = useCashflowSummary(shellLayout === "history")
 
+  const refreshChainHistory = useCallback(() => {
+    if (walletAddress) void fetchTransactionHistory(walletAddress)
+  }, [walletAddress, fetchTransactionHistory])
+
+  const walletActivity = useWalletActivity({
+    enabled: shellLayout === "history",
+    walletAddress,
+    currencyDisplay: t.currencyDisplay,
+    chainTransactions: transactionHistory,
+    addressToTagMap,
+    onRefreshChain: refreshChainHistory,
+  })
+
   // Signal data-ready for analytics once balance is loaded (preloader is already gone by this point).
   useEffect(() => {
     if (shellLayout !== "landing" || isBalanceLoading) return
@@ -211,9 +226,9 @@ export function WalletScreen({
   const historyChartsLoading =
     cashflowSummary.loading ||
     (animatedBalance > 0 && treasuryData.loading && !treasuryData.projection)
-  const historyTxLoading =
+  const historyActivityLoading =
     Boolean(walletAddress) &&
-    (isLoadingTransactions || (isLoading && transactionHistory.length === 0))
+    (walletActivity.loading || isLoadingTransactions || (isLoading && transactionHistory.length === 0))
 
   // Toggle balance visibility
   const toggleBalanceVisibility = useCallback(() => {
@@ -370,6 +385,19 @@ export function WalletScreen({
     },
     [walletAddress, walletNetwork, addressToTagMap],
   )
+
+  const handleActivitySelect = useCallback(
+    (item: WalletActivityItem) => {
+      if (!item.chainTx) return
+      handleTransactionSelect(item.chainTx)
+    },
+    [handleTransactionSelect],
+  )
+
+  const handleDepositClose = useCallback(() => {
+    setIsDepositOpen(false)
+    void refreshWalletData({ pollSoroban: true })
+  }, [setIsDepositOpen, refreshWalletData])
 
   const refreshOnboardingState = useCallback(async () => {
     if (walletNetwork !== "testnet") {
@@ -613,7 +641,7 @@ export function WalletScreen({
       <Suspense fallback={null}>
         <DepositModal
           isOpen={isDepositOpen}
-          onClose={() => setIsDepositOpen(false)}
+          onClose={handleDepositClose}
           walletAddress={walletAddress}
           walletNetwork={walletNetwork}
         />
@@ -844,16 +872,11 @@ export function WalletScreen({
                 }
               />
 
-              <LedgerResumenPreview className="mt-5" />
-
-              <TransactionHistory
-                variant="history"
-                transactions={transactionHistory}
-                walletAddress={walletAddress}
+              <WalletActivityList
+                items={walletActivity.items}
                 walletNetwork={walletNetwork}
-                addressToTagMap={addressToTagMap}
-                isLoading={historyTxLoading}
-                onSelectTransaction={handleTransactionSelect}
+                isLoading={historyActivityLoading}
+                onSelectChainTx={handleActivitySelect}
               />
             </div>
           </div>
