@@ -7,7 +7,13 @@ import {
   finalizeClaim,
   getFaucetBySlug,
 } from "@/lib/db/faucets";
+import { resolveClaimAmount } from "@/lib/faucet/claim-amount";
 import { sendFaucetPayment } from "@/lib/faucet/send-payment";
+import {
+  getFaucetVaultBalanceMinor,
+  minorToUsdc,
+  vaultCanCoverClaim,
+} from "@/lib/faucet/vault-balance";
 import { getStellarWallet } from "@/lib/turnkey/stellar-wallet";
 import type { FaucetClaimResponse } from "@/lib/faucet/types";
 
@@ -23,16 +29,6 @@ function clientIp(request: Request): string | null {
   const fwd = request.headers.get("x-forwarded-for");
   if (fwd) return fwd.split(",")[0]!.trim();
   return request.headers.get("x-real-ip");
-}
-
-/** Per-claim amount in whole USDC: FAUCET_CLAIM_AMOUNT env override > faucet row. */
-function resolveClaimAmount(faucetAmount: number): number {
-  const raw = process.env.FAUCET_CLAIM_AMOUNT?.trim();
-  if (raw) {
-    const parsed = Number(raw);
-    if (Number.isFinite(parsed) && parsed > 0) return parsed;
-  }
-  return faucetAmount;
 }
 
 /**
@@ -91,6 +87,18 @@ export async function POST(
 
     const claimAmount = resolveClaimAmount(faucet.claim_amount);
 
+    if (!(await vaultCanCoverClaim(claimAmount))) {
+      const minor = await getFaucetVaultBalanceMinor();
+      const have = minor !== null ? minorToUsdc(minor) : 0;
+      const res: FaucetClaimResponse = {
+        success: false,
+        amount: claimAmount,
+        error: `Vault has ${have} USDC but this claim needs ${claimAmount} USDC. Fund the faucet or lower FAUCET_CLAIM_AMOUNT.`,
+        reason: "insufficient_vault",
+      };
+      return NextResponse.json(res, { status: 503 });
+    }
+
     // Pending claim reserves budget/cooldown before touching the chain.
     const claim = await createPendingClaim({
       faucetId: faucet.id,
@@ -122,13 +130,18 @@ export async function POST(
       await finalizeClaim({ claimId: claim.id, status: "failed" }).catch((e) =>
         console.error("[POST /api/faucets/[slug]/claim] finalize", e),
       );
+      const message =
+        payErr instanceof Error ? payErr.message : "Transfer could not be completed.";
+      const isUnderfunded = message.includes("underfunded") || message.includes("InsufficientBalance");
       const res: FaucetClaimResponse = {
         success: false,
-        amount: faucet.claim_amount,
-        error: "Transfer could not be completed. Try again in a moment.",
-        reason: "payment_failed",
+        amount: claimAmount,
+        error: isUnderfunded
+          ? message
+          : "Transfer could not be completed. Try again in a moment.",
+        reason: isUnderfunded ? "insufficient_vault" : "payment_failed",
       };
-      return NextResponse.json(res, { status: 502 });
+      return NextResponse.json(res, { status: isUnderfunded ? 503 : 502 });
     }
   } catch (err) {
     console.error("[POST /api/faucets/[slug]/claim]", err);

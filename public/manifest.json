@@ -1,4 +1,5 @@
 {
+  "id": "/",
   "name": "Sozu",
   "short_name": "Sozu",
   "description": "Self-custodial Stellar wallet",
@@ -8,6 +9,10 @@
   "theme_color": "#000000",
   "orientation": "portrait",
   "scope": "/",
+  "handle_links": "preferred",
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
   "icons": [
     {
       "src": "/icons/sozu_icon_72.png",

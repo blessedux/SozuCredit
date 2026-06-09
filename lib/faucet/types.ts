@@ -51,6 +51,7 @@ export type FaucetPublic = {
 export type FaucetUnavailableReason =
   | "inactive"
   | "empty_today"
+  | "insufficient_vault"
   | "global_cooldown"
   | "user_cooldown";
 
@@ -76,7 +77,7 @@ export type FaucetClaimResponse = {
   txHash?: string;
   nextAvailableAt?: string;
   error?: string;
-  reason?: FaucetUnavailableReason | "wallet_missing" | "payment_failed";
+  reason?: FaucetUnavailableReason | "wallet_missing" | "payment_failed" | "insufficient_vault";
 };
 
 /** Orb visual state used by the map and claim page. */

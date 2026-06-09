@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { computeFaucetAvailability, getFaucetBySlug, toPublicFaucet } from "@/lib/db/faucets";
+import { resolveClaimAmount } from "@/lib/faucet/claim-amount";
+import { vaultCanCoverClaim } from "@/lib/faucet/vault-balance";
 import { getStellarWallet } from "@/lib/turnkey/stellar-wallet";
 import type { FaucetStatusResponse } from "@/lib/faucet/types";
 
@@ -30,10 +32,19 @@ export async function GET(
       walletAddress = wallet?.publicKey?.trim().toUpperCase() ?? null;
     }
 
-    const availability = await computeFaucetAvailability(faucet, {
+    let availability = await computeFaucetAvailability(faucet, {
       userId,
       walletAddress,
     });
+
+    const claimAmount = resolveClaimAmount(faucet.claim_amount);
+    if (availability.available && !(await vaultCanCoverClaim(claimAmount))) {
+      availability = {
+        available: false,
+        reason: "insufficient_vault",
+        remainingToday: availability.remainingToday,
+      };
+    }
 
     const response: FaucetStatusResponse = {
       faucet: toPublicFaucet(faucet),

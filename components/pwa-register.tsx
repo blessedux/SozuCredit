@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { shouldRegisterServiceWorker } from '@/lib/pwa-host'
+import { markPwaInstalled } from '@/lib/pwa/standalone'
 
 export function PWARegister() {
   const updateIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -53,8 +54,14 @@ export function PWARegister() {
     // Handle app installed
     window.addEventListener('appinstalled', () => {
       console.log('[PWA] App installed successfully')
+      markPwaInstalled()
       deferredPrompt = null
     })
+
+    // iOS Safari has no appinstalled event — user may already have the PWA.
+    if (typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches) {
+      markPwaInstalled()
+    }
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)

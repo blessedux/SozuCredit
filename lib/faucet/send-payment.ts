@@ -31,6 +31,11 @@ import { getAssetById, getBlendUsdcAsset } from "@/lib/stellar/asset-registry";
 import { normalizeHolderAddress } from "@/lib/stellar/stellar-holder";
 import { ensureTestnetAccountFunded } from "@/lib/stellar/soroban-fee-payer";
 import { getStellarConfig } from "@/lib/turnkey/config";
+import {
+  getFaucetVaultBalanceMinor,
+  minorToUsdc,
+  vaultCanCoverClaim,
+} from "@/lib/faucet/vault-balance";
 
 const TOKEN_DECIMALS = 7;
 
@@ -178,6 +183,15 @@ export async function sendFaucetPayment(
   const to = normalizeHolderAddress(params.toWalletAddress);
   const amountScVal = amountToI128ScVal(params.amount, TOKEN_DECIMALS);
   const faucetContractId = getFaucetContractId();
+
+  if (!(await vaultCanCoverClaim(params.amount))) {
+    const minor = await getFaucetVaultBalanceMinor();
+    const have = minor !== null ? minorToUsdc(minor) : 0;
+    throw new Error(
+      `Faucet vault underfunded: has ${have} USDC, need ${params.amount} USDC. ` +
+        `Fund via ./scripts/faucet-vault.sh fund or lower FAUCET_CLAIM_AMOUNT.`,
+    );
+  }
 
   // Preferred: vault contract claim(to, amount), admin-gated.
   if (faucetContractId) {

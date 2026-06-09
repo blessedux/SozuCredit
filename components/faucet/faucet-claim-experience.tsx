@@ -12,10 +12,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
+import { FaucetPwaHandler } from "@/components/faucet/faucet-pwa-handler";
 import { Orb } from "@/components/faucet/orb";
 import { isClientAuthed } from "@/lib/client-auth-gate";
 import { getFaucetTexts, readFaucetLanguage } from "@/lib/faucet/texts";
-import { iosHapticSingle } from "@/lib/haptics/ios-switch-pulse";
+import {
+  hapticClaimError,
+  hapticClaimPress,
+  hapticClaimSuccess,
+  hapticClaimingPulse,
+} from "@/lib/haptics/web-haptics";
 import type {
   FaucetClaimResponse,
   FaucetStatusResponse,
@@ -64,19 +70,6 @@ function getStoredUserId(): string | null {
   );
 }
 
-function successHaptic() {
-  // dum … dum dum
-  try {
-    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
-      navigator.vibrate([60, 220, 30, 90, 30]);
-      return;
-    }
-  } catch {
-    /* ignore */
-  }
-  iosHapticSingle();
-}
-
 export function FaucetClaimExperience({ slug }: { slug: string }) {
   const router = useRouter();
   const t = useMemo(() => getFaucetTexts(readFaucetLanguage()), []);
@@ -103,6 +96,7 @@ export function FaucetClaimExperience({ slug }: { slug: string }) {
       }
       switch (data.availability.reason) {
         case "empty_today":
+        case "insufficient_vault":
           setPhase("empty");
           break;
         case "global_cooldown":
@@ -189,12 +183,12 @@ export function FaucetClaimExperience({ slug }: { slug: string }) {
   // Soft haptic pulse while the transfer is in flight.
   useEffect(() => {
     if (phase !== "claiming") return;
-    const id = setInterval(() => iosHapticSingle(), 500);
+    const id = setInterval(() => hapticClaimingPulse(), 500);
     return () => clearInterval(id);
   }, [phase]);
 
   const goCreateWallet = useCallback(() => {
-    iosHapticSingle();
+    hapticClaimPress();
     try {
       sessionStorage.setItem(FAUCET_RETURN_KEY, `/faucet/${slug}`);
     } catch {
@@ -206,7 +200,7 @@ export function FaucetClaimExperience({ slug }: { slug: string }) {
   const handleClaim = useCallback(async () => {
     if (claimingRef.current) return;
     claimingRef.current = true;
-    iosHapticSingle();
+    hapticClaimPress();
     setPhase("claiming");
 
     const startedAt = Date.now();
@@ -229,14 +223,16 @@ export function FaucetClaimExperience({ slug }: { slug: string }) {
 
       if (data.success) {
         setClaimedAmount(data.amount);
-        successHaptic();
+        hapticClaimSuccess();
         setPhase("success");
         return;
       }
 
       setNextAvailableAt(data.nextAvailableAt ?? null);
+      hapticClaimError();
       switch (data.reason) {
         case "empty_today":
+        case "insufficient_vault":
           setPhase("empty");
           break;
         case "global_cooldown":
@@ -252,6 +248,7 @@ export function FaucetClaimExperience({ slug }: { slug: string }) {
           setPhase("error");
       }
     } catch {
+      hapticClaimError();
       setPhase("error");
     } finally {
       claimingRef.current = false;
@@ -264,6 +261,7 @@ export function FaucetClaimExperience({ slug }: { slug: string }) {
 
   return (
     <div className="fixed inset-0 flex flex-col items-center justify-center overflow-hidden bg-black">
+      <FaucetPwaHandler slug={slug} />
       {/* Activation wash: ambient warmth in the orb texture's palette */}
       <motion.div
         className="pointer-events-none absolute inset-0"
@@ -569,7 +567,7 @@ export function FaucetClaimExperience({ slug }: { slug: string }) {
               </p>
               <button
                 onClick={() => {
-                  iosHapticSingle();
+                  hapticClaimPress();
                   setPhase("loading");
                   fetchStatus().catch(() => setPhase("error"));
                 }}
