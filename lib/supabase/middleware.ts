@@ -43,6 +43,12 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // Faucet claim page + map are public NFC entry points (covers /faucet/* and /faucets/*).
+  // Unauthenticated users see the "create wallet" state and bounce through /auth?faucet=<slug>.
+  if (pathname.startsWith("/faucet")) {
+    return NextResponse.next()
+  }
+
   // Allow /tracker (Expense Tracker) without auth so we can test the UI
   if (pathname.startsWith("/tracker")) {
     return NextResponse.next()

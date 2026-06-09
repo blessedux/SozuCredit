@@ -41,10 +41,11 @@ export function requiresClientAuth(pathname: string): boolean {
   return isWalletBootstrapPath(pathname)
 }
 
-/** Redirect authed users away from login (client handles sdpInvite / add-device). */
+/** Redirect authed users away from login (client handles sdpInvite / add-device / faucet return). */
 export function shouldRedirectAuthedAwayFromAuth(pathname: string, search: string): boolean {
   if (!isAuthEntryPath(pathname)) return false
   if (pathname.includes("add-device")) return false
   if (search.includes("sdpInvite=1")) return false
+  if (search.includes("faucet=")) return false
   return isClientAuthed()
 }

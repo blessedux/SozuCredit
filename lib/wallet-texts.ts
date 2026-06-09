@@ -248,6 +248,46 @@ export type WalletTexts = {
   depositBlendHint: string;
   depositBlendFaucet: string;
   depositBlendPool: string;
+  // Fiat deposit flow (bank transfer)
+  depositFiatTabLabel: string;
+  depositCryptoTabLabel: string;
+  depositFiatTitle: string;
+  depositFiatAmountLabel: string;
+  depositFiatAmountPlaceholder: string;
+  depositFiatMinError: string;
+  depositFiatSubmit: string;
+  depositFiatSubmitting: string;
+  depositFiatInstructionsTitle: string;
+  depositFiatBankLabel: string;
+  depositFiatAccountLabel: string;
+  depositFiatRutLabel: string;
+  depositFiatEmailLabel: string;
+  depositFiatReferenceLabel: string;
+  depositFiatReferenceHint: string;
+  depositFiatAmountConfirmLabel: string;
+  depositFiatReceiveLabel: string;
+  depositFiatCopied: string;
+  depositFiatCopy: string;
+  depositFiatDone: string;
+  depositFiatStatusLabel: string;
+  depositFiatStatusAwaiting: string;
+  depositFiatStatusReceived: string;
+  depositFiatStatusProcessing: string;
+  depositFiatStatusCompleted: string;
+  depositFiatStatusFailed: string;
+  depositFiatError: string;
+  depositFiatNoWallet: string;
+  depositFiatProofLabel: string;
+  depositFiatProofPlaceholder: string;
+  depositFiatProofSubmit: string;
+  depositFiatProofSent: string;
+  depositFiatMethodBank: string;
+  depositFiatMethodCard: string;
+  depositFiatQuoteLabel: string;
+  depositFiatQuoteLoading: string;
+  depositFiatCardRedirect: string;
+  depositFiatCardSubmit: string;
+  depositFiatFxSource: string;
   // Balance card
   hideBalance: string;
   showBalance: string;
@@ -642,6 +682,45 @@ export const walletTexts = {
       "Los pagos usan BlendUSDC en tu cuenta C (no el USDC clásico de Circle en G). Copia tu dirección C abajo y recibe BlendUSDC ahí.",
     depositBlendFaucet: "Abrir testnet.blend.capital",
     depositBlendPool: "Pool USDC (Blend)",
+    depositFiatTabLabel: "Pesos CLP",
+    depositCryptoTabLabel: "Crypto",
+    depositFiatTitle: "Depósito en pesos",
+    depositFiatAmountLabel: "Monto en CLP",
+    depositFiatAmountPlaceholder: "Ej. 50000",
+    depositFiatMinError: "El mínimo es $1.000 CLP",
+    depositFiatSubmit: "Continuar",
+    depositFiatSubmitting: "Creando depósito…",
+    depositFiatInstructionsTitle: "Instrucciones de transferencia",
+    depositFiatBankLabel: "Banco",
+    depositFiatAccountLabel: "Cuenta",
+    depositFiatRutLabel: "RUT",
+    depositFiatEmailLabel: "Email",
+    depositFiatReferenceLabel: "Referencia",
+    depositFiatReferenceHint: "Incluye este código en la descripción de tu transferencia",
+    depositFiatAmountConfirmLabel: "Monto a transferir",
+    depositFiatReceiveLabel: "Recibirás aprox.",
+    depositFiatCopied: "Copiado",
+    depositFiatCopy: "Copiar",
+    depositFiatDone: "Listo",
+    depositFiatStatusLabel: "Estado",
+    depositFiatStatusAwaiting: "Esperando pago",
+    depositFiatStatusReceived: "Pago recibido",
+    depositFiatStatusProcessing: "Procesando depósito",
+    depositFiatStatusCompleted: "Completado",
+    depositFiatStatusFailed: "Fallido",
+    depositFiatError: "No se pudo crear el depósito. Intenta de nuevo.",
+    depositFiatNoWallet: "Necesitas una billetera Stellar antes de depositar.",
+    depositFiatProofLabel: "Referencia del comprobante (opcional)",
+    depositFiatProofPlaceholder: "Nro. de operación o comprobante",
+    depositFiatProofSubmit: "Enviar comprobante",
+    depositFiatProofSent: "Comprobante enviado",
+    depositFiatMethodBank: "Transferencia",
+    depositFiatMethodCard: "Tarjeta",
+    depositFiatQuoteLabel: "Recibirás aprox.",
+    depositFiatQuoteLoading: "Cotizando…",
+    depositFiatCardRedirect: "Redirigiendo a SumUp…",
+    depositFiatCardSubmit: "Pagar con tarjeta",
+    depositFiatFxSource: "Tipo de cambio en vivo",
     hideBalance: "Ocultar saldo",
     showBalance: "Mostrar saldo",
     purchasingPowerSubline: "+{pct}% poder adquisitivo · {days}d",
@@ -1003,6 +1082,45 @@ export const walletTexts = {
       "Payments use BlendUSDC on your C smart account (not classic Circle USDC on G). Copy your C address below and receive BlendUSDC there.",
     depositBlendFaucet: "Open testnet.blend.capital",
     depositBlendPool: "USDC pool (Blend)",
+    depositFiatTabLabel: "CLP pesos",
+    depositCryptoTabLabel: "Crypto",
+    depositFiatTitle: "Peso deposit",
+    depositFiatAmountLabel: "Amount in CLP",
+    depositFiatAmountPlaceholder: "e.g. 50000",
+    depositFiatMinError: "Minimum is $1,000 CLP",
+    depositFiatSubmit: "Continue",
+    depositFiatSubmitting: "Creating deposit…",
+    depositFiatInstructionsTitle: "Transfer instructions",
+    depositFiatBankLabel: "Bank",
+    depositFiatAccountLabel: "Account",
+    depositFiatRutLabel: "RUT",
+    depositFiatEmailLabel: "Email",
+    depositFiatReferenceLabel: "Reference",
+    depositFiatReferenceHint: "Include this code in your bank transfer description",
+    depositFiatAmountConfirmLabel: "Amount to transfer",
+    depositFiatReceiveLabel: "You will receive approx.",
+    depositFiatCopied: "Copied",
+    depositFiatCopy: "Copy",
+    depositFiatDone: "Done",
+    depositFiatStatusLabel: "Status",
+    depositFiatStatusAwaiting: "Awaiting payment",
+    depositFiatStatusReceived: "Payment received",
+    depositFiatStatusProcessing: "Processing deposit",
+    depositFiatStatusCompleted: "Completed",
+    depositFiatStatusFailed: "Failed",
+    depositFiatError: "Could not create deposit. Please try again.",
+    depositFiatNoWallet: "You need a Stellar wallet before you can deposit.",
+    depositFiatProofLabel: "Proof reference (optional)",
+    depositFiatProofPlaceholder: "Transaction or confirmation number",
+    depositFiatProofSubmit: "Submit proof",
+    depositFiatProofSent: "Proof sent",
+    depositFiatMethodBank: "Bank transfer",
+    depositFiatMethodCard: "Card",
+    depositFiatQuoteLabel: "You will receive approx.",
+    depositFiatQuoteLoading: "Fetching quote…",
+    depositFiatCardRedirect: "Redirecting to SumUp…",
+    depositFiatCardSubmit: "Pay with card",
+    depositFiatFxSource: "Live exchange rate",
     hideBalance: "Hide balance",
     showBalance: "Show balance",
     purchasingPowerSubline: "+{pct}% purchasing power · {days}d",

@@ -10,6 +10,8 @@ import { useWalletLanguage } from "@/lib/wallet-language"
 import { formatWalletText } from "@/lib/wallet-texts"
 import { resolveDepositReceiveAddress } from "@/lib/wallet/deposit-receive-address"
 import { getUserId } from "@/lib/wallet-utils"
+import { depositsEnabled } from "@/lib/app-config"
+import { FiatDepositFlow } from "@/components/home/fiat-deposit-flow"
 
 type DepositModalProps = {
   isOpen: boolean
@@ -49,6 +51,10 @@ export function DepositModal({
   const [mounted, setMounted] = useState(false)
   const [resolving, setResolving] = useState(false)
   const [setupError, setSetupError] = useState<string | null>(null)
+  // "crypto" = existing QR flow; "fiat" = CLP bank transfer (closed beta only)
+  const [depositTab, setDepositTab] = useState<"crypto" | "fiat">(
+    depositsEnabled ? "fiat" : "crypto",
+  )
 
   useEffect(() => {
     setMounted(true)
@@ -174,6 +180,71 @@ export function DepositModal({
 
       <div className="text-[9px] font-light uppercase tracking-[0.3em] text-white/35">{t.depositTitle}</div>
 
+      {/* Rail selector — only shown when fiat deposits are enabled on this deployment */}
+      {depositsEnabled ? (
+        <div
+          className="relative grid w-full max-w-[15.5rem] grid-cols-2 rounded-full border border-white/10 bg-white/[0.04] p-1"
+          onClick={(e) => e.stopPropagation()}
+          role="tablist"
+          aria-label="Deposit method"
+          style={{
+            transform: visible ? "translateY(0)" : "translateY(8px)",
+            transition: "transform 0.35s cubic-bezier(0.4,0,0.2,1)",
+            touchAction: "manipulation",
+          }}
+        >
+          <span
+            aria-hidden
+            className={cn(
+              "pointer-events-none absolute inset-y-1 w-[calc(50%-0.25rem)] rounded-full bg-white/12 shadow-[0_0_0_1px_rgba(255,255,255,0.06)] transition-[left] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
+              depositTab === "crypto" ? "left-1" : "left-[calc(50%+0.125rem)]",
+            )}
+          />
+          <button
+            type="button"
+            role="tab"
+            aria-selected={depositTab === "crypto"}
+            onClick={() => setDepositTab("crypto")}
+            className={cn(
+              "relative z-10 rounded-full px-3 py-2 text-[10px] font-medium uppercase tracking-wider transition-colors",
+              depositTab === "crypto" ? "text-white" : "text-white/45 hover:text-white/70",
+            )}
+          >
+            {t.depositCryptoTabLabel}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={depositTab === "fiat"}
+            onClick={() => setDepositTab("fiat")}
+            className={cn(
+              "relative z-10 rounded-full px-3 py-2 text-[10px] font-medium uppercase tracking-wider transition-colors",
+              depositTab === "fiat" ? "text-white" : "text-white/45 hover:text-white/70",
+            )}
+          >
+            {t.depositFiatTabLabel}
+          </button>
+        </div>
+      ) : null}
+
+      {/* Fiat tab content */}
+      {depositsEnabled && depositTab === "fiat" ? (
+        <div
+          className="flex w-full max-w-sm flex-col gap-2"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            transform: visible ? "translateY(0)" : "translateY(12px)",
+            transition: "transform 0.4s cubic-bezier(0.4,0,0.2,1)",
+            touchAction: "manipulation",
+          }}
+        >
+          <FiatDepositFlow />
+        </div>
+      ) : null}
+
+      {/* Crypto tab content (existing QR flow) — hidden when fiat tab is active */}
+      {(!depositsEnabled || depositTab === "crypto") ? (
+      <>
       {canShowTagQr ? (
         <div
           className="relative grid w-full max-w-[15.5rem] grid-cols-2 rounded-full border border-white/10 bg-white/[0.04] p-1"
@@ -322,6 +393,8 @@ export function DepositModal({
       </div>
 
       <div className="shrink-0 text-[9px] text-white/25">{t.depositUsdcOnly}</div>
+      </>
+      ) : null}
     </div>
   )
 

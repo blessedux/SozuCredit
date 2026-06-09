@@ -51,8 +51,26 @@ function AuthPageContent() {
 
   useAppViewportLock()
 
+  /** Faucet onboarding: /faucet/[slug] sends users here with ?faucet=<slug> (sessionStorage backup). */
+  const faucetReturnPath = (() => {
+    const slug = searchParams.get("faucet")?.trim()
+    if (slug && /^[a-z0-9-]+$/i.test(slug)) return `/faucet/${slug}`
+    if (typeof window !== "undefined") {
+      try {
+        const stored = sessionStorage.getItem("sozu_faucet_return")
+        if (stored?.startsWith("/faucet/")) return stored
+      } catch {
+        /* private browsing */
+      }
+    }
+    return null
+  })()
+
   /** SDP onboarding: middleware sends unauthenticated users to /auth?sdpInvite=1 */
-  const postAuthPath = searchParams.get("sdpInvite") === "1" ? "/sdp/register" : "/home"
+  const postAuthPath =
+    searchParams.get("sdpInvite") === "1"
+      ? "/sdp/register"
+      : faucetReturnPath ?? "/home"
 
   useEffect(() => {
     if (redirectingRef.current || isAuthenticating || isAuthenticated) return

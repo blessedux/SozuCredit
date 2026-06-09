@@ -81,6 +81,20 @@ export async function postSdpRegistrationOtp(params: {
 
   const data = await readSdpJson(res);
   if (!res.ok) {
+    sdpDebugLog(
+      "sep24Registration.ts:postSdpRegistrationOtp",
+      "SDP OTP HTTP error",
+      {
+        emailMasked: maskEmail(params.email),
+        apiBase: params.apiBase.replace(/^https?:\/\//, "").split("/")[0],
+        httpStatus: res.status,
+        sdpError:
+          typeof data.error === "string" ? data.error.slice(0, 160) : `HTTP ${res.status}`,
+        sdpErrorCode:
+          typeof data.error_code === "string" ? data.error_code : null,
+      },
+      "OTP-FAIL"
+    );
     return {
       ok: false,
       status: res.status,
@@ -97,6 +111,19 @@ export async function postSdpRegistrationOtp(params: {
       : "DATE_OF_BIRTH";
   const message =
     typeof data.message === "string" ? data.message : "OTP sent";
+
+  sdpDebugLog(
+    "sep24Registration.ts:postSdpRegistrationOtp",
+    "SDP OTP accepted",
+    {
+      emailMasked: maskEmail(params.email),
+      apiBase: params.apiBase.replace(/^https?:\/\//, "").split("/")[0],
+      httpStatus: res.status,
+      verificationField,
+      sdpMessage: message.slice(0, 120),
+    },
+    "OTP-OK"
+  );
 
   return { ok: true, verificationField, message };
 }
