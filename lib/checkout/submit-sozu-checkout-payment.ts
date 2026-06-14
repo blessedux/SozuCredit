@@ -170,7 +170,7 @@ export async function submitSozuCheckoutPayment({
 
     // Step 5: Mark checkout complete
     try {
-      await fetch(`${SOZUPAY_URL}/api/checkout/complete`, {
+      await fetch("/api/checkout/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
