@@ -10,7 +10,7 @@ export type CheckoutPaymentResult =
 
 /**
  * Submit SOZU payment for checkout using existing wallet payment flow.
- * Reuses the passkey signing infrastructure from use-send-payment.
+ * This reuses the exact same flow as the wallet send feature - just calls the API directly.
  */
 export async function submitSozuCheckoutPayment({
   sessionId,
@@ -31,8 +31,9 @@ export async function submitSozuCheckoutPayment({
       return { success: false, error: "Not authenticated" };
     }
 
-    // Build and submit payment via existing API
-    const buildResponse = await fetch("/api/wallet/stellar/payment", {
+    // Call the payment API directly - it handles everything including signing
+    // This is the same API that wallet send uses
+    const response = await fetch("/api/wallet/stellar/payment", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -46,101 +47,51 @@ export async function submitSozuCheckoutPayment({
       }),
     });
 
-    if (!buildResponse.ok) {
-      const errorData = await buildResponse.json().catch(() => ({}));
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
       return {
         success: false,
-        error: errorData.error || "Failed to prepare payment",
+        error: errorData.error || "Payment failed",
         code: errorData.code,
       };
     }
 
-    const buildData = await buildResponse.json();
+    const data = await response.json();
 
-    // If we got a transaction to sign
-    if (buildData.transactionXdr) {
-      // Dynamic import to keep bundle size down
-      const { signSorobanTransferC } = await import(
-        "@/lib/stellar/smartAccounts/signSorobanTransferC"
-      );
-
-      const signResult = await signSorobanTransferC({
-        recipientAddress: destination,
-        amountUsdc: parseFloat(amountUsd),
-        userId,
-        unsignedEnvelopeXdr: buildData.transactionXdr,
-        contractId: buildData.contractId,
-        signer: buildData.signer,
-        credentialId: buildData.credentialId,
-      });
-
-      if (!signResult.success) {
-        return {
-          success: false,
-          error: signResult.error || "Payment signing failed",
-        };
-      }
-
-      // Submit signed transaction
-      const submitResponse = await fetch("/api/wallet/stellar/payment", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-user-id": userId,
-        },
-        body: JSON.stringify({
-          signedEnvelopeXdr: signResult.signedEnvelopeXdr,
-        }),
-      });
-
-      if (!submitResponse.ok) {
-        const errorData = await submitResponse.json().catch(() => ({}));
-        return {
-          success: false,
-          error: errorData.error || "Payment submission failed",
-          code: errorData.code,
-        };
-      }
-
-      const submitData = await submitResponse.json();
-
-      if (!submitData.transactionHash) {
-        return { success: false, error: "No transaction hash returned" };
-      }
-
-      // Mark checkout complete
-      try {
-        await fetch(`${SOZUPAY_URL}/api/checkout/complete`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id: sessionId,
-            transactionHash: submitData.transactionHash,
-            paymentMethod: "sozu",
-          }),
-        });
-      } catch (completeErr) {
-        console.error("[checkout] Complete API call failed:", completeErr);
-        // Continue - payment succeeded, completion just needs polling
-      }
-
-      // Build receipt
-      const receipt: PaymentReceipt = {
-        hash: submitData.transactionHash,
-        amount: amountUsd,
-        recipient: formatRecipientDisplayLabel(destination, merchantName),
-        timestamp: Date.now(),
-        confirmed: true,
-      };
-
-      return {
-        success: true,
-        transactionHash: submitData.transactionHash,
-        receipt,
-      };
+    if (!data.transactionHash) {
+      return { success: false, error: "No transaction hash returned" };
     }
 
-    return { success: false, error: "Unexpected response from payment API" };
+    // Mark checkout complete
+    try {
+      await fetch(`${SOZUPAY_URL}/api/checkout/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: sessionId,
+          transactionHash: data.transactionHash,
+          paymentMethod: "sozu",
+        }),
+      });
+    } catch (completeErr) {
+      console.error("[checkout] Complete API call failed:", completeErr);
+      // Continue - payment succeeded, completion just needs polling
+    }
+
+    // Build receipt
+    const receipt: PaymentReceipt = {
+      hash: data.transactionHash,
+      amount: amountUsd,
+      recipient: formatRecipientDisplayLabel(destination, merchantName),
+      timestamp: Date.now(),
+      confirmed: true,
+    };
+
+    return {
+      success: true,
+      transactionHash: data.transactionHash,
+      receipt,
+    };
   } catch (err) {
     console.error("[submitSozuCheckoutPayment] Error:", err);
     return {
