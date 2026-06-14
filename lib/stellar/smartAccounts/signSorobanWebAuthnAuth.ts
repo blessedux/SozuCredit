@@ -202,7 +202,7 @@ function applyOzAuthPayloadSignature(
     const payloadMap = currentSig.map() ?? []
     let signersMap: xdr.ScMapEntry[] | null = null
     for (const entry of payloadMap) {
-      if (entry.key().switch().name === "scvSymbol" && entry.key().sym() === "signers") {
+      if (entry.key().switch().name === "scvSymbol" && entry.key().sym().toString() === "signers") {
         signersMap = entry.val().map() ?? []
         break
       }

@@ -190,11 +190,28 @@ export async function submitSozuCheckoutPayment({
       return { success: false, error: "Payment submission failed" };
     }
 
-    // Skip checkout complete API call - rely on on-chain payment success
-    // The sozupay verification fails due to destination mismatch between
-    // checkout session (classic G wallet) and actual payment destination (org treasury smart account)
-    // This needs to be fixed on the sozupay server side to use dynamic org treasury addresses
-    console.log("[checkout] Payment succeeded on-chain. Skipping checkout complete API call due to verification limitations on sozupay server.");
+    // Call checkout complete API to update checkout session status on SozuPay
+    console.log("[checkout] Payment succeeded on-chain. Notifying SozuPay backend.");
+    try {
+      const completeResponse = await fetch("/api/checkout/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: sessionId,
+          transactionHash: result.transactionHash,
+          paymentMethod: "sozu",
+        }),
+      });
+
+      if (!completeResponse.ok) {
+        const completeErr = await completeResponse.json().catch(() => ({}));
+        console.error("[checkout] Notification to SozuPay failed:", completeErr);
+      } else {
+        console.log("[checkout] Notification to SozuPay succeeded.");
+      }
+    } catch (completeErr) {
+      console.error("[checkout] Error notifying SozuPay:", completeErr);
+    }
 
     // Build receipt matching PaymentReceipt type
     const receipt: PaymentReceipt = {
