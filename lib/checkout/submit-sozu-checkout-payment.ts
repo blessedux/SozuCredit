@@ -34,6 +34,14 @@ export async function submitSozuCheckoutPayment({
 
     const senderC = walletAddress.trim().toUpperCase();
 
+    console.log("[Checkout Payment] Payment details:", {
+      sessionId,
+      sender: senderC,
+      destination,
+      amountUsd,
+      merchantName,
+    });
+
     // Step 1: Build the unsigned transaction
     const buildResponse = await fetch("/api/wallet/stellar/payment", {
       method: "POST",

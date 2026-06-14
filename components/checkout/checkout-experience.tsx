@@ -81,6 +81,14 @@ export function CheckoutExperience({ sessionId }: { sessionId: string }) {
 
     setPhase("paying");
 
+    console.log("[Checkout Experience] Payment details:", {
+      sessionId,
+      walletAddress,
+      destinationStellarAddress: session.destinationStellarAddress,
+      amountUsd: session.amountUsd,
+      merchantName: session.merchantName,
+    });
+
     const result = await submitSozuCheckoutPayment({
       sessionId,
       walletAddress,
@@ -107,11 +115,11 @@ export function CheckoutExperience({ sessionId }: { sessionId: string }) {
   if (phase === "loading") {
     return (
       <BackgroundGradientAnimation
-        firstColor="242, 0, 137"
-        secondColor="209, 0, 209"
-        thirdColor="161, 0, 242"
-        fourthColor="45, 0, 247"
-        fifthColor="242, 0, 137"
+        firstColor="255, 100, 0"
+        secondColor="255, 140, 0"
+        thirdColor="255, 69, 0"
+        fourthColor="0, 0, 0"
+        fifthColor="255, 100, 0"
         size="80%"
         blendingValue="hard-light"
         interactive={false}
@@ -129,11 +137,11 @@ export function CheckoutExperience({ sessionId }: { sessionId: string }) {
   if (phase === "error") {
     return (
       <BackgroundGradientAnimation
-        firstColor="242, 0, 137"
-        secondColor="209, 0, 209"
-        thirdColor="161, 0, 242"
-        fourthColor="45, 0, 247"
-        fifthColor="242, 0, 137"
+        firstColor="255, 100, 0"
+        secondColor="255, 140, 0"
+        thirdColor="255, 69, 0"
+        fourthColor="0, 0, 0"
+        fifthColor="255, 100, 0"
         size="80%"
         blendingValue="hard-light"
         interactive={false}
@@ -161,11 +169,11 @@ export function CheckoutExperience({ sessionId }: { sessionId: string }) {
   if (phase === "already_paid") {
     return (
       <BackgroundGradientAnimation
-        firstColor="242, 0, 137"
-        secondColor="209, 0, 209"
-        thirdColor="161, 0, 242"
-        fourthColor="45, 0, 247"
-        fifthColor="242, 0, 137"
+        firstColor="255, 100, 0"
+        secondColor="255, 140, 0"
+        thirdColor="255, 69, 0"
+        fourthColor="0, 0, 0"
+        fifthColor="255, 100, 0"
         size="80%"
         blendingValue="hard-light"
         interactive={false}
@@ -184,11 +192,11 @@ export function CheckoutExperience({ sessionId }: { sessionId: string }) {
   if (phase === "expired") {
     return (
       <BackgroundGradientAnimation
-        firstColor="242, 0, 137"
-        secondColor="209, 0, 209"
-        thirdColor="161, 0, 242"
-        fourthColor="45, 0, 247"
-        fifthColor="242, 0, 137"
+        firstColor="255, 100, 0"
+        secondColor="255, 140, 0"
+        thirdColor="255, 69, 0"
+        fourthColor="0, 0, 0"
+        fifthColor="255, 100, 0"
         size="80%"
         blendingValue="hard-light"
         interactive={false}
@@ -223,11 +231,11 @@ export function CheckoutExperience({ sessionId }: { sessionId: string }) {
 
   return (
     <BackgroundGradientAnimation
-      firstColor="242, 0, 137"
-      secondColor="209, 0, 209"
-      thirdColor="161, 0, 242"
-      fourthColor="45, 0, 247"
-      fifthColor="242, 0, 137"
+      firstColor="255, 100, 0"
+      secondColor="255, 140, 0"
+      thirdColor="255, 69, 0"
+      fourthColor="0, 0, 0"
+      fifthColor="255, 100, 0"
       size="80%"
       blendingValue="hard-light"
       interactive={false}
@@ -239,6 +247,7 @@ export function CheckoutExperience({ sessionId }: { sessionId: string }) {
             merchantName={session.merchantName}
             amountUsd={session.amountUsd}
             reference={session.reference}
+            destinationAddress={session.destinationStellarAddress}
           />
 
           {phase === "ready" && (
