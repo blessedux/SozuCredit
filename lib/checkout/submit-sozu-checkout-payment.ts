@@ -19,12 +19,14 @@ export async function submitSozuCheckoutPayment({
   destination,
   amountUsd,
   merchantName,
+  organizationId,
 }: {
   sessionId: string;
   walletAddress: string;
   destination: string;
   amountUsd: string;
   merchantName: string;
+  organizationId?: string | null;
 }): Promise<CheckoutPaymentResult> {
   try {
     const userId = getUserId();
@@ -34,10 +36,30 @@ export async function submitSozuCheckoutPayment({
 
     const senderC = walletAddress.trim().toUpperCase();
 
+    // Fetch organization's treasury smart account address dynamically
+    let actualDestination = destination;
+    if (organizationId) {
+      try {
+        const treasuryResponse = await fetch(`/api/organization/treasury-address?organizationId=${organizationId}`);
+        if (treasuryResponse.ok) {
+          const treasuryData = await treasuryResponse.json();
+          if (treasuryData.treasurySmartAccountAddress) {
+            actualDestination = treasuryData.treasurySmartAccountAddress;
+            console.log("[Checkout Payment] Using org treasury smart account:", actualDestination);
+          }
+        }
+      } catch (err) {
+        console.error("[Checkout Payment] Failed to fetch org treasury address:", err);
+        // Fall back to destination from checkout session
+      }
+    }
+
     console.log("[Checkout Payment] Payment details:", {
       sessionId,
       sender: senderC,
-      destination,
+      originalDestination: destination,
+      actualDestination,
+      organizationId,
       amountUsd,
       merchantName,
     });
@@ -50,7 +72,7 @@ export async function submitSozuCheckoutPayment({
         "x-user-id": userId,
       },
       body: JSON.stringify({
-        destination,
+        destination: actualDestination,
         amount: amountUsd,
         sender: senderC,
         memo: sessionId,
@@ -180,7 +202,7 @@ export async function submitSozuCheckoutPayment({
       currency: "USDC",
       fromLabel: getSenderDisplayLabel(),
       toLabel: merchantName,
-      toAddress: destination,
+      toAddress: actualDestination,
       transactionHash: result.transactionHash,
       network: stellarConfig.network,
       memo: sessionId,

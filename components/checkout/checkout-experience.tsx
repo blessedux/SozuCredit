@@ -31,6 +31,7 @@ export function CheckoutExperience({ sessionId }: { sessionId: string }) {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<PaymentReceipt | null>(null);
   const [transactionHash, setTransactionHash] = useState<string | null>(null);
+  const [treasuryAddress, setTreasuryAddress] = useState<string | null>(null);
 
   // Load session
   useEffect(() => {
@@ -52,6 +53,21 @@ export function CheckoutExperience({ sessionId }: { sessionId: string }) {
       }
 
       setSession(result.session);
+
+      // Fetch organization's treasury smart account address
+      if (result.session.organizationId) {
+        try {
+          const treasuryResponse = await fetch(`/api/organization/treasury-address?organizationId=${result.session.organizationId}`);
+          if (treasuryResponse.ok) {
+            const treasuryData = await treasuryResponse.json();
+            if (treasuryData.treasurySmartAccountAddress) {
+              setTreasuryAddress(treasuryData.treasurySmartAccountAddress);
+            }
+          }
+        } catch (err) {
+          console.error("[Checkout Experience] Failed to fetch org treasury address:", err);
+        }
+      }
 
       // Check auth status and load wallet
       const authed = await isClientAuthed();
@@ -95,6 +111,7 @@ export function CheckoutExperience({ sessionId }: { sessionId: string }) {
       destination: session.destinationStellarAddress,
       amountUsd: session.amountUsd,
       merchantName: session.merchantName,
+      organizationId: session.organizationId,
     });
 
     if (result.success) {
@@ -247,7 +264,7 @@ export function CheckoutExperience({ sessionId }: { sessionId: string }) {
             merchantName={session.merchantName}
             amountUsd={session.amountUsd}
             reference={session.reference}
-            destinationAddress={session.destinationStellarAddress}
+            destinationAddress={treasuryAddress || session.destinationStellarAddress}
           />
 
           {phase === "ready" && (

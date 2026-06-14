@@ -13,6 +13,7 @@ export type CheckoutSession = {
   createdAt: string;
   stellarTxHash?: string | null;
   completedPaymentMethod?: string | null;
+  organizationId?: string | null;
 };
 
 export type CheckoutPublicResponse = CheckoutSession;
