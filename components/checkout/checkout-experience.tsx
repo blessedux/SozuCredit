@@ -11,6 +11,7 @@ import { isClientAuthed } from "@/lib/client-auth-gate";
 import { loadClientWalletSession } from "@/lib/client-wallet-session";
 import type { CheckoutSession } from "@/lib/checkout/types";
 import type { PaymentReceipt } from "@/lib/payment/payment-receipt";
+import { BackgroundGradientAnimation } from "@/components/ui/background-gradient-animation";
 
 type CheckoutPhase =
   | "loading"
@@ -92,6 +93,11 @@ export function CheckoutExperience({ sessionId }: { sessionId: string }) {
       setReceipt(result.receipt);
       setTransactionHash(result.transactionHash);
       setPhase("success");
+      
+      // Auto-redirect to /home after showing success for 2 seconds
+      setTimeout(() => {
+        router.push("/home");
+      }, 2000);
     } else {
       setError(result.error);
       setPhase("error");
@@ -100,55 +106,103 @@ export function CheckoutExperience({ sessionId }: { sessionId: string }) {
 
   if (phase === "loading") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-black text-white">
-        <div className="text-center">
-          <div className="mb-4 text-lg">Loading checkout...</div>
+      <BackgroundGradientAnimation
+        firstColor="242, 0, 137"
+        secondColor="209, 0, 209"
+        thirdColor="161, 0, 242"
+        fourthColor="45, 0, 247"
+        fifthColor="242, 0, 137"
+        size="80%"
+        blendingValue="hard-light"
+        interactive={false}
+        containerClassName="min-h-screen"
+      >
+        <div className="flex min-h-screen items-center justify-center text-white">
+          <div className="text-center">
+            <div className="mb-4 text-lg">Loading checkout...</div>
+          </div>
         </div>
-      </div>
+      </BackgroundGradientAnimation>
     );
   }
 
   if (phase === "error") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-black text-white">
-        <div className="max-w-md text-center">
-          <div className="mb-4 text-xl font-bold">Unable to complete payment</div>
-          <div className="mb-6 text-white/60">{error}</div>
-          <button
-            onClick={() => {
-              setError(null);
-              setPhase("ready");
-            }}
-            className="rounded-lg bg-white/10 px-6 py-3 font-medium hover:bg-white/20"
-          >
-            Try again
-          </button>
+      <BackgroundGradientAnimation
+        firstColor="242, 0, 137"
+        secondColor="209, 0, 209"
+        thirdColor="161, 0, 242"
+        fourthColor="45, 0, 247"
+        fifthColor="242, 0, 137"
+        size="80%"
+        blendingValue="hard-light"
+        interactive={false}
+        containerClassName="min-h-screen"
+      >
+        <div className="flex min-h-screen items-center justify-center text-white">
+          <div className="max-w-md text-center">
+            <div className="mb-4 text-xl font-bold">Unable to complete payment</div>
+            <div className="mb-6 text-white/60">{error}</div>
+            <button
+              onClick={() => {
+                setError(null);
+                setPhase("ready");
+              }}
+              className="rounded-lg bg-white/10 px-6 py-3 font-medium hover:bg-white/20"
+            >
+              Try again
+            </button>
+          </div>
         </div>
-      </div>
+      </BackgroundGradientAnimation>
     );
   }
 
   if (phase === "already_paid") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-black text-white">
-        <div className="max-w-md text-center">
-          <div className="mb-4 text-xl font-bold">Already paid</div>
-          <div className="text-white/60">This payment link has already been used.</div>
+      <BackgroundGradientAnimation
+        firstColor="242, 0, 137"
+        secondColor="209, 0, 209"
+        thirdColor="161, 0, 242"
+        fourthColor="45, 0, 247"
+        fifthColor="242, 0, 137"
+        size="80%"
+        blendingValue="hard-light"
+        interactive={false}
+        containerClassName="min-h-screen"
+      >
+        <div className="flex min-h-screen items-center justify-center text-white">
+          <div className="max-w-md text-center">
+            <div className="mb-4 text-xl font-bold">Already paid</div>
+            <div className="text-white/60">This payment link has already been used.</div>
+          </div>
         </div>
-      </div>
+      </BackgroundGradientAnimation>
     );
   }
 
   if (phase === "expired") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-black text-white">
-        <div className="max-w-md text-center">
-          <div className="mb-4 text-xl font-bold">Payment link expired</div>
-          <div className="text-white/60">
-            This payment link is no longer valid. Please contact the merchant for a new link.
+      <BackgroundGradientAnimation
+        firstColor="242, 0, 137"
+        secondColor="209, 0, 209"
+        thirdColor="161, 0, 242"
+        fourthColor="45, 0, 247"
+        fifthColor="242, 0, 137"
+        size="80%"
+        blendingValue="hard-light"
+        interactive={false}
+        containerClassName="min-h-screen"
+      >
+        <div className="flex min-h-screen items-center justify-center text-white">
+          <div className="max-w-md text-center">
+            <div className="mb-4 text-xl font-bold">Payment link expired</div>
+            <div className="text-white/60">
+              This payment link is no longer valid. Please contact the merchant for a new link.
+            </div>
           </div>
         </div>
-      </div>
+      </BackgroundGradientAnimation>
     );
   }
 
@@ -168,38 +222,50 @@ export function CheckoutExperience({ sessionId }: { sessionId: string }) {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-black text-white p-4">
-      <div className="w-full max-w-md space-y-6">
-        <CheckoutAmountHeader
-          merchantName={session.merchantName}
-          amountUsd={session.amountUsd}
-          reference={session.reference}
-        />
+    <BackgroundGradientAnimation
+      firstColor="242, 0, 137"
+      secondColor="209, 0, 209"
+      thirdColor="161, 0, 242"
+      fourthColor="45, 0, 247"
+      fifthColor="242, 0, 137"
+      size="80%"
+      blendingValue="hard-light"
+      interactive={false}
+      containerClassName="min-h-screen"
+    >
+      <div className="flex min-h-screen flex-col items-center justify-center text-white p-4">
+        <div className="w-full max-w-md space-y-6">
+          <CheckoutAmountHeader
+            merchantName={session.merchantName}
+            amountUsd={session.amountUsd}
+            reference={session.reference}
+          />
 
-        {phase === "ready" && (
-          <>
-            {!isAuthenticated && (
-              <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-center text-sm text-white/60">
-                Sign in to pay with your SOZU wallet
-              </div>
-            )}
-            <CheckoutMethodPicker
-              allowDebit={session.allowDebit}
-              allowCredit={session.allowCredit}
-              allowBankTransfer={session.allowBankTransfer}
-              onPayWithSozu={handlePayWithSozu}
-              disabled={false}
-            />
-          </>
-        )}
+          {phase === "ready" && (
+            <>
+              {!isAuthenticated && (
+                <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-center text-sm text-white/60">
+                  Sign in to pay with your SOZU wallet
+                </div>
+              )}
+              <CheckoutMethodPicker
+                allowDebit={session.allowDebit}
+                allowCredit={session.allowCredit}
+                allowBankTransfer={session.allowBankTransfer}
+                onPayWithSozu={handlePayWithSozu}
+                disabled={false}
+              />
+            </>
+          )}
 
-        {phase === "paying" && (
-          <div className="text-center">
-            <div className="mb-4 text-lg">Processing payment...</div>
-            <div className="text-sm text-white/60">Please complete the passkey prompt</div>
-          </div>
-        )}
+          {phase === "paying" && (
+            <div className="text-center">
+              <div className="mb-4 text-lg">Processing payment...</div>
+              <div className="text-sm text-white/60">Please complete the passkey prompt</div>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </BackgroundGradientAnimation>
   );
 }

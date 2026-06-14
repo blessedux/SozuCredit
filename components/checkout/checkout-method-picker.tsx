@@ -32,19 +32,19 @@ export function CheckoutMethodPicker({
       <button
         onClick={handleSozuClick}
         disabled={disabled}
-        className="relative w-full rounded-xl border border-emerald-500/30 bg-gradient-to-br from-emerald-900/20 to-emerald-950/20 p-6 text-left transition-all hover:border-emerald-500/50 hover:from-emerald-900/30 hover:to-emerald-950/30 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="relative w-full rounded-xl border border-white/30 bg-gradient-to-br from-white/10 to-white/5 p-6 text-left transition-all hover:border-white/50 hover:from-white/15 hover:to-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <div className="flex items-start justify-between">
           <div className="flex items-center space-x-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/20">
-              <Fingerprint className="h-6 w-6 text-emerald-400" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/30 bg-white/10">
+              <Fingerprint className="h-6 w-6 text-white" />
             </div>
             <div>
               <div className="text-lg font-bold text-white">Pay with SOZU</div>
               <div className="text-sm text-white/60">One-tap passkey payment</div>
             </div>
           </div>
-          <div className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-400">
+          <div className="rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs font-medium text-white">
             3% cashback instantly
           </div>
         </div>
