@@ -71,6 +71,17 @@ function AuthPageContent() {
       ? "/sdp/register"
       : faucetReturnPath ?? "/home"
 
+  /** Checkout redirect: /checkout/[id] sends unauthenticated users here with ?redirect=/checkout/... */
+  const checkoutRedirect = (() => {
+    const redirect = searchParams.get("redirect")?.trim()
+    if (redirect && redirect.startsWith("/checkout/") && redirect.length > 10) {
+      return redirect
+    }
+    return null
+  })()
+
+  const finalPostAuthPath = checkoutRedirect ?? postAuthPath
+
   useEffect(() => {
     if (redirectingRef.current || isAuthenticating || isAuthenticated) return
 
@@ -96,7 +107,7 @@ function AuthPageContent() {
       if (session.isAuthenticated && session.userId) {
         redirectingRef.current = true
         const target =
-          searchParams.get("sdpInvite") === "1" ? "/sdp/register" : postAuthPath
+          searchParams.get("sdpInvite") === "1" ? "/sdp/register" : finalPostAuthPath
         router.replace(target)
         return
       }
@@ -108,7 +119,7 @@ function AuthPageContent() {
     return () => {
       cancelled = true
     }
-  }, [searchParams, router, postAuthPath, isAuthenticating, isAuthenticated])
+  }, [searchParams, router, finalPostAuthPath, isAuthenticating, isAuthenticated])
 
   const finalizePasskeyLoginSuccess = useCallback(
     async (userId: string, username: string | undefined, credential: { id: string }) => {
@@ -151,9 +162,9 @@ function AuthPageContent() {
       setIsAuthenticating(false)
       redirectingRef.current = true
       setIsExiting(true)
-      setTimeout(() => router.push(postAuthPath), 300)
+      setTimeout(() => router.push(finalPostAuthPath), 300)
     },
-    [router, postAuthPath]
+    [router, finalPostAuthPath]
   )
 
   const finalizePinLoginSuccess = useCallback(
@@ -190,9 +201,9 @@ function AuthPageContent() {
       setIsAuthenticating(false)
       redirectingRef.current = true
       setIsExiting(true)
-      setTimeout(() => router.push(postAuthPath), 300)
+      setTimeout(() => router.push(finalPostAuthPath), 300)
     },
-    [router, postAuthPath]
+    [router, finalPostAuthPath]
   )
 
   const attemptLoginWithTag = useCallback(
@@ -640,7 +651,7 @@ function AuthPageContent() {
           console.log("[Auth] Attempting router.push after registration...")
           try {
             // Use replace: true to prevent adding to history and ensure clean navigation
-            router.push(postAuthPath)
+            router.push(finalPostAuthPath)
             // Give router time to navigate - Next.js router.push is async
             // Don't check pathname immediately as it may not have updated yet
             console.log("[Auth] Router.push called, navigation in progress...")
@@ -648,7 +659,7 @@ function AuthPageContent() {
             console.error("[Auth] Router.push error:", routerError)
             // Only use window.location as absolute last resort, and log it
             console.warn("[Auth] Router.push failed, using window.location as fallback (this will cause refresh)")
-            window.location.href = postAuthPath
+            window.location.href = finalPostAuthPath
           }
         }, 300) // Wait 300ms for fade-out animation
 
@@ -702,7 +713,7 @@ function AuthPageContent() {
           console.log("[Auth] Found auth state after error, redirecting anyway...")
           redirectingRef.current = true
           console.log("[Auth] Executing error recovery redirect via router:", postAuthPath)
-          router.push(postAuthPath)
+          router.push(finalPostAuthPath)
           return
         }
       }

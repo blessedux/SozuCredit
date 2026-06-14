@@ -49,6 +49,11 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // Checkout pages are public (payer links from merchants)
+  if (pathname.startsWith("/checkout")) {
+    return NextResponse.next()
+  }
+
   // Allow /tracker (Expense Tracker) without auth so we can test the UI
   if (pathname.startsWith("/tracker")) {
     return NextResponse.next()
