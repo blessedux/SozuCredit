@@ -57,6 +57,16 @@ export async function POST(request: NextRequest) {
     const userId = request.headers.get("x-user-id")
     const { destination, amount, sender, signer: signerFromBody, memo, contractId: contractIdFromBody } = body
 
+    console.log("[Payment API] Request received:", {
+      userId,
+      destination,
+      amount,
+      sender,
+      memo,
+      hasSignedEnvelopeXdr: !!body.signedEnvelopeXdr,
+      hasSignedTransactionXdr: !!body.signedTransactionXdr,
+    })
+
     if (!userId) {
       return NextResponse.json(
         { error: "User ID required" },
