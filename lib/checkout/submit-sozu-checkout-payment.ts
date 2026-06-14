@@ -1,6 +1,7 @@
 import { getUserId } from "@/lib/wallet-utils";
 import type { PaymentReceipt } from "@/lib/payment/payment-receipt";
-import { formatRecipientDisplayLabel } from "@/lib/payment/payment-receipt";
+import { getSenderDisplayLabel } from "@/lib/payment/payment-receipt";
+import { getStellarConfig } from "@/lib/turnkey/config";
 
 const SOZUPAY_URL = process.env.NEXT_PUBLIC_SOZUPAY_URL || "https://pay.sozu.capital";
 
@@ -78,13 +79,18 @@ export async function submitSozuCheckoutPayment({
       // Continue - payment succeeded, completion just needs polling
     }
 
-    // Build receipt
+    // Build receipt matching PaymentReceipt type
+    const stellarConfig = getStellarConfig();
     const receipt: PaymentReceipt = {
-      hash: data.transactionHash,
-      amount: amountUsd,
-      recipient: formatRecipientDisplayLabel(destination, merchantName),
-      timestamp: Date.now(),
-      confirmed: true,
+      amount: parseFloat(amountUsd),
+      currency: "USDC",
+      fromLabel: getSenderDisplayLabel(),
+      toLabel: merchantName,
+      toAddress: destination,
+      transactionHash: data.transactionHash,
+      network: stellarConfig.network,
+      memo: sessionId,
+      completedAt: new Date().toISOString(),
     };
 
     return {
