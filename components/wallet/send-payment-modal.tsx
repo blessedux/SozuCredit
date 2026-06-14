@@ -381,6 +381,32 @@ export const SendPaymentModal = memo(function SendPaymentModal({
     let recipient = raw
     let isStellar = false
 
+    // Handle checkout URLs from sozupay dashboard QR POS
+    // Format: https://credit.sozu.capital/checkout/cs_...
+    if (raw.includes("/checkout/")) {
+      const match = raw.match(/\/checkout\/([^/?]+)/)
+      if (match && match[1]) {
+        // Navigate to checkout page
+        window.location.href = `/checkout/${match[1]}`
+        return
+      }
+    }
+
+    // Handle sozu:checkout?session=cs_... deep-link
+    if (raw.startsWith("sozu:checkout?")) {
+      try {
+        const params = new URLSearchParams(raw.slice("sozu:checkout?".length))
+        const sessionId = params.get("session")
+        if (sessionId) {
+          // Navigate to checkout page
+          window.location.href = `/checkout/${sessionId}`
+          return
+        }
+      } catch {
+        // Fall through to raw value
+      }
+    }
+
     // Parse sozu:pay?tag=alice3&addr=GBPRNU... deep-link (emitted by our deposit QR)
     if (raw.startsWith("sozu:pay?")) {
       try {
