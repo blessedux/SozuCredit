@@ -46,7 +46,11 @@ export async function POST(request: NextRequest) {
         data,
       });
       return NextResponse.json(
-        { error: data.error || `Failed to complete checkout (${res.status})` },
+        {
+          error: data.error || `Failed to complete checkout (${res.status})`,
+          details: data,
+          status: res.status,
+        },
         { status: res.status }
       );
     }
