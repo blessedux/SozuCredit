@@ -4,6 +4,9 @@ import { getSenderDisplayLabel } from "@/lib/payment/payment-receipt";
 import { getStellarConfig } from "@/lib/turnkey/config";
 
 const SOZUPAY_URL = process.env.NEXT_PUBLIC_SOZUPAY_URL || "https://pay.sozu.capital";
+// Override destination to use org treasury smart account (disbursement contract)
+// instead of the classic G wallet returned by checkout session
+const ORG_TREASURY_SMART_ACCOUNT = process.env.NEXT_PUBLIC_ORG_TREASURY_SMART_ACCOUNT || "CCVXRJR3WR4Y33J527JECXILVFDQEGCPBUQOYVGQDSJUKJOPVAKUSIWX";
 
 export type CheckoutPaymentResult =
   | { success: true; transactionHash: string; receipt: PaymentReceipt }
@@ -34,10 +37,15 @@ export async function submitSozuCheckoutPayment({
 
     const senderC = walletAddress.trim().toUpperCase();
 
+    // Override destination to use org treasury smart account (disbursement contract)
+    // instead of the classic G wallet returned by checkout session
+    const actualDestination = ORG_TREASURY_SMART_ACCOUNT;
+
     console.log("[Checkout Payment] Payment details:", {
       sessionId,
       sender: senderC,
-      destination,
+      originalDestination: destination,
+      actualDestination,
       amountUsd,
       merchantName,
     });
@@ -50,7 +58,7 @@ export async function submitSozuCheckoutPayment({
         "x-user-id": userId,
       },
       body: JSON.stringify({
-        destination,
+        destination: actualDestination,
         amount: amountUsd,
         sender: senderC,
         memo: sessionId,
@@ -190,7 +198,7 @@ export async function submitSozuCheckoutPayment({
       currency: "USDC",
       fromLabel: getSenderDisplayLabel(),
       toLabel: merchantName,
-      toAddress: destination,
+      toAddress: actualDestination,
       transactionHash: result.transactionHash,
       network: stellarConfig.network,
       memo: sessionId,

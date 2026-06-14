@@ -13,6 +13,10 @@ import type { CheckoutSession } from "@/lib/checkout/types";
 import type { PaymentReceipt } from "@/lib/payment/payment-receipt";
 import { BackgroundGradientAnimation } from "@/components/ui/background-gradient-animation";
 
+// Override destination to use org treasury smart account (disbursement contract)
+// instead of the classic G wallet returned by checkout session
+const ORG_TREASURY_SMART_ACCOUNT = process.env.NEXT_PUBLIC_ORG_TREASURY_SMART_ACCOUNT || "CCVXRJR3WR4Y33J527JECXILVFDQEGCPBUQOYVGQDSJUKJOPVAKUSIWX";
+
 type CheckoutPhase =
   | "loading"
   | "ready"
@@ -247,7 +251,7 @@ export function CheckoutExperience({ sessionId }: { sessionId: string }) {
             merchantName={session.merchantName}
             amountUsd={session.amountUsd}
             reference={session.reference}
-            destinationAddress={session.destinationStellarAddress}
+            destinationAddress={ORG_TREASURY_SMART_ACCOUNT}
           />
 
           {phase === "ready" && (
