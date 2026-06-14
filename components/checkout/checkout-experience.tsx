@@ -12,7 +12,6 @@ import { loadClientWalletSession } from "@/lib/client-wallet-session";
 import type { CheckoutSession } from "@/lib/checkout/types";
 import type { PaymentReceipt } from "@/lib/payment/payment-receipt";
 import { BackgroundGradientAnimation } from "@/components/ui/background-gradient-animation";
-import { useWalletDataContext } from "@/components/wallet/wallet-data-provider";
 
 type CheckoutPhase =
   | "loading"
@@ -32,9 +31,6 @@ export function CheckoutExperience({ sessionId }: { sessionId: string }) {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<PaymentReceipt | null>(null);
   const [transactionHash, setTransactionHash] = useState<string | null>(null);
-
-  const walletData = useWalletDataContext();
-  const { fetchTransactionHistory, fetchWalletUSDCBalance } = walletData;
 
   // Load session
   useEffect(() => {
@@ -106,12 +102,6 @@ export function CheckoutExperience({ sessionId }: { sessionId: string }) {
       setTransactionHash(result.transactionHash);
       setPhase("success");
 
-      // Refresh transaction history and balance after successful payment
-      if (walletAddress) {
-        void fetchTransactionHistory(walletAddress);
-        void fetchWalletUSDCBalance(walletAddress);
-      }
-
       // Auto-redirect to /home after showing success for 2 seconds
       setTimeout(() => {
         router.push("/home");
@@ -120,7 +110,7 @@ export function CheckoutExperience({ sessionId }: { sessionId: string }) {
       setError(result.error);
       setPhase("error");
     }
-  }, [isAuthenticated, walletAddress, session, router, sessionId, fetchTransactionHistory, fetchWalletUSDCBalance]);
+  }, [isAuthenticated, walletAddress, session, router, sessionId]);
 
   if (phase === "loading") {
     return (
