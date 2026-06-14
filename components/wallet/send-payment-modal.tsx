@@ -398,6 +398,16 @@ export const SendPaymentModal = memo(function SendPaymentModal({
       return
     }
 
+    // Handle pay/qr/[slug] short-links by navigating the window to resolve the redirection
+    // Format examples:
+    // - https://pay.sozu.capital/pay/qr/slug
+    // - /pay/qr/slug
+    const qrMatch = raw.match(/(?:^|\/)pay\/qr\/([^/?]+)/)
+    if (qrMatch && qrMatch[1]) {
+      window.location.href = raw
+      return
+    }
+
     // Handle sozu:checkout?session=cs_... deep-link
     if (raw.startsWith("sozu:checkout?")) {
       try {
