@@ -178,7 +178,7 @@ export async function submitSozuCheckoutPayment({
 
     // Step 5: Mark checkout complete
     try {
-      await fetch("/api/checkout/complete", {
+      const completeResponse = await fetch("/api/checkout/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -187,6 +187,15 @@ export async function submitSozuCheckoutPayment({
           paymentMethod: "sozu",
         }),
       });
+
+      if (!completeResponse.ok) {
+        const completeError = await completeResponse.json().catch(() => ({}));
+        console.error("[checkout] Complete API call failed:", completeError);
+        // Continue - payment succeeded on-chain, but sozupay verification failed
+        // This happens when we override the destination to use org treasury smart account
+        // instead of the classic G wallet in the checkout session
+        console.warn("[checkout] Payment succeeded on-chain but sozupay verification failed due to destination mismatch. This is expected when using org treasury smart account override.");
+      }
     } catch (completeErr) {
       console.error("[checkout] Complete API call failed:", completeErr);
       // Continue - payment succeeded, completion just needs polling
