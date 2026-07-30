@@ -27,7 +27,6 @@ import { useWalletDataContext } from "@/components/wallet/wallet-data-provider"
 import { useNotifications } from "@/hooks/use-notifications"
 import { useSwipeGestures } from "@/hooks/use-swipe-gestures"
 import { useTreasuryProjection } from "@/hooks/use-treasury-projection"
-import { useCashflowSummary } from "@/hooks/use-cashflow-summary"
 import { useWalletActivity } from "@/hooks/use-wallet-activity"
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh"
 import { signalAppReady } from "@/lib/app-ready" // kept for analytics/telemetry consumers
@@ -39,7 +38,6 @@ import { BalanceDisplay } from "@/components/wallet/balance-display"
 import { TransactionHistory } from "@/components/wallet/transaction-history"
 import { BottomMenuBar } from "@/components/wallet/bottom-menu-bar"
 import { PullToRefreshIndicator } from "@/components/wallet/pull-to-refresh-indicator"
-import { CashflowSummaryCard } from "@/components/wallet/cashflow-summary-card"
 import { WalletActivityList } from "@/components/wallet/wallet-activity-list"
 import { UniversalCommandBar } from "@/components/home/universal-command-bar"
 import type { WalletActivityItem } from "@/hooks/use-wallet-activity"
@@ -202,7 +200,6 @@ export function WalletScreen({
 
   // Treasury projection
   const treasuryData = useTreasuryProjection(animatedBalance)
-  const cashflowSummary = useCashflowSummary(shellLayout === "history")
 
   const refreshChainHistory = useCallback(() => {
     if (walletAddress) void fetchTransactionHistory(walletAddress)
@@ -224,9 +221,6 @@ export function WalletScreen({
     signalAppReady()
   }, [shellLayout, isBalanceLoading, walletRevealed, showActivationOnboarding])
 
-  const historyChartsLoading =
-    cashflowSummary.loading ||
-    (animatedBalance > 0 && treasuryData.loading && !treasuryData.projection)
   const historyActivityLoading =
     Boolean(walletAddress) &&
     (walletActivity.loading || isLoadingTransactions || (isLoading && transactionHistory.length === 0))
@@ -850,32 +844,6 @@ export function WalletScreen({
         <div className={cn("relative flex h-full min-h-0 w-full flex-col overflow-hidden", walletContentClass)}>
           <div className="relative z-10 min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain touch-pan-y no-scrollbar px-4 pt-[max(3.5rem,env(safe-area-inset-top))] pb-[max(2.5rem,env(safe-area-inset-bottom))]">
             <div className="mx-auto w-full max-w-lg space-y-5 lg:max-w-7xl">
-              <div className="flex justify-end">
-                <Link
-                  href="/ledger"
-                  className="group inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.03] px-2 py-1.5 text-sm text-white/85 transition-colors hover:border-white/30 hover:bg-white/[0.08]"
-                  aria-label={t.openCashflow}
-                >
-                  <span className="px-2">{t.cashflowLink}</span>
-                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white/90 transition-colors group-hover:bg-white/20">
-                    <FontAwesomeIcon icon={faCoins} style={{ color: "rgb(255, 255, 255)" }} />
-                  </span>
-                </Link>
-              </div>
-
-              <CashflowSummaryCard
-                summary={cashflowSummary.summary}
-                credit={cashflowSummary.credit}
-                loading={historyChartsLoading}
-                treasuryProjection={treasuryData.projection}
-                treasuryPrefs={treasuryData.prefs}
-                protocolApy={
-                  typeof apyValue === "number" && !isNaN(apyValue)
-                    ? apyValue
-                    : defindexBalance?.apy ?? null
-                }
-              />
-
               <WalletActivityList
                 items={walletActivity.items}
                 walletNetwork={walletNetwork}

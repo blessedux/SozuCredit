@@ -8,16 +8,12 @@ import {
   Loader2,
   Mail,
   ExternalLink,
-  BarChart3,
+  Coins,
   Languages,
 } from "lucide-react"
 import { loadTreasuryPrefs, saveTreasuryPrefs } from "@/lib/treasury/prefs-storage"
-import type { TreasuryPrefs, TreasuryMode } from "@/lib/treasury/types"
+import type { TreasuryPrefs } from "@/lib/treasury/types"
 import { REFERENCE_FIAT_OPTIONS } from "@/lib/treasury/types"
-import { TREASURY_MODE_CONFIG } from "@/lib/treasury/treasury-modes"
-import { useYieldPrefs } from "@/hooks/use-yield-prefs"
-import { getStrategyCatalog } from "@/lib/defindex/strategy-catalog"
-import { getBlendStrategyLink } from "@/lib/defindex/blend-strategy-link"
 import { ledgerUserHeaders } from "@/lib/ledger/client-headers"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -54,12 +50,8 @@ export default function SettingsPage() {
   const [gmailSyncLoading, setGmailSyncLoading] = useState(false)
   const [gmailFlash, setGmailFlash] = useState<{ kind: "success" | "error"; text: string } | null>(null)
 
-  // Treasury preferences
+  // Reference fiat only (treasury mode / yield strategy are out of demo settings)
   const [treasuryPrefs, setTreasuryPrefs] = useState<TreasuryPrefs>(() => loadTreasuryPrefs())
-
-  // Yield preferences
-  const { prefs: yieldPrefs, setStrategy: setYieldStrategy, setAutoEarn, loaded: yieldLoaded } = useYieldPrefs()
-  const strategyCatalog = getStrategyCatalog(process.env.NEXT_PUBLIC_STELLAR_NETWORK)
 
   useEffect(() => {
     // Read from localStorage (persistent) with sessionStorage fallback
@@ -244,203 +236,38 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Treasury preferences */}
         <Card className="border-white/15 bg-black/55 backdrop-blur-xl">
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
-              <BarChart3 className="w-5 h-5" />
-              Tesorería y moneda de referencia
+              <Coins className="w-5 h-5" />
+              {t.currency}
             </CardTitle>
             <CardDescription className="text-white/60">
-              La billetera muestra tu saldo en la moneda elegida. USDC es el saldo real en cadena — aparece en gris debajo del monto principal.
+              {t.referenceFiatNote} USDC
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-5">
-            {/* Reference fiat */}
-            <div className="space-y-2">
-              <Label className="text-white/80 text-sm">Moneda de referencia</Label>
-              <p className="text-xs text-white/45">
-                Este es el monto grande en la tarjeta de saldo. El USDC real queda en la línea pequeña.
-              </p>
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-                {REFERENCE_FIAT_OPTIONS.map((fiat) => (
-                  <button
-                    key={fiat}
-                    type="button"
-                    onClick={() => {
-                      const next = { ...treasuryPrefs, referenceFiat: fiat }
-                      setTreasuryPrefs(next)
-                      saveTreasuryPrefs(next)
-                    }}
-                    className={`rounded-lg border py-2 text-sm font-medium transition-colors ${
-                      treasuryPrefs.referenceFiat === fiat
-                        ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-300"
-                        : "border-white/15 bg-white/[0.03] text-white/70 hover:border-white/30 hover:text-white"
-                    }`}
-                  >
-                    {fiat}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Treasury mode */}
-            <div className="space-y-2">
-              <Label className="text-white/80 text-sm">Modo de tesorería</Label>
-              <div className="space-y-2">
-                {(["efficient", "balanced", "fast"] as TreasuryMode[]).map((m) => {
-                  const cfg = TREASURY_MODE_CONFIG[m]
-                  const active = treasuryPrefs.mode === m
-                  return (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => {
-                        const next = { ...treasuryPrefs, mode: m }
-                        setTreasuryPrefs(next)
-                        saveTreasuryPrefs(next)
-                      }}
-                      className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
-                        active
-                          ? "border-emerald-500/60 bg-emerald-500/10"
-                          : "border-white/10 bg-white/[0.02] hover:border-white/25"
-                      }`}
-                    >
-                      <div className={`text-sm font-medium ${active ? "text-emerald-300" : "text-white/80"}`}>
-                        {cfg.label}
-                      </div>
-                      <div className="text-xs text-white/45 mt-0.5">{cfg.description}</div>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* Holding period */}
-            <div className="space-y-2">
-              <Label className="text-white/80 text-sm">Período de proyección</Label>
-              <div className="grid grid-cols-4 gap-2">
-                {([7, 14, 30, 90] as Array<7 | 14 | 30 | 90>).map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => {
-                      const next = { ...treasuryPrefs, holdingDays: d }
-                      setTreasuryPrefs(next)
-                      saveTreasuryPrefs(next)
-                    }}
-                    className={`rounded-lg border py-2 text-sm font-medium transition-colors ${
-                      treasuryPrefs.holdingDays === d
-                        ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-300"
-                        : "border-white/15 bg-white/[0.03] text-white/70 hover:border-white/30 hover:text-white"
-                    }`}
-                  >
-                    {d}d
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <p className="text-[11px] text-white/30 leading-relaxed">
-              Estimaciones basadas en tasas históricas. No garantizado. No constituye asesoramiento financiero.
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* ── Yield Strategy Settings ──────────────────────────────── */}
-        <Card className="border-white/15 bg-black/55 backdrop-blur-xl">
-          <CardHeader>
-            <CardTitle className="text-white flex items-center gap-2">
-              <BarChart3 className="w-5 h-5" />
-              Estrategia de rendimiento
-            </CardTitle>
-            <CardDescription className="text-white/60">
-              Elige cómo tu USDC genera rendimiento en DeFindex + Blend Capital.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            {/* Strategy selector */}
-            <div className="space-y-2">
-              <Label className="text-white/80 text-sm">Pool de Blend</Label>
-              {yieldLoaded && (
-                <div className="space-y-2">
-                  {(["fixed", "yieldblox"] as const).map((stratId) => {
-                    const cfg = strategyCatalog[stratId]
-                    const active = yieldPrefs.strategy === stratId
-                    const link = getBlendStrategyLink(process.env.NEXT_PUBLIC_STELLAR_NETWORK, stratId)
-                    return (
-                      <div key={stratId} className="flex items-start gap-3">
-                        <button
-                          type="button"
-                          onClick={() => setYieldStrategy(stratId)}
-                          className={`flex-1 rounded-lg border px-4 py-3 text-left transition-colors ${
-                            active
-                              ? "border-emerald-500/60 bg-emerald-500/10"
-                              : "border-white/10 bg-white/[0.02] hover:border-white/25"
-                          }`}
-                        >
-                          <div className={`text-sm font-medium ${active ? "text-emerald-300" : "text-white/80"}`}>
-                            {cfg.label}
-                          </div>
-                          <div className="text-xs text-white/45 mt-0.5">{cfg.description}</div>
-                        </button>
-                        <a
-                          href={link.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-3 text-white/40 hover:text-white/70 transition-colors"
-                          title={`Verificar ${cfg.label} en Blend`}
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                        </a>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Auto-earn toggle */}
-            <div className="space-y-2">
-              <Label className="text-white/80 text-sm">Auto-earn</Label>
-              <button
-                type="button"
-                onClick={() => setAutoEarn(!yieldPrefs.autoEarn)}
-                className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
-                  yieldPrefs.autoEarn
-                    ? "border-emerald-500/60 bg-emerald-500/10"
-                    : "border-white/10 bg-white/[0.02] hover:border-white/25"
-                }`}
-              >
-                <div className={`text-sm font-medium ${yieldPrefs.autoEarn ? "text-emerald-300" : "text-white/80"}`}>
-                  {yieldPrefs.autoEarn ? "Activado" : "Desactivado"}
-                </div>
-                <div className="text-xs text-white/45 mt-0.5">
-                  Mueve automáticamente el USDC nuevo a la estrategia seleccionada.
-                </div>
-              </button>
-            </div>
-
-            {process.env.NEXT_PUBLIC_STELLAR_NETWORK !== "mainnet" && (
-              <p className="text-[11px] text-amber-400/60 leading-relaxed">
-                En testnet, envíos desde tu billetera inteligente (C) usan{" "}
-                <span className="text-amber-200/80">BlendUSDC</span> (Soroban), no el USDC clásico de Circle en una cuenta G.
-                Si ves saldo en G pero no puedes enviar, obtén BlendUSDC en{" "}
-                <a
-                  href="https://testnet.blend.capital"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline text-amber-200/90"
+          <CardContent className="space-y-2">
+            <Label className="text-white/80 text-sm">{t.currency}</Label>
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+              {REFERENCE_FIAT_OPTIONS.map((fiat) => (
+                <button
+                  key={fiat}
+                  type="button"
+                  onClick={() => {
+                    const next = { ...treasuryPrefs, referenceFiat: fiat }
+                    setTreasuryPrefs(next)
+                    saveTreasuryPrefs(next)
+                  }}
+                  className={`rounded-lg border py-2 text-sm font-medium transition-colors ${
+                    treasuryPrefs.referenceFiat === fiat
+                      ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-300"
+                      : "border-white/15 bg-white/[0.03] text-white/70 hover:border-white/30 hover:text-white"
+                  }`}
                 >
-                  testnet.blend.capital
-                </a>
-                .
-              </p>
-            )}
-
-            <p className="text-[11px] text-white/30 leading-relaxed">
-              DeFindex administra los fondos en el pool de Blend seleccionado. El rendimiento no está garantizado.
-            </p>
+                  {fiat}
+                </button>
+              ))}
+            </div>
           </CardContent>
         </Card>
 
