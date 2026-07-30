@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Sozu",
-  "short_name": "Sozu",
+  "name": "Sozu Wallet",
+  "short_name": "Sozu Wallet",
   "description": "Self-custodial Stellar wallet",
   "start_url": "/home",
   "display": "standalone",
