@@ -63,14 +63,21 @@ async function fetchDbWalletPublicKey(userId: string): Promise<{
 
 /**
  * First-time welcome slides (testnet). Shown once per user id — independent of C vs G.
+ * Already-funded wallets skip: mark complete and return false so Home + Pay are immediate.
  */
 export function needsWelcomeOnboarding(params: {
   walletNetwork: string
   userId?: string | null
+  /** When true, skip slides and persist completion. */
+  hasFunds?: boolean
 }): boolean {
   if (params.walletNetwork !== "testnet") return false
   const userId = params.userId?.trim() || getUserId()
   if (!userId) return false
+  if (params.hasFunds) {
+    markWelcomeOnboardingComplete(userId)
+    return false
+  }
   return !hasCompletedWelcomeOnboarding(userId)
 }
 

@@ -248,6 +248,9 @@ export type WalletTexts = {
   depositBlendHint: string;
   depositBlendFaucet: string;
   depositBlendPool: string;
+  /** CTA that opens the Sozu testnet faucet claim path from Deposit. */
+  depositFaucetCta: string;
+  depositFaucetHint: string;
   // Fiat deposit flow (bank transfer)
   depositFiatTabLabel: string;
   depositCryptoTabLabel: string;
@@ -682,6 +685,8 @@ export const walletTexts = {
       "Los pagos usan BlendUSDC en tu cuenta C (no el USDC clásico de Circle en G). Copia tu dirección C abajo y recibe BlendUSDC ahí.",
     depositBlendFaucet: "Abrir testnet.blend.capital",
     depositBlendPool: "Pool USDC (Blend)",
+    depositFaucetCta: "Obtener USDC del faucet",
+    depositFaucetHint: "Fondos de prueba en testnet — sin coaching.",
     depositFiatTabLabel: "Pesos CLP",
     depositCryptoTabLabel: "Crypto",
     depositFiatTitle: "Depósito en pesos",
@@ -1082,6 +1087,8 @@ export const walletTexts = {
       "Payments use BlendUSDC on your C smart account (not classic Circle USDC on G). Copy your C address below and receive BlendUSDC there.",
     depositBlendFaucet: "Open testnet.blend.capital",
     depositBlendPool: "USDC pool (Blend)",
+    depositFaucetCta: "Get USDC from faucet",
+    depositFaucetHint: "Testnet funding — no coaching required.",
     depositFiatTabLabel: "CLP pesos",
     depositCryptoTabLabel: "Crypto",
     depositFiatTitle: "Peso deposit",
