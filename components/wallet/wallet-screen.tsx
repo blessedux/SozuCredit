@@ -2,7 +2,8 @@
 
 import { Suspense, lazy, useEffect, useState, useRef, useCallback, useMemo } from "react"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
+import { getDemoFaucetPath } from "@/lib/faucet/demo-path"
 import { Wallet } from "lucide-react"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faCoins } from "@fortawesome/free-solid-svg-icons"
@@ -81,6 +82,7 @@ export function WalletScreen({
   onPayClick,
 }: WalletScreenProps) {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const { t } = useWalletLanguage()
 
   // Wallet data hook
@@ -393,6 +395,15 @@ export function WalletScreen({
     void refreshWalletData({ pollSoroban: true })
   }, [setIsDepositOpen, refreshWalletData])
 
+  /** Testnet Deposit → faucet claim path; mainnet keeps the receive modal. */
+  const handleDeposit = useCallback(() => {
+    if (walletNetwork === "testnet") {
+      router.push(getDemoFaucetPath())
+      return
+    }
+    setIsDepositOpen(true)
+  }, [walletNetwork, router, setIsDepositOpen])
+
   const refreshOnboardingState = useCallback(async () => {
     if (walletNetwork !== "testnet") {
       setWelcomeNeeded(false)
@@ -400,7 +411,12 @@ export function WalletScreen({
       return
     }
     const userId = getUserId()
-    const welcome = needsWelcomeOnboarding({ walletNetwork, userId })
+    const funded = !isBalanceLoading && baseBalance > 0
+    const welcome = needsWelcomeOnboarding({
+      walletNetwork,
+      userId,
+      hasFunds: funded,
+    })
     setWelcomeNeeded(welcome)
 
     if (welcome || !walletAddress) {
@@ -414,7 +430,7 @@ export function WalletScreen({
       userId,
     })
     setActivationNeeded(legacyG)
-  }, [walletAddress, walletNetwork])
+  }, [walletAddress, walletNetwork, isBalanceLoading, baseBalance])
 
   useEffect(() => {
     void refreshOnboardingState()
@@ -428,7 +444,11 @@ export function WalletScreen({
     setActivationSettled(false)
     setWelcomeNeeded(false)
     await refreshOnboardingState()
-  }, [refreshOnboardingState])
+    // Empty wallets continue into the faucet fund path; funded wallets stay on Home.
+    if (walletNetwork === "testnet" && baseBalance <= 0) {
+      router.push(getDemoFaucetPath())
+    }
+  }, [refreshOnboardingState, walletNetwork, baseBalance, router])
 
   const runActivationWithOnboarding = useCallback(async () => {
     if (!walletAddress || walletNetwork !== "testnet" || isActivating) return
@@ -515,14 +535,22 @@ export function WalletScreen({
   ])
 
   useEffect(() => {
-    if (isLoading) return
+    if (isLoading || isBalanceLoading) return
     if (walletNetwork !== "testnet") return
     if (autoActivationStartedRef.current || isActivating || showActivationOnboarding) return
 
     const userId = getUserId()
     if (!userId) return
 
-    if (welcomeNeeded || needsWelcomeOnboarding({ walletNetwork, userId })) {
+    // Funded wallets skip welcome slides and land on balance + Pay.
+    if (baseBalance > 0) {
+      markWelcomeOnboardingComplete(userId)
+      setWelcomeNeeded(false)
+      setWalletRevealed(true)
+      return
+    }
+
+    if (welcomeNeeded || needsWelcomeOnboarding({ walletNetwork, userId, hasFunds: false })) {
       autoActivationStartedRef.current = true
       void runWelcomeOnboarding()
       return
@@ -535,6 +563,8 @@ export function WalletScreen({
     void runActivationWithOnboarding()
   }, [
     isLoading,
+    isBalanceLoading,
+    baseBalance,
     walletAddress,
     walletNetwork,
     welcomeNeeded,
@@ -825,7 +855,7 @@ export function WalletScreen({
                   <UniversalCommandBar
                     bare
                     onPayClick={handlePay}
-                    onDepositClick={() => setIsDepositOpen(true)}
+                    onDepositClick={handleDeposit}
                   />
                 </div>
               </div>

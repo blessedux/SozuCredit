@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { createPortal } from "react-dom"
+import Link from "next/link"
 import { QRCodeSVG } from "qrcode.react"
 import { Copy, Check, X } from "lucide-react"
 import { copyToClipboard, formatAddress } from "@/lib/wallet-utils"
@@ -11,6 +12,7 @@ import { formatWalletText } from "@/lib/wallet-texts"
 import { resolveDepositReceiveAddress } from "@/lib/wallet/deposit-receive-address"
 import { getUserId } from "@/lib/wallet-utils"
 import { depositsEnabled } from "@/lib/app-config"
+import { getDemoFaucetPath } from "@/lib/faucet/demo-path"
 import { FiatDepositFlow } from "@/components/home/fiat-deposit-flow"
 
 type DepositModalProps = {
@@ -245,6 +247,25 @@ export function DepositModal({
       {/* Crypto tab content (existing QR flow) — hidden when fiat tab is active */}
       {(!depositsEnabled || depositTab === "crypto") ? (
       <>
+      {walletNetwork === "testnet" ? (
+        <div
+          className="flex w-full max-w-sm flex-col gap-1.5"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            transform: visible ? "translateY(0)" : "translateY(8px)",
+            transition: "transform 0.35s cubic-bezier(0.4,0,0.2,1)",
+          }}
+        >
+          <Link
+            href={getDemoFaucetPath()}
+            onClick={onClose}
+            className="flex w-full items-center justify-center rounded-2xl border border-emerald-500/40 bg-emerald-500/15 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-200 transition hover:bg-emerald-500/25"
+          >
+            {t.depositFaucetCta}
+          </Link>
+          <p className="text-center text-[10px] text-white/40">{t.depositFaucetHint}</p>
+        </div>
+      ) : null}
       {canShowTagQr ? (
         <div
           className="relative grid w-full max-w-[15.5rem] grid-cols-2 rounded-full border border-white/10 bg-white/[0.04] p-1"
