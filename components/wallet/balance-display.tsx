@@ -56,6 +56,11 @@ interface BalanceDisplayProps {
   referenceFiat: ReferenceFiat
   /** Landing: expand treasury inline on the card instead of opening a modal. */
   inlineAudit?: boolean
+  /**
+   * USDC-only demo surface: hide PNL/APY carousel and balance-audit expand.
+   * DeFi modules stay in-repo; they simply do not render.
+   */
+  usdcOnlySurface?: boolean
   defindexBalance?: DefindexBalance | null
   treasuryPrefs?: TreasuryPrefs
   onUpdateTreasuryPrefs?: (next: Partial<TreasuryPrefs>) => void
@@ -78,6 +83,7 @@ export const BalanceDisplay = memo(function BalanceDisplay({
   treasuryLoading,
   referenceFiat,
   inlineAudit = false,
+  usdcOnlySurface = false,
   defindexBalance = null,
   treasuryPrefs,
   onUpdateTreasuryPrefs,
@@ -169,7 +175,8 @@ export const BalanceDisplay = memo(function BalanceDisplay({
         ? t.apyBlendLabel
         : null
 
-  const showMetricCarousel = !auditExpanded && (hasTreasury || yieldApy !== null)
+  const showMetricCarousel =
+    !usdcOnlySurface && !auditExpanded && (hasTreasury || yieldApy !== null)
 
   useEffect(() => {
     if (!showMetricCarousel) return
@@ -210,6 +217,7 @@ export const BalanceDisplay = memo(function BalanceDisplay({
     "max-w-full overflow-hidden text-[clamp(1.875rem,8vw,3rem)] font-bold leading-none tracking-tight tabular-nums text-white sm:text-5xl lg:text-[clamp(1.75rem,2.8vw,2.5rem)] xl:text-[clamp(1.875rem,2.5vw,2.75rem)]"
 
   const handleAuditToggle = useCallback(() => {
+    if (usdcOnlySurface) return
     if (apyLoading && onFetchAPY) onFetchAPY()
     if (inlineAudit && treasuryPrefs && onUpdateTreasuryPrefs) {
       if (!auditExpanded) {
@@ -231,9 +239,12 @@ export const BalanceDisplay = memo(function BalanceDisplay({
     onUpdateTreasuryPrefs,
     setExpanded,
     treasuryPrefs,
+    usdcOnlySurface,
   ])
 
-  const canInlineExpand = inlineAudit && treasuryPrefs && onUpdateTreasuryPrefs
+  const canInlineExpand =
+    !usdcOnlySurface && inlineAudit && !!treasuryPrefs && !!onUpdateTreasuryPrefs
+  const canOpenAudit = !usdcOnlySurface && (canInlineExpand || !!onOpenBalanceAudit)
   const inlineCardMaxHeight = auditExpanded
     ? Math.max(expandedHeight, collapsedHeightRef.current)
     : collapsedHeightRef.current
@@ -251,21 +262,29 @@ export const BalanceDisplay = memo(function BalanceDisplay({
   }, [])
 
   const handleCardClick = useCallback(() => {
-    if (auditExpanded) return
+    if (usdcOnlySurface || auditExpanded || !canOpenAudit) return
     if (inlineAudit && canInlineExpand) {
       handleAuditToggle()
       return
     }
     onOpenBalanceAudit?.()
-  }, [auditExpanded, canInlineExpand, handleAuditToggle, inlineAudit, onOpenBalanceAudit])
+  }, [
+    auditExpanded,
+    canInlineExpand,
+    canOpenAudit,
+    handleAuditToggle,
+    inlineAudit,
+    onOpenBalanceAudit,
+    usdcOnlySurface,
+  ])
 
   const handleCardKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
-      if (auditExpanded || (event.key !== "Enter" && event.key !== " ")) return
+      if (!canOpenAudit || auditExpanded || (event.key !== "Enter" && event.key !== " ")) return
       event.preventDefault()
       handleCardClick()
     },
-    [auditExpanded, handleCardClick],
+    [auditExpanded, canOpenAudit, handleCardClick],
   )
 
   return (
@@ -281,14 +300,14 @@ export const BalanceDisplay = memo(function BalanceDisplay({
         ref={cardRef}
         style={inlineAudit ? { maxHeight: inlineCardMaxHeight } : undefined}
         onTransitionEnd={inlineAudit ? handleCardTransitionEnd : undefined}
-        onClick={!auditExpanded ? handleCardClick : undefined}
-        onKeyDown={!auditExpanded ? handleCardKeyDown : undefined}
-        role={!auditExpanded ? "button" : undefined}
-        tabIndex={!auditExpanded ? 0 : undefined}
-        aria-label={!auditExpanded ? t.auditBreakdown : undefined}
+        onClick={canOpenAudit && !auditExpanded ? handleCardClick : undefined}
+        onKeyDown={canOpenAudit && !auditExpanded ? handleCardKeyDown : undefined}
+        role={canOpenAudit && !auditExpanded ? "button" : undefined}
+        tabIndex={canOpenAudit && !auditExpanded ? 0 : undefined}
+        aria-label={canOpenAudit && !auditExpanded ? t.auditBreakdown : undefined}
         className={cn(
           "flex w-full flex-col rounded-[1.25rem] border border-white/10 bg-black/20 text-center shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur-md",
-          !auditExpanded && "cursor-pointer",
+          canOpenAudit && !auditExpanded && "cursor-pointer",
           inlineAudit &&
             "min-h-0 self-start transition-[max-height] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] will-change-[max-height]",
           inlineAudit && !auditExpanded && "overflow-hidden",
