@@ -31,3 +31,6 @@ next-env.d.ts
 
 # soroban contracts (Rust build artifacts)
 contracts/**/target/
+
+# Exponential agent working state
+.exponential/

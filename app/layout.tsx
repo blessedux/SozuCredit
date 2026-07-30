@@ -10,14 +10,14 @@ import { Preloader } from "@/components/preloader-remover"
 import { Toaster } from "@/components/ui/sonner"
 
 export const metadata: Metadata = {
-  title: "Sozu",
+  title: "Sozu Wallet",
   description: "Self-custodial Stellar wallet",
   generator: "v0.app",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Sozu",
+    title: "Sozu Wallet",
     startupImage: [
       // Universal splash — iOS uses the closest match by screen size
       { url: "/icons/sozu_splash.png" },
