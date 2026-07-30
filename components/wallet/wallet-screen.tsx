@@ -145,7 +145,6 @@ export function WalletScreen({
   }, [])
 
   const [isBalanceAuditOpen, setIsBalanceAuditOpen] = useState(false)
-  const [isBalanceAuditExpanded, setIsBalanceAuditExpanded] = useState(false)
   const [isDepositOpenInternal, setIsDepositOpenInternal] = useState(false)
   const isDepositOpen =
     isDepositModalOpenProp !== undefined ? isDepositModalOpenProp : isDepositOpenInternal
@@ -341,7 +340,6 @@ export function WalletScreen({
       isLoading ||
       isBalanceLoading ||
       shellLayout !== "landing" ||
-      isBalanceAuditExpanded ||
       isDepositOpen,
   })
 
@@ -614,11 +612,11 @@ export function WalletScreen({
         treasuryProjection={treasuryData.projection}
         treasuryLoading={treasuryData.loading}
         referenceFiat={treasuryData.prefs.referenceFiat}
-        inlineAudit={shellLayout === "landing"}
+        inlineAudit={false}
+        usdcOnlySurface={shellLayout === "landing"}
         defindexBalance={defindexBalance}
         treasuryPrefs={treasuryData.prefs}
         onUpdateTreasuryPrefs={treasuryData.updatePrefs}
-        onAuditExpandedChange={shellLayout === "landing" ? setIsBalanceAuditExpanded : undefined}
         walletNetwork={walletNetwork}
         onRefresh={handleEarnRefresh}
       />
@@ -762,7 +760,7 @@ export function WalletScreen({
               if (dx > 48) return
               if (dy > 32 && startY < 140) {
                 setIsWalletSwitcherOpen(true)
-              } else if (dy > 48 && startY >= 140 && !isBalanceAuditExpanded) {
+              } else if (dy > 48 && startY >= 140) {
                 setOpenPayScannerOnMount(true)
                 setSendModalOpen(true)
               }
@@ -802,12 +800,7 @@ export function WalletScreen({
             >
               <div className="flex min-h-0 flex-1 flex-col items-center justify-start pt-2">
                 <div className="flex min-h-0 w-full max-w-md flex-1 flex-col">
-                  <div
-                    className={cn(
-                      "flex min-h-0 w-full flex-col",
-                      isBalanceAuditExpanded && "flex-1 touch-pan-y",
-                    )}
-                  >
+                  <div className="flex min-h-0 w-full flex-col">
                     {isBalanceLoading ? (
                       <BalanceCardSkeleton compact />
                     ) : (
@@ -818,9 +811,9 @@ export function WalletScreen({
                   <div
                     className={cn(
                       "overflow-hidden transition-[max-height,opacity,margin] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
-                      isBalanceAuditExpanded || isBalanceLoading ? "max-h-0 opacity-0" : "max-h-32 opacity-100",
+                      isBalanceLoading ? "max-h-0 opacity-0" : "max-h-32 opacity-100",
                     )}
-                    aria-hidden={isBalanceAuditExpanded || isBalanceLoading}
+                    aria-hidden={isBalanceLoading}
                   >
                     {activationMessage ? (
                       <p className="mt-4 text-center text-xs text-red-300/90">{activationMessage}</p>
