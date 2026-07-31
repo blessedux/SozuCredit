@@ -2,6 +2,7 @@
 
 import { WelcomeModal } from "@/components/welcome-modal"
 import { TagInputModal } from "@/components/tag-input-modal"
+import { QRCodeRegistrationModal } from "@/components/qr-code-registration-modal"
 import { WalletSkeleton } from "@/components/ui/wallet-skeleton"
 import { Button } from "@/components/ui/button"
 import { Fingerprint, Share, Plus, X } from "lucide-react"
@@ -14,6 +15,7 @@ import {
   verifyRegistration,
   verifyAuthentication
 } from "@/lib/turnkey/passkeys"
+import { detectDeviceCapabilities, isPasskeyCapable } from "@/lib/webauthn/device-detection"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useState, useRef, useEffect, useCallback, Suspense } from "react"
@@ -39,6 +41,8 @@ function AuthPageContent() {
   const [referralCode, setReferralCode] = useState<string | null>(null)
   const [showIosInstallModal, setShowIosInstallModal] = useState(false)
   const [pwaBannerDismissed, setPwaBannerDismissed] = useState(false)
+  const [showQRModal, setShowQRModal] = useState(false)
+  const [qrUsername, setQRUsername] = useState<string | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirectingRef = useRef(false)
@@ -433,6 +437,39 @@ function AuthPageContent() {
     try {
       let credential: Awaited<ReturnType<typeof getPasskey>> = existingCredential ?? null
       const usernameToRegister = tag
+
+      // CRITICAL: Check device capability BEFORE attempting passkey creation
+      // This prevents orphaned credentials on devices without biometrics
+      if (!existingCredential) {
+        console.log("[Auth] Checking device capability before passkey creation...")
+        const capabilities = await detectDeviceCapabilities()
+        
+        if (!capabilities.canUsePasskeys) {
+          console.log("[Auth] Device doesn't support passkeys - checking for QR flow...")
+          
+          // Desktop without biometrics → show QR code for phone registration
+          if (capabilities.deviceType === 'desktop') {
+            console.log("[Auth] Desktop without biometrics - showing QR code flow")
+            setIsAuthenticating(false)
+            setQRUsername(usernameToRegister)
+            setShowQRModal(true)
+            return
+          }
+          
+          // Mobile without biometrics → show clear error
+          console.log("[Auth] Mobile without biometrics - self-custodial registration not available")
+          setIsAuthenticating(false)
+          alert(
+            `Your device doesn't support secure biometric authentication.\n\n` +
+            `Sozu Wallet requires ${capabilities.os === 'ios' ? 'Face ID or Touch ID' : 'fingerprint or face unlock'} for self-custody security.\n\n` +
+            `Please use a device with biometric authentication.`
+          )
+          setShowTagModal(true)
+          setTagModalPrefill(usernameToRegister)
+          return
+        }
+        console.log("[Auth] Device supports passkeys - proceeding with registration")
+      }
 
       // Store tag in localStorage for future logins
       if (typeof window !== "undefined") {
@@ -887,6 +924,38 @@ function AuthPageContent() {
         onLoginPasskey={handleLoginPasskeyFromModal}
         onLoginPin={handlePinLoginFromModal}
       />
+
+      {showQRModal && qrUsername && (
+        <QRCodeRegistrationModal
+          isOpen={showQRModal}
+          username={qrUsername}
+          onComplete={async (userId, username, credentialId) => {
+            console.log("[Auth] QR flow completed:", { userId, username, credentialId })
+            setShowQRModal(false)
+            // Finalize login with the completed registration
+            if (typeof window !== "undefined") {
+              localStorage.setItem("sozu_username", username)
+              persistAuthIdentitySession({
+                userId,
+                credentialId,
+                username
+              })
+            }
+            setIsAuthenticated(true)
+            setIsAuthenticating(false)
+            redirectingRef.current = true
+            setIsExiting(true)
+            setTimeout(() => router.push(finalPostAuthPath), 300)
+          }}
+          onCancel={() => {
+            setShowQRModal(false)
+            setQRUsername(null)
+            setIsAuthenticating(false)
+            setShowTagModal(true)
+            setTagModalPrefill(qrUsername)
+          }}
+        />
+      )}
 
       {/* iOS "Add to Home Screen" instructions modal */}
       <AnimatePresence>
