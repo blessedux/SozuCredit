@@ -1,58 +1,43 @@
-# Sozu Credit
+# Sozu Wallet
 
-**Vouched, not Verified. Credit for everyone.**
+**Self-custodial Stellar USDC wallet** — passkeys, Pay, Deposit. Closed beta at [app.sozu.capital](https://app.sozu.capital).
 
-> A simple, passkeys-powered wallet that gives entrepreneurs instant access to high-yield DeFi and unlocks decentralized credit through community vouching and education.
-
----
-
-## 🎯 Value Proposition
-
-**Sozu Credit** is a next-generation financial platform that combines:
-
-- ✅ **Simple UX** — One-tap access, no passwords, no complexity
-- 🔐 **Passkeys Powered** — Secure, instant login with biometric authentication (no passwords, no KYC)
-- 💰 **High-Yield DeFi** — Automatic 10-20% APY on USDC holdings via Stellar smart wallets
-- 📚 **Education Gateway** — Learn to unlock decentralized credit opportunities
-- 🤝 **Community Vouching** — Get vouched by other users to access credit based on trust, not traditional credit scores
-
-### What Makes Us Different?
-
-1. **No Passwords, No KYC** — Sign in instantly with your fingerprint or face ID via passkeys
-2. **Earn While You Hold** — Your USDC automatically earns 10-20% APY in DeFi vaults
-3. **Community-Based Credit** — Access microloans through vouching from other entrepreneurs, not banks
-4. **Learn While You Earn** — Educational courses unlock higher credit limits and opportunities
-5. **Simple & Fast** — Beautiful, minimal design that works offline and on any device
+> Staging: [dev.sozu.capital](https://dev.sozu.capital) · Production (closed beta): [app.sozu.capital](https://app.sozu.capital)  
+> Pipeline: one GitHub repo, one Vercel project — see [docs/vercel-consolidation.md](./docs/vercel-consolidation.md).
 
 ---
 
-## 🚀 Quick Start
+## Product note
+
+The live demo shell is **USDC Pay + Deposit** with passkey auth. Broader credit / DeFi / vouching work remains in the codebase and roadmaps under `docs/`; first-run UX should match the wallet demo.
+
+## Quick Start
 
 ### For Users
 
-1. **Sign Up** — Tap to create account with passkeys (no email, no password)
-2. **Receive USDC** — Get paid directly to your Stellar smart wallet
-3. **Earn Yield** — Funds automatically earn 10-20% APY in defivaults
-4. **Get Vouched** — Invite others or get vouched to build your trust score
-5. **Unlock Credit** — Complete education modules to access decentralized credit pools
+1. Open [app.sozu.capital](https://app.sozu.capital)
+2. Create / sign in with a passkey
+3. Deposit or claim testnet faucet USDC
+4. Pay from Home
 
 ### For Developers
 
 ```bash
-# Clone repository
-git clone https://github.com/sozu-capital/sozu-credit.git
-cd sozu-credit
+# Clone repository (after rename: blessedux/sozu-wallet)
+git clone https://github.com/blessedux/SozuCredit.git
+cd SozuCredit
 
 # Install dependencies
 pnpm install
 
 # Create environment file (see Local development)
-# cp .env.example .env.local   # if your checkout includes .env.example
+cp .env.example .env.local
 
 # Run development server
 pnpm dev
 ```
 
+Deploy / Staging / Production cutover: [docs/vercel-consolidation.md](./docs/vercel-consolidation.md).  
 See [Local Development](#local-development) for detailed setup instructions.
 
 ---

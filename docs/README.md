@@ -1,4 +1,4 @@
-# Sozu Credit — Documentation
+# Sozu Wallet — Documentation
 
 Guides for developers and operators working in this repository. The root [README](../README.md) covers product positioning and quick start; this folder holds **technical and strategic** depth.
 
@@ -6,14 +6,15 @@ Guides for developers and operators working in this repository. The root [README
 
 ## Reading order
 
-0. **[deployment.md](./deployment.md)** — Staging (`dev.sozu.capital`) → Production (`app.sozu.capital`) pipeline + passkey env vars.
-1. **[agents/git-flow.md](./agents/git-flow.md)** — Feature → `dev` → `main` promotion chain.
-2. **[PROJECT-CHANGELOG-MASTER-REPORT.md](./PROJECT-CHANGELOG-MASTER-REPORT.md)** — Full project changelog (Oct 2025 – Jun 2026) and **4-week report** (6 May – 3 Jun 2026) for distribution.
-3. **[architecture-and-platform.md](./architecture-and-platform.md)** — Custody, API layer, schema source of truth.
-4. **[credit-marketplace-roadmap.md](./credit-marketplace-roadmap.md)** — Credit marketplace vision; MUJERES 2000 campaign → distribution → open LnB Pool → crowdfund URL → public stats.
-5. **[privacy-wallet-roadmap.md](./privacy-wallet-roadmap.md)** — Phased privacy + compliance stack (Phases 1–10); ecosystem map with Sozu Pay and privacy protocol.
-6. **[authentication-and-accounts.md](./authentication-and-accounts.md)** — Passkeys, recovery runbooks.
-7. **[smart-account-default-payments.md](./smart-account-default-payments.md)** — C-address defaults, send paths, shared tag directory with Sozu Pay.
+0. **[vercel-consolidation.md](./vercel-consolidation.md)** — Cutover: one project, delete `sozu-cosed-beta` safely, rename to Sozu Wallet.
+1. **[deployment.md](./deployment.md)** — Staging (`dev.sozu.capital`) → Production (`app.sozu.capital`) + closed-beta flags.
+2. **[agents/git-flow.md](./agents/git-flow.md)** — Feature → `dev` → `main` promotion chain.
+3. **[PROJECT-CHANGELOG-MASTER-REPORT.md](./PROJECT-CHANGELOG-MASTER-REPORT.md)** — Full project changelog (Oct 2025 – Jun 2026) and **4-week report** (6 May – 3 Jun 2026) for distribution.
+4. **[architecture-and-platform.md](./architecture-and-platform.md)** — Custody, API layer, schema source of truth.
+5. **[credit-marketplace-roadmap.md](./credit-marketplace-roadmap.md)** — Credit marketplace vision; MUJERES 2000 campaign → distribution → open LnB Pool → crowdfund URL → public stats.
+6. **[privacy-wallet-roadmap.md](./privacy-wallet-roadmap.md)** — Phased privacy + compliance stack (Phases 1–10); ecosystem map with Sozu Pay and privacy protocol.
+7. **[authentication-and-accounts.md](./authentication-and-accounts.md)** — Passkeys, recovery runbooks.
+8. **[smart-account-default-payments.md](./smart-account-default-payments.md)** — C-address defaults, send paths, shared tag directory with Sozu Pay.
 
 ---
 
@@ -33,6 +34,7 @@ Guides for developers and operators working in this repository. The root [README
 | Treasury purchasing power | [treasury-purchasing-power.md](./treasury-purchasing-power.md) |
 | Trust, vouches, credit | [community-trust-and-credit.md](./community-trust-and-credit.md) |
 | **Credit marketplace & MUJERES 2000 campaigns** | [credit-marketplace-roadmap.md](./credit-marketplace-roadmap.md) |
+| **Vercel consolidation (delete closed-beta project safely)** | [vercel-consolidation.md](./vercel-consolidation.md) |
 | **Deployment (Staging → Production)** | [deployment.md](./deployment.md) |
 | Git flow / promotion chain | [agents/git-flow.md](./agents/git-flow.md) |
 | Vercel cutover runbook | [vercel-migration-runbook.md](./vercel-migration-runbook.md) |
