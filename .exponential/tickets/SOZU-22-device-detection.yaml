@@ -2,7 +2,7 @@ id: SOZU-22
 title: Device Detection & Graceful Degradation
 priority: critical
 status: todo
-estimate: 2-3 days
+estimate: 4-5 days
 dependencies: []
 blocks:
   - SOZU-23
@@ -25,19 +25,37 @@ description: |
   ## Solution
   Implement passkey capability detection before attempting registration. Prevent orphaned credentials.
 
-  ## Key Deliverables
-  - `lib/webauthn/device-detection.ts` with capability checking
-  - Update `proceedWithRegistration()` to detect before creating passkey
-  - 60s timeout for cross-device passkey attempts
-  - Clean up partial registration state on failures
-  - Clear error messages for each scenario
+## Key Deliverables
 
-  ## Acceptance Criteria
-  - [ ] Device capability detection runs before passkey creation
-  - [ ] Cross-device flow times out after 60s with clear message
-  - [ ] No orphaned passkey records created on failure
-  - [ ] User can retry or fall back to PIN after timeout/failure
-  - [ ] All error scenarios have user-friendly messages
+### Core Detection & Cleanup
+- `lib/webauthn/device-detection.ts` with capability checking
+- Update `proceedWithRegistration()` to detect before creating passkey
+- Clean up partial registration state on failures
+- Clear error messages for each scenario
+
+### QR Code Cross-Device Flow (NEW)
+- QR code generation for cross-device registration
+- User on incompatible device → scan QR with phone
+- Registration challenge passed via QR payload
+- Client-side polling for completion
+- 60s timeout with clear "try again" flow
+
+### Device Requirements Page (NEW)
+- "Why Sozu Wallet requires biometrics" explainer
+- Device compatibility checker
+- Self-custody security model explanation
+- "Complete on your phone" CTA for incompatible devices
+- NO PIN fallback mentioned (we're self-custodial only)
+
+## Acceptance Criteria
+- [ ] Device capability detection runs before passkey creation
+- [ ] QR code generated for incompatible devices
+- [ ] Cross-device registration completes successfully
+- [ ] Polling times out after 60s with "try again" option
+- [ ] No orphaned passkey records created on failure
+- [ ] Device requirements page explains self-custody model
+- [ ] All error messages reinforce "use compatible device" (no PIN offered)
+- [ ] Users on incompatible devices see clear path: use phone/different device
 
   ## Related
   - Planning: [docs/authentication-hardening-plan.md](../../docs/authentication-hardening-plan.md)
