@@ -14,6 +14,7 @@ import {
   verifyRegistration,
   verifyAuthentication
 } from "@/lib/turnkey/passkeys"
+import { detectDeviceCapabilities, isPasskeyCapable } from "@/lib/webauthn/device-detection"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useState, useRef, useEffect, useCallback, Suspense } from "react"
@@ -433,6 +434,27 @@ function AuthPageContent() {
     try {
       let credential: Awaited<ReturnType<typeof getPasskey>> = existingCredential ?? null
       const usernameToRegister = tag
+
+      // CRITICAL: Check device capability BEFORE attempting passkey creation
+      // This prevents orphaned credentials on devices without biometrics
+      if (!existingCredential) {
+        console.log("[Auth] Checking device capability before passkey creation...")
+        const canCreate = await isPasskeyCapable()
+        
+        if (!canCreate) {
+          console.log("[Auth] Device doesn't support passkeys - self-custodial registration not available")
+          setIsAuthenticating(false)
+          alert(
+            "Your device doesn't support secure biometric authentication.\n\n" +
+            "Sozu Wallet requires Face ID, Touch ID, or Windows Hello for self-custody security.\n\n" +
+            "Please use a device with biometric authentication, or complete registration on your phone."
+          )
+          setShowTagModal(true)
+          setTagModalPrefill(usernameToRegister)
+          return
+        }
+        console.log("[Auth] Device supports passkeys - proceeding with registration")
+      }
 
       // Store tag in localStorage for future logins
       if (typeof window !== "undefined") {
