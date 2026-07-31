@@ -249,7 +249,7 @@ export async function createPasskey(
     const publicKeyOptions: PublicKeyCredentialCreationOptions = {
       challenge: base64URLToArrayBuffer(challenge.challenge),
       rp: challenge.rp || {
-        name: "Sozu Credit Platform",
+        name: "Sozu Wallet",
         id: challenge.rpId,
       },
       user: challenge.user ? {

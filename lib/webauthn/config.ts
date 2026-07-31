@@ -1,4 +1,4 @@
-export const rpName = "MicroCredit Platform"
+export const rpName = "Sozu Wallet"
 
 // Get rpID - use environment variable or detect from request
 // For server-side, we need to get it from the request or environment

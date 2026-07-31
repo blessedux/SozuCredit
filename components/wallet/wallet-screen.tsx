@@ -879,6 +879,7 @@ export function WalletScreen({
                 walletNetwork={walletNetwork}
                 isLoading={historyActivityLoading}
                 onSelectChainTx={handleActivitySelect}
+                onEmptyDepositClick={handleDeposit}
               />
             </div>
           </div>

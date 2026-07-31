@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { runSorobanIntegrationTests } from "@/lib/defindex/soroban-test"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
+import { debugRoutesEnabled } from "@/lib/debug-routes"
 
 export async function OPTIONS(request: NextRequest) {
   return handleOPTIONS(request)
@@ -13,6 +14,13 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    if (!debugRoutesEnabled()) {
+      return NextResponse.json(
+        { error: "Not found" },
+        { status: 404, headers: corsHeaders(request) }
+      )
+    }
+
     console.log("[Soroban Test API] Running Soroban integration tests...")
     
     const results = await runSorobanIntegrationTests()

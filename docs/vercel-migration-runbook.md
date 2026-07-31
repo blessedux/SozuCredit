@@ -1,8 +1,10 @@
 # Vercel Migration Runbook: app.sozu.capital + dev.sozu.capital
 
 **Status:** Ready to execute  
-**Date:** 2026-07-30  
-**Goal:** Consolidate Sozu Wallet onto single Vercel project (`sozu-credit`) with Production (`app.sozu.capital`) and Staging (`dev.sozu.capital`) environments.
+**Date:** 2026-07-31  
+**Goal:** Consolidate Sozu Wallet onto a single Vercel project (`sozu-wallet`, renamed from `sozu-credit`) with Production (`app.sozu.capital`, closed beta) and Staging (`dev.sozu.capital`).
+
+> **Read first:** [vercel-consolidation.md](./vercel-consolidation.md) — safe order for moving `app.sozu.capital` off `sozu-cosed-beta` before deleting that project.
 
 ## Prerequisites
 
@@ -13,21 +15,27 @@
 
 ## Part 1: Vercel Project Configuration
 
+### 1.0 Rename project (optional but preferred)
+
+1. Open the existing project (today: `sozu-credit`)
+2. Settings → General → rename to **`sozu-wallet`**
+3. Confirm GitHub repo link still works (after GitHub rename to `sozu-wallet`, reconnect if needed)
+
 ### 1.1 Configure Production Environment
 
-**Project:** `sozu-credit` (prj_7IxlpyHRoONJP0BpqkyJ7e1jHRDw)  
-**Dashboard:** https://vercel.com/blessedux/sozu-credit
+**Project:** `sozu-wallet` (formerly `sozu-credit`, prj_7IxlpyHRoONJP0BpqkyJ7e1jHRDw)  
+**Dashboard:** https://vercel.com/mentes-projects/sozu-credit (URL updates after rename)
 
 1. Go to **Settings → Git**
 2. Verify **Production Branch** is set to `main` (default)
 3. Go to **Settings → Domains**
-4. Add domain `app.sozu.capital`:
+4. Add domain `app.sozu.capital` **only after** removing it from `sozu-cosed-beta` (see consolidation doc Phase B):
    - Click **+ Add**
    - Enter `app.sozu.capital`
-   - Vercel will auto-configure DNS (already on Vercel nameservers)
-   - Set as **Primary** domain (if not already)
+   - Assign to **Production**
+   - Set as **Primary** domain
 5. If `credit.sozu.capital` is currently set as primary:
-   - Demote to alias or remove (keep as alias only if you need open-beta traffic)
+   - Demote to alias, redirect to `app.sozu.capital`, or remove after cutover
 
 ### 1.2 Create Staging Environment
 
@@ -50,17 +58,17 @@
 5. Click **Add**
 6. Verify DNS propagation (usually instant on Vercel nameservers)
 
-### 1.4 Remove Domain from sozu-cosed-beta (if needed)
+### 1.4 Move domain off sozu-cosed-beta (required before delete)
 
-If `app.sozu.capital` is currently on a different project:
+`app.sozu.capital` is live on **`sozu-cosed-beta` today**. Transfer before any delete:
 
-1. Go to the old project dashboard
-2. Settings → Domains
-3. Find `app.sozu.capital`
-4. Click **Remove** or **Edit** → select new project
-5. Vercel may handle transfer automatically if both projects are in same team
+1. Open `sozu-cosed-beta` → Settings → Domains
+2. Remove `app.sozu.capital`
+3. Immediately add it on `sozu-wallet` → Production (step 1.1)
+4. Redeploy Production and run smoke checks in Part 4
+5. **Only after 24–48h soak:** disconnect Git + delete `sozu-cosed-beta`
 
-**Note:** Do NOT delete `sozu-cosed-beta` project yet; keep idle until cutover verified.
+Deleting first = production outage.
 
 ## Part 2: Environment Variables
 
@@ -262,17 +270,15 @@ Wait for both deployments to complete (green checkmark).
 
 If a passkey registered on Staging works on Production (or vice versa), the `NEXT_PUBLIC_RP_ID` environment variables are not correctly set.
 
-## Part 5: Post-Cutover Cleanup (Optional)
+## Part 5: Post-Cutover Cleanup
 
-After verifying both environments work:
+After verifying Staging + Production on `sozu-wallet`:
 
-1. **DNS:** Remove or archive `credit.sozu.capital` (if no longer needed)
-2. **Vercel:** Archive or delete `sozu-cosed-beta` project
-3. **GitHub:** Update branch protection rules:
-   - Protect `main` (require PR reviews)
-   - Protect `dev` (require PR reviews, ideally)
-4. **SumUp:** Update webhook URLs in SumUp dashboard (if Production URL changed)
-5. **Google OAuth:** Update authorized redirect URIs in Google Cloud Console
+1. **GitHub:** Rename repo `SozuCredit` → `sozu-wallet`; set homepage `https://app.sozu.capital`
+2. **Vercel:** Disconnect Git from `sozu-cosed-beta`, then delete/archive the project (stops duplicate Preview checks)
+3. **DNS:** Redirect or retire `credit.sozu.capital`
+4. **Branch protection:** Protect `main` and ideally `dev`
+5. **SumUp / Google OAuth:** Confirm webhook and redirect URIs use `app.sozu.capital` / `dev.sozu.capital`
 
 ## Rollback Plan
 

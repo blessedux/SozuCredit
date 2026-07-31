@@ -31,6 +31,7 @@ type Props = {
   walletNetwork: "testnet" | "mainnet"
   isLoading: boolean
   onSelectChainTx?: (item: WalletActivityItem) => void
+  onEmptyDepositClick?: () => void
 }
 
 export const WalletActivityList = memo(function WalletActivityList({
@@ -38,6 +39,7 @@ export const WalletActivityList = memo(function WalletActivityList({
   walletNetwork,
   isLoading,
   onSelectChainTx,
+  onEmptyDepositClick,
 }: Props) {
   const { t } = useWalletLanguage()
   const [isExpanded, setIsExpanded] = useState(false)
@@ -97,7 +99,19 @@ export const WalletActivityList = memo(function WalletActivityList({
 
         <ul className="list-none space-y-2">
           {items.length === 0 ? (
-            <li className="py-4 text-center text-sm text-white/60">{t.noTransactions}</li>
+            <li className="list-none py-8 text-center">
+              <p className="text-sm text-white/60">{t.noTransactions}</p>
+              <p className="mt-1 text-xs text-white/40">{t.emptyHistoryHint}</p>
+              {onEmptyDepositClick ? (
+                <button
+                  type="button"
+                  onClick={onEmptyDepositClick}
+                  className="mt-4 rounded-full bg-white px-4 py-2 text-xs font-semibold text-black transition-colors hover:bg-white/90"
+                >
+                  {t.emptyHistoryCta}
+                </button>
+              ) : null}
+            </li>
           ) : (
             visible.map((item) => {
               const tag = KIND_TAG[item.kind]

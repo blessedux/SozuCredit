@@ -27,6 +27,7 @@ import {
 } from "@/lib/client-wallet-session"
 import { clearClientSession } from "@/lib/storage/clear-session"
 import { signalBootstrapReady } from "@/lib/app-ready"
+import { toast } from "sonner"
 
 function AuthPageContent() {
   const [isAuthenticating, setIsAuthenticating] = useState(false)
@@ -690,8 +691,9 @@ function AuthPageContent() {
       if (errorMessage.includes("NotAllowedError") || errorMessage.includes("AbortError")) {
         console.log("[Auth] User cancelled passkey (detected in error message)")
         setIsAuthenticating(false)
-        const t = typeof window !== "undefined" ? localStorage.getItem("sozu_username") : null
-        if (t) setTagModalPrefill(t)
+        toast.message(t.authCancelledHint)
+        const storedTag = typeof window !== "undefined" ? localStorage.getItem("sozu_username") : null
+        if (storedTag) setTagModalPrefill(storedTag)
         setShowTagModal(true)
         return
       }
@@ -719,6 +721,7 @@ function AuthPageContent() {
       }
 
       setIsAuthenticating(false)
+      toast.error(t.authFailed)
       console.log("[Auth] Authentication failed - setting isAuthenticating to false")
     } finally {
       console.log("[Auth] ====== Authentication flow complete ======")
