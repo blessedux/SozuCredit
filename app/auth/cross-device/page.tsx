@@ -67,15 +67,7 @@ function CrossDeviceContent() {
           body: JSON.stringify({
             sessionId,
             username: usernameParam,
-            credential: {
-              id: credential.id,
-              rawId: Array.from(new Uint8Array(credential.rawId as ArrayBuffer)),
-              response: {
-                clientDataJSON: Array.from(new Uint8Array(credential.response.clientDataJSON)),
-                attestationObject: Array.from(new Uint8Array((credential.response as any).attestationObject))
-              },
-              type: credential.type
-            }
+            credential
           })
         })
 
