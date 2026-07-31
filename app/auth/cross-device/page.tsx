@@ -4,7 +4,11 @@ import { useEffect, useState, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Loader2, CheckCircle2, XCircle, Smartphone } from "lucide-react"
-import { createPasskey, generateRegistrationChallenge } from "@/lib/turnkey/passkeys"
+import {
+  createPasskey,
+  generateRegistrationChallenge,
+  verifyRegistration,
+} from "@/lib/turnkey/passkeys"
 import { isPasskeyCapable } from "@/lib/webauthn/device-detection"
 
 function CrossDeviceContent() {
@@ -28,9 +32,25 @@ function CrossDeviceContent() {
 
     const completeRegistration = async () => {
       try {
-        // Check if this phone has biometric capability
+        const sessionRes = await fetch(
+          `/api/auth/cross-device/status?sessionId=${encodeURIComponent(sessionId)}`
+        )
+        const sessionData = await sessionRes.json()
+
+        if (sessionData.expired) {
+          throw new Error('This QR code expired. Go back to desktop and generate a new one.')
+        }
+        if (sessionData.completed) {
+          setStatus('success')
+          setTimeout(() => router.push('/auth'), 1500)
+          return
+        }
+        if (sessionData.username && sessionData.username !== usernameParam) {
+          throw new Error('Username does not match this QR session.')
+        }
+
         const canCreate = await isPasskeyCapable()
-        
+
         if (!canCreate) {
           setStatus('incompatible')
           setError('This device also lacks biometric authentication. Please use a device with Face ID, Touch ID, or fingerprint sensor.')
@@ -39,20 +59,18 @@ function CrossDeviceContent() {
 
         setStatus('registering')
 
-        // Generate registration challenge
+        // Client helpers hit /api/auth/register/* (server-safe). Do not import them from route handlers.
         const challenge = await generateRegistrationChallenge(usernameParam)
-        
+
         if (!challenge) {
           throw new Error('Failed to generate challenge')
         }
 
-        // Update challenge with username
         if (challenge.user) {
           challenge.user.displayName = usernameParam
           challenge.user.name = usernameParam
         }
 
-        // Create passkey on phone
         const tempUserId = crypto.randomUUID()
         const credential = await createPasskey(challenge, tempUserId, usernameParam)
 
@@ -60,27 +78,37 @@ function CrossDeviceContent() {
           throw new Error('Failed to create passkey')
         }
 
-        // Send completion to server
+        const regResult = await verifyRegistration(
+          usernameParam,
+          credential,
+          challenge.challenge,
+          null
+        )
+
+        if (!regResult?.success || !regResult.userId) {
+          throw new Error('Registration verification failed')
+        }
+
         const response = await fetch('/api/auth/cross-device/complete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             sessionId,
             username: usernameParam,
-            credential
+            userId: regResult.userId,
+            credentialId: credential.id,
           })
         })
 
         if (!response.ok) {
           const data = await response.json()
-          throw new Error(data.error || 'Registration failed')
+          throw new Error(data.error || 'Failed to notify desktop')
         }
 
         setStatus('success')
 
-        // Redirect to home after 2 seconds
         setTimeout(() => {
-          router.push('/auth')
+          router.push('/home')
         }, 2000)
 
       } catch (err) {
