@@ -395,14 +395,10 @@ export function WalletScreen({
     void refreshWalletData({ pollSoroban: true })
   }, [setIsDepositOpen, refreshWalletData])
 
-  /** Testnet Deposit → faucet claim path; mainnet keeps the receive modal. */
+  /** Deposit always opens receive/QR modal; faucet is a secondary CTA inside the modal. */
   const handleDeposit = useCallback(() => {
-    if (walletNetwork === "testnet") {
-      router.push(getDemoFaucetPath())
-      return
-    }
     setIsDepositOpen(true)
-  }, [walletNetwork, router, setIsDepositOpen])
+  }, [setIsDepositOpen])
 
   const refreshOnboardingState = useCallback(async () => {
     if (walletNetwork !== "testnet") {
