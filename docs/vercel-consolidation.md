@@ -117,17 +117,31 @@ If Production breaks after domain move:
 2. Re-add to `sozu-cosed-beta` (keep that project until Phase C)
 3. Redeploy last known good deployment there
 
-## Manual actions this agent cannot do
+## Cutover status (2026-07-31)
 
-No Vercel token / GitHub admin in this environment:
+Operator completed:
 
-- [ ] Rename GitHub repo → `sozu-wallet`
-- [ ] Rename Vercel project → `sozu-wallet`
-- [ ] Create Staging env + `dev.sozu.capital`
-- [ ] Transfer `app.sozu.capital` between projects
-- [ ] Delete `sozu-cosed-beta`
+- [x] GitHub renamed → `blessedux/sozu-wallet`
+- [x] Vercel project renamed → `sozu-wallet`
+- [x] `credit.sozu.capital` retired
+- [x] Pipeline: `dev` → Staging, `main` → Production
 
-Use this doc + [vercel-migration-runbook.md](./vercel-migration-runbook.md) in the Vercel dashboard.
+**Still verify in Vercel Production env vars** (smoke on 2026-07-31 showed deposits off):
+
+```bash
+# Should return an FX quote, not "Deposits not available"
+curl -s 'https://app.sozu.capital/api/deposits/fx?amountClp=50000'
+```
+
+If blocked, set on **Production** and redeploy `main`:
+
+```
+NEXT_PUBLIC_BETA_TIER=closed
+DEPOSITS_ENABLED=true
+NEXT_PUBLIC_DEPOSITS_ENABLED=true
+```
+
+**Staging note:** `dev.sozu.capital` may redirect to Vercel SSO (Deployment Protection). Disable or use password protection for passkey QA without a Vercel login.
 
 ## Related
 

@@ -23,9 +23,9 @@ The live demo shell is **USDC Pay + Deposit** with passkey auth. Broader credit 
 ### For Developers
 
 ```bash
-# Clone repository (after rename: blessedux/sozu-wallet)
-git clone https://github.com/blessedux/SozuCredit.git
-cd SozuCredit
+# Clone repository
+git clone https://github.com/blessedux/sozu-wallet.git
+cd sozu-wallet
 
 # Install dependencies
 pnpm install

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { createClient as createServiceClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
+import { isVouchReviewer } from "@/lib/wallet/vouch-reviewers"
 
 /**
  * POST /api/wallet/vouches/review
@@ -31,10 +32,10 @@ export async function POST(request: Request) {
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
-    
-    // TODO: Add reviewer role check here
-    // For now, we'll allow any authenticated user to review vouches
-    // In production, you should check if user has reviewer role
+
+    if (!isVouchReviewer(user.id)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
     
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
