@@ -1,0 +1,44 @@
+id: SOZU-22
+title: Device Detection & Graceful Degradation
+priority: critical
+status: todo
+estimate: 2-3 days
+dependencies: []
+blocks:
+  - SOZU-23
+  - SOZU-24
+  - SOZU-28
+assignee: null
+labels:
+  - auth
+  - critical
+  - bugfix
+  - webauthn
+created: 2026-07-31T06:15:00Z
+updated: 2026-07-31T06:15:00Z
+
+description: |
+  ## Problem
+  Users on devices without biometric sensors get stuck in broken passkey registration flow,
+  resulting in orphaned passkey credentials with no wallet linkage.
+
+  ## Solution
+  Implement passkey capability detection before attempting registration. Prevent orphaned credentials.
+
+  ## Key Deliverables
+  - `lib/webauthn/device-detection.ts` with capability checking
+  - Update `proceedWithRegistration()` to detect before creating passkey
+  - 60s timeout for cross-device passkey attempts
+  - Clean up partial registration state on failures
+  - Clear error messages for each scenario
+
+  ## Acceptance Criteria
+  - [ ] Device capability detection runs before passkey creation
+  - [ ] Cross-device flow times out after 60s with clear message
+  - [ ] No orphaned passkey records created on failure
+  - [ ] User can retry or fall back to PIN after timeout/failure
+  - [ ] All error scenarios have user-friendly messages
+
+  ## Related
+  - Planning: [docs/authentication-hardening-plan.md](../../docs/authentication-hardening-plan.md)
+  - Tests: [docs/tests/authentication-test-plan.md](../../docs/tests/authentication-test-plan.md)

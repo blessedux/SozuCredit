@@ -1,0 +1,41 @@
+id: SOZU-24
+title: Error Recovery & Orphan Cleanup
+priority: high
+status: todo
+estimate: 2 days
+dependencies:
+  - SOZU-22
+blocks:
+  - SOZU-25
+assignee: null
+labels:
+  - auth
+  - cleanup
+  - error-handling
+created: 2026-07-31T06:15:00Z
+updated: 2026-07-31T06:15:00Z
+
+description: |
+  ## Problem
+  Partial registration failures leave orphaned database records and broken passkeys.
+
+  ## Solution
+  Handle partial registration failures and clean orphaned records.
+
+  ## Key Deliverables
+  - Detect passkey-created-but-verification-failed scenarios
+  - Clean up orphaned `passkey_credentials` records
+  - Transaction rollback for failed registrations
+  - Admin cleanup script
+  - Test all error recovery paths
+
+  ## Acceptance Criteria
+  - [ ] Failed passkey registrations properly rolled back
+  - [ ] Orphaned records automatically cleaned up
+  - [ ] Admin script can identify and remove existing orphans
+  - [ ] All error paths tested (network, timeout, user cancel, etc.)
+  - [ ] Idempotent registration endpoints
+
+  ## Related
+  - Planning: [docs/authentication-hardening-plan.md](../../docs/authentication-hardening-plan.md)
+  - Tests: [docs/tests/authentication-test-plan.md](../../docs/tests/authentication-test-plan.md)

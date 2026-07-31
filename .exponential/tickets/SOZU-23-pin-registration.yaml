@@ -1,0 +1,44 @@
+id: SOZU-23
+title: PIN-Based Registration Path
+priority: high
+status: todo
+estimate: 3-4 days
+dependencies:
+  - SOZU-22
+blocks:
+  - SOZU-25
+  - SOZU-26
+assignee: null
+labels:
+  - auth
+  - pin
+  - custodial
+  - database
+created: 2026-07-31T06:15:00Z
+updated: 2026-07-31T06:15:00Z
+
+description: |
+  ## Problem
+  Users without passkey-capable devices need an alternative registration method.
+
+  ## Solution
+  Allow 4-digit PIN as primary registration method for custodial accounts.
+
+  ## Key Deliverables
+  - Database migration: Add `account_type` column (`passkey` | `pin`)
+  - `app/api/auth/register/pin/route.ts` endpoint
+  - `custodial_keys` table for encrypted server-side keys
+  - Update `tag-input-modal.tsx` with PIN registration UI
+  - Warning: "PIN accounts are less secure"
+
+  ## Acceptance Criteria
+  - [ ] Database schema updated with `account_type` column
+  - [ ] `custodial_keys` table created with proper encryption
+  - [ ] PIN registration endpoint accepts 4-12 digit PINs
+  - [ ] UI clearly warns about custodial nature of PIN accounts
+  - [ ] PIN accounts marked as `account_type='pin'` in database
+  - [ ] Server-side key generation and secure storage working
+
+  ## Related
+  - Planning: [docs/authentication-hardening-plan.md](../../docs/authentication-hardening-plan.md)
+  - Depends on: Device detection (#22)

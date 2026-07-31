@@ -1,0 +1,52 @@
+id: SOZU-28
+title: Comprehensive Testing Suite for Authentication
+priority: high
+status: todo
+estimate: 3-4 days
+dependencies:
+  - SOZU-22
+  - SOZU-24
+blocks: []
+assignee: null
+labels:
+  - testing
+  - qa
+  - auth
+created: 2026-07-31T06:15:00Z
+updated: 2026-07-31T06:15:00Z
+
+description: |
+  ## Problem
+  Need comprehensive testing across device matrix to prevent regressions.
+
+  ## Solution
+  Automated and manual tests across device matrix.
+
+  ## Key Deliverables
+  - Unit tests for all new modules
+  - API tests for auth endpoints
+  - Integration tests for both flows
+  - Manual test plan execution (6 device types)
+  - Regression test suite
+  - >80% code coverage
+
+  ## Acceptance Criteria
+  - [ ] Unit tests for device detection, PIN crypto, TOTP, etc.
+  - [ ] API tests for all new endpoints
+  - [ ] Integration tests for passkey and PIN flows
+  - [ ] Manual testing completed on 6 device types (see test plan)
+  - [ ] Regression suite prevents known issues
+  - [ ] Code coverage >80%
+
+  ## Test Matrix
+  1. Modern desktop with biometrics (MacBook Pro M1+)
+  2. Modern desktop without biometrics (Windows laptop)
+  3. Modern mobile with biometrics (iPhone 15, Pixel 8)
+  4. Older mobile without biometrics (iPhone X, Pixel 3)
+  5. Linux desktop (Ubuntu 22.04+)
+  6. Browser variations (Chrome, Safari, Firefox)
+
+  ## Related
+  - Test Plan: [docs/tests/authentication-test-plan.md](../../docs/tests/authentication-test-plan.md)
+  - Planning: [docs/authentication-hardening-plan.md](../../docs/authentication-hardening-plan.md)
+  - Depends on: Device detection (#22), Error recovery (#24)

@@ -1,0 +1,52 @@
+id: SOZU-25
+title: Backend Transaction Signing for Custodial Accounts
+priority: high
+status: todo
+estimate: 4-5 days
+dependencies:
+  - SOZU-23
+  - SOZU-24
+blocks:
+  - SOZU-26
+assignee: null
+labels:
+  - auth
+  - custodial
+  - stellar
+  - backend
+  - security
+created: 2026-07-31T06:15:00Z
+updated: 2026-07-31T06:15:00Z
+
+description: |
+  ## Problem
+  Custodial (PIN-based) accounts need secure backend transaction signing.
+
+  ## Solution
+  Implement secure backend signing for PIN-based custodial accounts.
+
+  ## Key Deliverables
+  - `lib/stellar/custodial-signer.ts` with signing logic
+  - `app/api/wallet/sign/route.ts` endpoint
+  - Verify `account_type='pin'` before signing
+  - Rate limiting: 10 signatures/min per user
+  - `custody_audit_log` table
+  - Optional 2FA check for high-value (>$100)
+
+  ## Acceptance Criteria
+  - [ ] Only custodial accounts can use backend signing endpoint
+  - [ ] Signing endpoint properly verifies user identity (PIN + session)
+  - [ ] Rate limiting prevents abuse (10 signatures/min/user)
+  - [ ] All signing events logged to audit table
+  - [ ] High-value transactions (>$100) require 2FA if enabled
+  - [ ] Keys encrypted at rest with proper key management
+
+  ## Security Considerations
+  - Keys must be encrypted at rest
+  - HSM integration for production (future enhancement)
+  - Audit logging for compliance
+  - Rate limiting to prevent brute force
+
+  ## Related
+  - Planning: [docs/authentication-hardening-plan.md](../../docs/authentication-hardening-plan.md)
+  - Depends on: PIN registration (#23), Error recovery (#24)

@@ -1,0 +1,50 @@
+id: SOZU-27
+title: UI/UX Improvements for Authentication Flows
+priority: medium
+status: todo
+estimate: 2 days
+dependencies:
+  - SOZU-22
+  - SOZU-23
+blocks: []
+assignee: null
+labels:
+  - ui
+  - ux
+  - auth
+  - polish
+created: 2026-07-31T06:15:00Z
+updated: 2026-07-31T06:15:00Z
+
+description: |
+  ## Problem
+  Current authentication UI lacks clear feedback during cross-device flows and errors.
+
+  ## Solution
+  Improve user-facing messaging and cross-device flows.
+
+  ## Key Deliverables
+  - Progress indicator: "Waiting for your phone..."
+  - Timeout countdown
+  - Cancel button → PIN fallback
+  - Updated error messages (user-friendly)
+  - Help documentation page
+  - Success animations
+
+  ## Acceptance Criteria
+  - [ ] Cross-device flow shows clear waiting state with countdown
+  - [ ] Users can cancel and switch to PIN at any time
+  - [ ] All error messages are user-friendly (no technical jargon)
+  - [ ] Help page explains both authentication methods
+  - [ ] Success states have smooth animations
+  - [ ] Loading states are clear and informative
+
+  ## Design Requirements
+  - Progress indicator should be visible and reassuring
+  - Timeout should show countdown: "Waiting... (45s remaining)"
+  - Error messages should suggest next steps
+  - Help docs should include device-specific guidance
+
+  ## Related
+  - Planning: [docs/authentication-hardening-plan.md](../../docs/authentication-hardening-plan.md)
+  - Depends on: Device detection (#22), PIN registration (#23)

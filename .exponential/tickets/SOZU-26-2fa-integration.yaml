@@ -1,0 +1,50 @@
+id: SOZU-26
+title: 2FA Integration for PIN Accounts
+priority: medium
+status: todo
+estimate: 3 days
+dependencies:
+  - SOZU-23
+  - SOZU-25
+blocks: []
+assignee: null
+labels:
+  - auth
+  - 2fa
+  - totp
+  - security
+created: 2026-07-31T06:15:00Z
+updated: 2026-07-31T06:15:00Z
+
+description: |
+  ## Problem
+  PIN accounts are less secure than passkey accounts and need additional protection.
+
+  ## Solution
+  TOTP-based 2FA with aggressive prompting for PIN accounts.
+
+  ## Key Deliverables
+  - `lib/auth/totp.ts` with TOTP generation/verification
+  - `app/api/auth/2fa/{setup,verify,disable}/route.ts` endpoints
+  - Database columns: `totp_secret`, `totp_enabled`
+  - QR code setup UI
+  - Persistent banner for PIN users without 2FA
+  - Require 2FA for transactions >$100
+
+  ## Acceptance Criteria
+  - [ ] TOTP secret generation and QR code display working
+  - [ ] Users can enable/disable 2FA
+  - [ ] 2FA verification integrated into login flow
+  - [ ] High-value transactions require 2FA for PIN accounts
+  - [ ] Persistent UI prompt for PIN users to enable 2FA
+  - [ ] Recovery codes generated and stored securely
+
+  ## UX Requirements
+  - Aggressive but not annoying prompts for PIN users
+  - Clear explanation of security benefits
+  - Easy setup process with QR code scan
+  - Backup codes provided during setup
+
+  ## Related
+  - Planning: [docs/authentication-hardening-plan.md](../../docs/authentication-hardening-plan.md)
+  - Depends on: PIN registration (#23), Custodial signing (#25)
