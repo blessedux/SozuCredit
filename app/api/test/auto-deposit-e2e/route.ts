@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server"
 import { getStellarWallet, getUSDCBalance, updatePreviousUsdcBalance } from "@/lib/turnkey/stellar-wallet"
 import { monitorBalanceAndAutoDeposit, checkAndTriggerAutoDeposit } from "@/lib/defindex/auto-deposit"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
+import { debugRoutesEnabled } from "@/lib/debug-routes"
 
 export async function OPTIONS(request: NextRequest) {
   return handleOPTIONS(request)
@@ -15,6 +16,13 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    if (!debugRoutesEnabled()) {
+      return NextResponse.json(
+        { error: "Not found" },
+        { status: 404, headers: corsHeaders(request) }
+      )
+    }
+
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     

@@ -3,8 +3,15 @@
  * Import from here instead of reading process.env directly in components.
  */
 
-/** "closed" = app.sozu.capital (deposit MVP); "open" = credit.sozu.capital (wallet/DeFi only). */
-export const betaTier = (process.env.NEXT_PUBLIC_BETA_TIER ?? "open") as "open" | "closed";
+/**
+ * Beta tier for feature gating.
+ * "closed" = Sozu Wallet (app.sozu.capital / dev.sozu.capital) — deposit MVP enabled
+ * "open" = legacy open-beta posture (credit.sozu.capital; wallet/DeFi only — deprecated)
+ *
+ * Target pipeline: Staging (`dev` → dev.sozu.capital) then Production (`main` → app.sozu.capital).
+ * See docs/deployment.md and docs/agents/git-flow.md.
+ */
+export const betaTier = (process.env.NEXT_PUBLIC_BETA_TIER ?? "closed") as "open" | "closed";
 
 /**
  * Whether the fiat deposit rail (bank transfer + card) is available.

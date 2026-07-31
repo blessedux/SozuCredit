@@ -11,6 +11,7 @@ import { createClient as createServiceClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
+import { debugRoutesEnabled } from "@/lib/debug-routes"
 
 export async function OPTIONS(request: NextRequest) {
   return handleOPTIONS(request)
@@ -18,6 +19,10 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const headers = corsHeaders(request)
+
+  if (!debugRoutesEnabled()) {
+    return NextResponse.json({ error: "Not found" }, { status: 404, headers })
+  }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY

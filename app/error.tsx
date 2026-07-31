@@ -46,7 +46,7 @@ export default function Error({
               Try again
             </Button>
             <Button variant="outline" asChild className="w-full">
-              <Link href="/">
+              <Link href="/home">
                 <Home className="mr-2 h-4 w-4" />
                 Go home
               </Link>

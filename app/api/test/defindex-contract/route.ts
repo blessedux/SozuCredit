@@ -10,6 +10,7 @@ import { Contract, TransactionBuilder, Account, BASE_FEE, Networks } from "@stel
 import { getSorobanRpc } from "@/lib/defindex/vault"
 import { Api } from "@stellar/stellar-sdk/rpc"
 import { corsHeaders, handleOPTIONS } from "@/lib/cors"
+import { debugRoutesEnabled } from "@/lib/debug-routes"
 
 export async function OPTIONS(request: NextRequest) {
   return handleOPTIONS(request)
@@ -17,6 +18,13 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    if (!debugRoutesEnabled()) {
+      return NextResponse.json(
+        { error: "Not found" },
+        { status: 404, headers: corsHeaders(request) }
+      )
+    }
+
     // Get user ID from session
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()

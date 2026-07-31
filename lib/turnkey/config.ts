@@ -8,7 +8,7 @@ export const TURNKEY_CONFIG = {
   apiPrivateKey: process.env.NEXT_PUBLIC_TURNKEY_API_PRIVATE_KEY || process.env.TURNKEY_API_PRIVATE_KEY || process.env.NEXT_PRIVATE_TURNKEY_API_PRIVATE_KEY || "",
   subOrganizationId: process.env.NEXT_PUBLIC_TURNKEY_SUB_ORG_ID || "",
   rpId: typeof window !== "undefined" ? window.location.hostname : "localhost",
-  rpName: "Sozu Credit Platform",
+  rpName: "Sozu Wallet",
 }
 
 // Stellar configuration

@@ -75,11 +75,17 @@ export type WalletTexts = {
   // Transaction History
   loadingTransactions: string;
   noTransactions: string;
+  emptyHistoryHint: string;
+  emptyHistoryCta: string;
   recentActivity: string;
   onChainActivity: string;
   showLess: string;
   showAll: string;
   transactions: string;
+  panelHome: string;
+  panelHistory: string;
+  authFailed: string;
+  authCancelledHint: string;
   // Error Messages
   somethingWentWrong: string;
   unexpectedError: string;
@@ -505,8 +511,14 @@ export const walletTexts = {
     // Transaction History
     loadingTransactions: "Cargando transacciones...",
     noTransactions: "Aún no hay transacciones",
+    emptyHistoryHint: "Deposita USDC para ver tu actividad aquí.",
+    emptyHistoryCta: "Depositar USDC",
     recentActivity: "Actividad reciente",
     onChainActivity: "Actividad on-chain",
+    panelHome: "Inicio",
+    panelHistory: "Historial",
+    authFailed: "No se pudo iniciar sesión. Inténtalo de nuevo.",
+    authCancelledHint: "Inicio de sesión cancelado. Puedes intentar otra vez.",
     showLess: "Mostrar menos",
     showAll: "Ver todas",
     transactions: "transacciones",
@@ -589,7 +601,7 @@ export const walletTexts = {
     logoutConfirm: "¿Estás seguro de que quieres cerrar sesión?",
     // Social share
     inviteMessage:
-      "¡Únete a Sozu Credit! Usa mi código de invitación: {code} y recibamos ambos puntos de confianza extra. 🚀",
+      "¡Únete a Sozu Wallet! Usa mi código de invitación: {code} y recibamos ambos puntos de confianza extra.",
     codeCopiedShare: "Código copiado al portapapeles. ¡Listo para compartir!",
     // EVM Address
     linkEvmAddress: "Vincular Dirección EVM",
@@ -911,8 +923,14 @@ export const walletTexts = {
     // Transaction History
     loadingTransactions: "Loading transactions...",
     noTransactions: "No transactions yet",
+    emptyHistoryHint: "Deposit USDC to see your activity here.",
+    emptyHistoryCta: "Deposit USDC",
     recentActivity: "Recent activity",
     onChainActivity: "On-chain activity",
+    panelHome: "Home",
+    panelHistory: "History",
+    authFailed: "Could not sign in. Please try again.",
+    authCancelledHint: "Sign-in cancelled. You can try again.",
     showLess: "Show less",
     showAll: "View all",
     transactions: "transactions",
@@ -992,7 +1010,7 @@ export const walletTexts = {
     logoutConfirm: "Are you sure you want to log out?",
     // Social share
     inviteMessage:
-      "Join Sozu Credit! Use my invite code: {code} and let's both get extra trust points. 🚀",
+      "Join Sozu Wallet! Use my invite code: {code} and let's both get extra trust points.",
     codeCopiedShare: "Code copied to clipboard. Ready to share!",
     // EVM Address
     linkEvmAddress: "Link EVM Address",
