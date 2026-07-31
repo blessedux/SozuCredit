@@ -1,4 +1,8 @@
-# Two-domain deployment guide
+# Two-domain deployment guide (legacy)
+
+> **Superseded for new work.** The target pipeline is Staging (`dev` → `dev.sozu.capital`) then Production (`main` → `app.sozu.capital`) on a single Vercel project. See [deployment.md](./deployment.md) and [agents/git-flow.md](./agents/git-flow.md).
+>
+> This document remains for the current live split (`credit.sozu.capital` open beta + `app.sozu.capital` closed beta) until cutover is complete.
 
 One repo. Two Vercel projects. One shared Supabase.
 

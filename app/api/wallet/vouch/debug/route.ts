@@ -1,5 +1,6 @@
 import { createClient as createServiceClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
+import { debugRoutesEnabled } from "@/lib/debug-routes"
 
 /**
  * POST /api/wallet/vouch/debug
@@ -8,6 +9,10 @@ import { NextResponse } from "next/server"
  */
 export async function POST(request: Request) {
   try {
+    if (!debugRoutesEnabled()) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 })
+    }
+
     const { voucher_id, vouched_user_id, trust_points_transferred } = await request.json()
     
     if (!voucher_id || !vouched_user_id || !trust_points_transferred) {

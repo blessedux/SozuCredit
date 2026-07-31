@@ -44,7 +44,7 @@ export async function getSmartAccountKit(): Promise<{
     webauthnVerifierAddress: config.webauthnVerifierAddress,
     storage: new IndexedDBStorage(),
     rpId,
-    rpName: "Sozu Credit",
+    rpName: "Sozu Wallet",
   }
 
   _kit = new SmartAccountKit(kitConfig)

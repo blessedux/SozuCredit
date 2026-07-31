@@ -8,6 +8,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Globe, User, Wallet, Camera, Link2, TrendingUp, Shield } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
+import { getUserId } from "@/lib/wallet-utils"
+
+const LANGUAGE_STORAGE_KEY = "sozu_app_language:v2"
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -77,6 +81,13 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
+      try {
+        const storedLang = localStorage.getItem(LANGUAGE_STORAGE_KEY)
+        if (storedLang === "en" || storedLang === "es") setLanguage(storedLang)
+      } catch {
+        /* ignore */
+      }
+
       const checkAuth = () => {
         const authenticated = sessionStorage.getItem("dev_authenticated") === "true"
         
@@ -96,7 +107,7 @@ export default function ProfilePage() {
       
       const loadProfile = async () => {
         try {
-          const userId = sessionStorage.getItem("dev_username")
+          const userId = getUserId()
           if (!userId) {
             window.location.replace("/auth")
             return
@@ -157,7 +168,7 @@ export default function ProfilePage() {
     
     setIsLoadingEgoScore(true)
     try {
-      const userId = sessionStorage.getItem("dev_username")
+      const userId = getUserId()
       if (!userId) return
 
       // Fetch ego score
@@ -191,14 +202,65 @@ export default function ProfilePage() {
   }
 
   const handleSave = async () => {
-    // TODO: Save profile changes to backend
-    console.log("Saving profile:", { username, language, profilePic })
-    router.push("/wallet")
+    const userId = getUserId()
+    if (!userId) {
+      window.location.replace("/auth")
+      return
+    }
+
+    const tag = username.trim()
+    if (!tag) {
+      toast.error(language === "es" ? "Ingresa un nombre de usuario" : "Enter a username")
+      return
+    }
+
+    try {
+      const res = await fetch("/api/wallet/profile", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": userId,
+        },
+        body: JSON.stringify({
+          username: tag,
+          display_name: tag,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(
+          typeof data.error === "string"
+            ? data.error
+            : language === "es"
+              ? "No se pudo guardar el perfil"
+              : "Could not save profile",
+        )
+        return
+      }
+
+      try {
+        sessionStorage.setItem("dev_username_display", tag)
+        localStorage.setItem("sozu_username", tag)
+        localStorage.setItem(LANGUAGE_STORAGE_KEY, language)
+      } catch {
+        /* ignore quota / private mode */
+      }
+
+      toast.success(language === "es" ? "Perfil guardado" : "Profile saved")
+      router.push("/wallet")
+    } catch (err) {
+      console.error("[Profile] Save failed:", err)
+      toast.error(language === "es" ? "No se pudo guardar el perfil" : "Could not save profile")
+    }
   }
 
   const handleLanguageChange = (lang: "es" | "en") => {
     setLanguage(lang)
-    // TODO: Save language preference
+    try {
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, lang)
+    } catch {
+      /* ignore */
+    }
   }
 
   const handleLinkEVMAddress = async () => {
@@ -209,7 +271,7 @@ export default function ProfilePage() {
 
     setIsLinkingEVM(true)
     try {
-      const userId = sessionStorage.getItem("dev_username")
+      const userId = getUserId()
       if (!userId) {
         window.location.replace("/auth")
         return
@@ -243,7 +305,7 @@ export default function ProfilePage() {
 
   const handleUnlinkEVMAddress = async () => {
     try {
-      const userId = sessionStorage.getItem("dev_username")
+      const userId = getUserId()
       if (!userId) {
         window.location.replace("/auth")
         return
