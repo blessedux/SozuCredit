@@ -121,7 +121,7 @@ export function formatClientInsufficientBalance(
     const parts = rows.map((r) => `${r.displayName} ${r.balance.toFixed(2)}`)
     return (
       `Insufficient balance. You need ${amountRequired.toFixed(2)} USDC in one token ` +
-      `(including fee buffer) but your largest balance is ${maxSingleToken.toFixed(2)} ` +
+      `but your largest balance is ${maxSingleToken.toFixed(2)} ` +
       `(${totalSpendable.toFixed(2)} total: ${parts.join(", ")}).`
     )
   }

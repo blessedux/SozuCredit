@@ -624,7 +624,6 @@ export async function POST(request: NextRequest) {
       (senderPk.startsWith("C") && !signerPk ? "oz" : senderPk.startsWith("C") ? "factory" : "legacy")
 
     const amountNum = parseFloat(amount)
-    const feeBuffer = 0.01
 
     if (!senderPk.startsWith("C")) {
       return NextResponse.json(
@@ -644,7 +643,8 @@ export async function POST(request: NextRequest) {
       network: stellarConfig.network,
     })
 
-    const amountRequired = amountNum + feeBuffer
+    // Full balance sends are allowed — Soroban fees are paid in XLM by the funder/signer, not USDC.
+    const amountRequired = amountNum
     const preferredContractId =
       typeof contractIdFromBody === "string"
         ? contractIdFromBody.trim().toUpperCase()

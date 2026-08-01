@@ -379,8 +379,8 @@ export function useSendPayment(
       return
     }
 
-    const bufferAmount = 0.01
-    const requiredBalance = amount + bufferAmount
+    // Full balance sends are allowed — Soroban fees are paid in XLM, not USDC.
+    const requiredBalance = amount
 
     setAmountError(null)
 
