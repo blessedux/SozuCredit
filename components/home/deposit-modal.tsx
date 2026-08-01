@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { createPortal } from "react-dom"
+import { useRouter } from "next/navigation"
 import { QRCodeSVG } from "qrcode.react"
 import { Copy, Check, X } from "lucide-react"
 import { copyToClipboard, formatAddress } from "@/lib/wallet-utils"
@@ -11,7 +12,11 @@ import { formatWalletText } from "@/lib/wallet-texts"
 import { resolveDepositReceiveAddress } from "@/lib/wallet/deposit-receive-address"
 import { getUserId } from "@/lib/wallet-utils"
 import { depositsEnabled } from "@/lib/app-config"
-import { fundViaFriendbot } from "@/lib/stellar/friendbot-fund"
+import { fundViaSozuFaucet } from "@/lib/stellar/sozu-faucet-fund"
+import {
+  markWalletActivationComplete,
+  markWelcomeOnboardingComplete,
+} from "@/lib/wallet/needs-activation-onboarding"
 import { FiatDepositFlow } from "@/components/home/fiat-deposit-flow"
 
 type DepositModalProps = {
@@ -40,6 +45,7 @@ export function DepositModal({
   walletNetwork = "testnet",
 }: DepositModalProps) {
   const { t } = useWalletLanguage()
+  const router = useRouter()
   const [address, setAddress] = useState<string>("")
   const [depositAddressSource, setDepositAddressSource] = useState<
     "prop" | "storage" | "sync" | "legacy"
@@ -52,9 +58,9 @@ export function DepositModal({
   const [mounted, setMounted] = useState(false)
   const [resolving, setResolving] = useState(false)
   const [setupError, setSetupError] = useState<string | null>(null)
-  const [friendbotBusy, setFriendbotBusy] = useState(false)
-  const [friendbotStatus, setFriendbotStatus] = useState<"idle" | "ok" | "err">("idle")
-  const [friendbotError, setFriendbotError] = useState<string | null>(null)
+  const [faucetBusy, setFaucetBusy] = useState(false)
+  const [faucetStatus, setFaucetStatus] = useState<"idle" | "ok" | "err">("idle")
+  const [faucetError, setFaucetError] = useState<string | null>(null)
   // "crypto" = existing QR flow; "fiat" = CLP bank transfer (closed beta only)
   const [depositTab, setDepositTab] = useState<"crypto" | "fiat">(() => {
     if (typeof window === "undefined") return depositsEnabled ? "fiat" : "crypto"
@@ -86,9 +92,9 @@ export function DepositModal({
   useEffect(() => {
     if (!isOpen) {
       setVisible(false)
-      setFriendbotBusy(false)
-      setFriendbotStatus("idle")
-      setFriendbotError(null)
+      setFaucetBusy(false)
+      setFaucetStatus("idle")
+      setFaucetError(null)
       return
     }
 
@@ -176,24 +182,28 @@ export function DepositModal({
     setTimeout(() => setAddressCopied(false), 2000)
   }
 
-  const handleFriendbotFund = async () => {
-    if (friendbotBusy || walletNetwork !== "testnet") return
-    setFriendbotBusy(true)
-    setFriendbotStatus("idle")
-    setFriendbotError(null)
+  const handleSozuFaucetFund = async () => {
+    if (faucetBusy || walletNetwork !== "testnet") return
+    setFaucetBusy(true)
+    setFaucetStatus("idle")
+    setFaucetError(null)
     try {
-      const result = await fundViaFriendbot(effectiveAddress || address)
+      const result = await fundViaSozuFaucet(effectiveAddress || address)
       if (result.ok) {
-        setFriendbotStatus("ok")
-      } else {
-        setFriendbotStatus("err")
-        setFriendbotError(result.error)
+        setFaucetStatus("ok")
+        markWelcomeOnboardingComplete()
+        markWalletActivationComplete()
+        onClose()
+        router.replace("/home")
+        return
       }
+      setFaucetStatus("err")
+      setFaucetError(result.error)
     } catch (e) {
-      setFriendbotStatus("err")
-      setFriendbotError(e instanceof Error ? e.message : t.depositFaucetError)
+      setFaucetStatus("err")
+      setFaucetError(e instanceof Error ? e.message : t.depositFaucetError)
     } finally {
-      setFriendbotBusy(false)
+      setFaucetBusy(false)
     }
   }
 
@@ -225,7 +235,7 @@ export function DepositModal({
         <X className="h-4 w-4" />
       </button>
 
-      {/* Testnet Friendbot — top of stack, glass button (not green fill) */}
+      {/* Testnet Sozu Faucet — one-click Circle USDC, then home */}
       {walletNetwork === "testnet" ? (
         <div
           className="relative z-20 flex w-full max-w-sm flex-col gap-1.5"
@@ -237,17 +247,17 @@ export function DepositModal({
         >
           <button
             type="button"
-            disabled={friendbotBusy}
-            onClick={() => void handleFriendbotFund()}
+            disabled={faucetBusy || resolving || !effectiveAddress}
+            onClick={() => void handleSozuFaucetFund()}
             className="flex w-full items-center justify-center rounded-2xl border border-white/20 bg-white/[0.08] px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/90 shadow-[0_0_0_1px_rgba(255,255,255,0.04)] backdrop-blur-sm transition hover:bg-white/[0.14] hover:text-white active:scale-[0.99] disabled:opacity-50"
           >
-            {friendbotBusy ? t.depositFaucetBusy : t.depositFaucetCta}
+            {faucetBusy ? t.depositFaucetBusy : t.depositFaucetCta}
           </button>
-          {friendbotStatus === "ok" ? (
+          {faucetStatus === "ok" ? (
             <p className="text-center text-[10px] text-white/70">{t.depositFaucetSuccess}</p>
-          ) : friendbotStatus === "err" ? (
+          ) : faucetStatus === "err" ? (
             <p className="text-center text-[10px] text-red-300/90">
-              {friendbotError || t.depositFaucetError}
+              {faucetError || t.depositFaucetError}
             </p>
           ) : (
             <p className="text-center text-[10px] text-white/40">{t.depositFaucetHint}</p>

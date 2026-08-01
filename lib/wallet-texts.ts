@@ -254,7 +254,7 @@ export type WalletTexts = {
   depositBlendHint: string;
   depositBlendFaucet: string;
   depositBlendPool: string;
-  /** CTA that triggers Friendbot funding from Deposit. */
+  /** CTA that claims testnet Circle USDC via Sozu Faucet (Deposit). */
   depositFaucetCta: string;
   depositFaucetHint: string;
   depositFaucetBusy: string;
@@ -710,10 +710,10 @@ export const walletTexts = {
       "Los pagos usan BlendUSDC en tu cuenta C (no el USDC clásico de Circle en G). Copia tu dirección C abajo y recibe BlendUSDC ahí.",
     depositBlendFaucet: "Abrir testnet.blend.capital",
     depositBlendPool: "Pool USDC (Blend)",
-    depositFaucetCta: "Fondos de prueba (Friendbot)",
-    depositFaucetHint: "Opcional — fondea XLM de testnet vía Friendbot.",
+    depositFaucetCta: "Obtener 20 USDC de prueba",
+    depositFaucetHint: "Un clic — Circle USDC (testnet) vía Sozu Faucet.",
     depositFaucetBusy: "Fondeando…",
-    depositFaucetSuccess: "Listo — cuenta fondeada en testnet.",
+    depositFaucetSuccess: "Listo — 20 USDC en camino. Yendo al inicio…",
     depositFaucetError: "No se pudo fondear. Intenta de nuevo.",
     depositFiatTabLabel: "Pesos CLP",
     depositCryptoTabLabel: "Crypto",
@@ -1133,10 +1133,10 @@ export const walletTexts = {
       "Payments use BlendUSDC on your C smart account (not classic Circle USDC on G). Copy your C address below and receive BlendUSDC there.",
     depositBlendFaucet: "Open testnet.blend.capital",
     depositBlendPool: "USDC pool (Blend)",
-    depositFaucetCta: "Get testnet funding",
-    depositFaucetHint: "Optional — fund testnet XLM via Friendbot.",
+    depositFaucetCta: "Get 20 testnet USDC",
+    depositFaucetHint: "One click — Circle USDC (testnet) via Sozu Faucet.",
     depositFaucetBusy: "Funding…",
-    depositFaucetSuccess: "Done — testnet account funded.",
+    depositFaucetSuccess: "Done — 20 USDC on the way. Heading home…",
     depositFaucetError: "Could not fund. Try again.",
     depositFiatTabLabel: "CLP pesos",
     depositCryptoTabLabel: "Crypto",
