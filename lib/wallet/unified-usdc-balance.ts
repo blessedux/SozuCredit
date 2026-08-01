@@ -127,14 +127,15 @@ export async function fetchUnifiedUsdcBalance(
       ? Math.max(data.totalDisplayUsdcBalance, lineTotal)
       : lineTotal
 
+  // New C wallets are unfunded until Deposit / faucet — 0 is the happy empty state.
   if (
     publicKey?.startsWith("C") &&
     displayBalance === 0 &&
-    displayWalletUsdc === 0
+    displayWalletUsdc === 0 &&
+    data.diagnostics
   ) {
-    console.warn("[UnifiedBalance] C wallet returned 0 USDC", {
+    console.debug("[UnifiedBalance] C wallet empty (expected until funded)", {
       publicKey: publicKey.slice(0, 12) + "…",
-      diagnostics: data.diagnostics,
     })
   }
 

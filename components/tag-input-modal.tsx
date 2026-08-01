@@ -1,7 +1,12 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -236,6 +241,12 @@ export function TagInputModal({
         showCloseButton={false}
         onInteractOutside={(e) => e.preventDefault()}
       >
+        <DialogTitle className="sr-only">
+          {step === "tag" ? t.authChooseName : t.authSignIn}
+        </DialogTitle>
+        <DialogDescription className="sr-only">
+          {step === "tag" ? t.authRegisterOnInternet : trimmed}
+        </DialogDescription>
         {step === "tag" ? (
           <div className="space-y-8 pt-1 pb-2">
             <div className="space-y-1 text-center">

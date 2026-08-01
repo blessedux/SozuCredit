@@ -99,11 +99,15 @@ export function WalletScreen({
     transactionHistory,
     isLoadingTransactions,
     addressToTagMap,
+    setupIncomplete,
+    setupError,
+    isFinishingSetup,
     fetchWalletUSDCBalance,
     fetchXLMBalance,
     fetchTransactionHistory,
     fetchDefindexBalance,
     fetchAPY,
+    finishWalletSetup,
     setWalletAddress,
     setWalletNetwork,
   } = walletData
@@ -406,6 +410,7 @@ export function WalletScreen({
     }
     const userId = getUserId()
     const funded = !isBalanceLoading && baseBalance > 0
+    // Welcome can run while Setup Incomplete — slides overlap Wallet Provisioning.
     const welcome = needsWelcomeOnboarding({
       walletNetwork,
       userId,
@@ -413,18 +418,19 @@ export function WalletScreen({
     })
     setWelcomeNeeded(welcome)
 
-    if (welcome || !walletAddress) {
+    if (welcome || setupIncomplete || !walletAddress?.startsWith("C")) {
       setActivationNeeded(false)
       return
     }
 
+    // Legacy G activation only — new users are C / OZ and skip trustline activation.
     const legacyG = await needsWalletActivationOnboarding({
       walletAddress,
       walletNetwork,
       userId,
     })
     setActivationNeeded(legacyG)
-  }, [walletAddress, walletNetwork, isBalanceLoading, baseBalance])
+  }, [setupIncomplete, walletAddress, walletNetwork, isBalanceLoading, baseBalance])
 
   useEffect(() => {
     void refreshOnboardingState()
@@ -484,16 +490,16 @@ export function WalletScreen({
     setShowActivationOnboarding(true)
     setWalletRevealed(false)
     setActivationMessage(null)
+    setActivationSettled(false)
+    setIsActivating(true)
 
     const isLegacyG =
       walletAddress?.startsWith("G") &&
       walletAddress.length === 56 &&
       !isSmartContractWalletAddress(walletAddress)
 
-    if (isLegacyG && activationNeeded) {
-      setIsActivating(true)
-      setActivationSettled(false)
-      try {
+    try {
+      if (isLegacyG && activationNeeded) {
         const userId = getUserId()
         const result = await getOrCreateRealWallet(userId || undefined, {
           onStatusUpdate: (s) => setActivationMessage(s.message),
@@ -504,29 +510,33 @@ export function WalletScreen({
         if (uid && walletAddress) fetchXLMBalance(walletAddress, uid, { gateBalance: true })
         fetchWalletUSDCBalance(walletAddress)
         fetchTransactionHistory(walletAddress)
-      } catch (e) {
-        setActivationMessage(e instanceof Error ? e.message : String(e))
-        autoActivationStartedRef.current = false
-      } finally {
-        setActivationSettled(true)
-        setIsActivating(false)
+        return
       }
-      return
-    }
 
-    setActivationSettled(true)
-    setIsActivating(false)
+      // Overlap slides with C… provisioning (Auth may already be in-flight — shared promise).
+      if (!walletAddress?.startsWith("C") || setupIncomplete) {
+        await finishWalletSetup()
+      }
+    } catch (e) {
+      setActivationMessage(e instanceof Error ? e.message : String(e))
+      autoActivationStartedRef.current = false
+    } finally {
+      setActivationSettled(true)
+      setIsActivating(false)
+    }
   }, [
     walletNetwork,
     walletAddress,
     activationNeeded,
+    setupIncomplete,
+    finishWalletSetup,
     fetchXLMBalance,
     fetchWalletUSDCBalance,
     fetchTransactionHistory,
   ])
 
   useEffect(() => {
-    if (isLoading || isBalanceLoading) return
+    if (isLoading) return
     if (walletNetwork !== "testnet") return
     if (autoActivationStartedRef.current || isActivating || showActivationOnboarding) return
 
@@ -534,25 +544,32 @@ export function WalletScreen({
     if (!userId) return
 
     // Funded wallets skip welcome slides and land on balance + Pay.
-    if (baseBalance > 0) {
+    if (!isBalanceLoading && baseBalance > 0) {
       markWelcomeOnboardingComplete(userId)
       setWelcomeNeeded(false)
       setWalletRevealed(true)
       return
     }
 
+    // Start welcome immediately — do not wait for C… or balance (hides provision latency).
     if (welcomeNeeded || needsWelcomeOnboarding({ walletNetwork, userId, hasFunds: false })) {
       autoActivationStartedRef.current = true
       void runWelcomeOnboarding()
       return
     }
 
-    if (!walletAddress || !activationNeeded) return
+    if (setupIncomplete) return
+    if (isBalanceLoading) return
+    if (!walletAddress?.startsWith("C")) return
+
+    // Legacy G only — never run classic trustline activation for C smart accounts.
+    if (!activationNeeded) return
     if (isSmartContractWalletAddress(walletAddress)) return
 
     autoActivationStartedRef.current = true
     void runActivationWithOnboarding()
   }, [
+    setupIncomplete,
     isLoading,
     isBalanceLoading,
     baseBalance,
@@ -758,12 +775,14 @@ export function WalletScreen({
             ref={landingRef}
             className="flex h-full flex-col overflow-hidden"
             onTouchStart={(e) => {
+              if (setupIncomplete) return
               pullHandlers.onTouchStart(e)
               swipeUpStartY.current = e.touches[0].clientY
               swipeUpStartX.current = e.touches[0].clientX
             }}
-            onTouchMove={pullHandlers.onTouchMove}
+            onTouchMove={setupIncomplete ? undefined : pullHandlers.onTouchMove}
             onTouchEnd={(e) => {
+              if (setupIncomplete) return
               pullHandlers.onTouchEnd(e)
               if (swipeUpStartY.current === null || swipeUpStartX.current === null) return
               const startY = swipeUpStartY.current
@@ -780,9 +799,9 @@ export function WalletScreen({
                 setSendModalOpen(true)
               }
             }}
-            onMouseDown={pullHandlers.onMouseDown}
-            onMouseMove={pullHandlers.onMouseMove}
-            onMouseUp={pullHandlers.onMouseUp}
+            onMouseDown={setupIncomplete ? undefined : pullHandlers.onMouseDown}
+            onMouseMove={setupIncomplete ? undefined : pullHandlers.onMouseMove}
+            onMouseUp={setupIncomplete ? undefined : pullHandlers.onMouseUp}
           >
             <header
               className="flex shrink-0 flex-col items-center gap-1.5 pt-[max(1.25rem,env(safe-area-inset-top))]"
@@ -805,53 +824,73 @@ export function WalletScreen({
               )}
             </header>
 
-            <div className="pt-6">
-              <PullToRefreshIndicator pull={pull} progress={progress} refreshing={refreshing} />
-            </div>
-
-            <div
-              className="flex min-h-0 flex-1 flex-col px-4 transition-transform duration-150 ease-out"
-              style={{ transform: pull > 0 ? `translateY(${pull * 0.35}px)` : undefined }}
-            >
-              <div className="flex min-h-0 flex-1 flex-col items-center justify-start pt-2">
-                <div className="flex min-h-0 w-full max-w-md flex-1 flex-col">
-                  <div className="flex min-h-0 w-full flex-col">
-                    {isBalanceLoading ? (
-                      <BalanceCardSkeleton compact />
-                    ) : (
-                      balanceBlock
-                    )}
-                  </div>
-
-                  <div
-                    className={cn(
-                      "overflow-hidden transition-[max-height,opacity,margin] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
-                      isBalanceLoading ? "max-h-0 opacity-0" : "max-h-32 opacity-100",
-                    )}
-                    aria-hidden={isBalanceLoading}
+            {setupIncomplete && !showActivationOnboarding ? (
+              <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 pb-[calc(env(safe-area-inset-bottom)+2.75rem)]">
+                <div className="w-full max-w-sm space-y-4 text-center">
+                  <p className="text-base font-semibold text-white">{t.setupIncompleteTitle}</p>
+                  <p className="text-[13px] leading-snug text-white/50">{t.setupIncompleteBody}</p>
+                  {setupError ? (
+                    <p className="text-[11px] leading-snug text-red-300/90">{setupError}</p>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={isFinishingSetup}
+                    onClick={() => void finishWalletSetup()}
+                    className="w-full rounded-full bg-white py-3.5 text-[13px] font-semibold text-black transition hover:bg-white/90 active:scale-[0.98] disabled:opacity-50"
                   >
-                    {activationMessage ? (
-                      <p className="mt-4 text-center text-xs text-red-300/90">{activationMessage}</p>
-                    ) : null}
-
-                  </div>
+                    {isFinishingSetup ? t.setupIncompleteBusy : t.setupIncompleteCta}
+                  </button>
                 </div>
               </div>
-
-              {/* Extra bottom pad so the shell page-dots sit below the command pod, not on top of it */}
-              <div className="shrink-0 pb-[calc(env(safe-area-inset-bottom)+2.75rem)] pt-2">
-                <div className="mx-auto w-full max-w-[17rem] rounded-[2rem] border border-white/10 bg-black/20 p-3 shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur-md">
-                  <div className="mb-2 text-center text-[8px] font-light uppercase tracking-[0.28em] text-white/40">
-                    {t.commandTitle}
-                  </div>
-                  <UniversalCommandBar
-                    bare
-                    onPayClick={handlePay}
-                    onDepositClick={handleDeposit}
-                  />
+            ) : (
+              <>
+                <div className="pt-6">
+                  <PullToRefreshIndicator pull={pull} progress={progress} refreshing={refreshing} />
                 </div>
-              </div>
-            </div>
+
+                <div
+                  className="flex min-h-0 flex-1 flex-col px-4 transition-transform duration-150 ease-out"
+                  style={{ transform: pull > 0 ? `translateY(${pull * 0.35}px)` : undefined }}
+                >
+                  <div className="flex min-h-0 flex-1 flex-col items-center justify-start pt-2">
+                    <div className="flex min-h-0 w-full max-w-md flex-1 flex-col">
+                      <div className="flex min-h-0 w-full flex-col">
+                        {isBalanceLoading ? (
+                          <BalanceCardSkeleton compact />
+                        ) : (
+                          balanceBlock
+                        )}
+                      </div>
+
+                      <div
+                        className={cn(
+                          "overflow-hidden transition-[max-height,opacity,margin] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
+                          isBalanceLoading ? "max-h-0 opacity-0" : "max-h-32 opacity-100",
+                        )}
+                        aria-hidden={isBalanceLoading}
+                      >
+                        {activationMessage ? (
+                          <p className="mt-4 text-center text-xs text-red-300/90">{activationMessage}</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="shrink-0 pb-[calc(env(safe-area-inset-bottom)+2.75rem)] pt-2">
+                    <div className="mx-auto w-full max-w-[17rem] rounded-[2rem] border border-white/10 bg-black/20 p-3 shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur-md">
+                      <div className="mb-2 text-center text-[8px] font-light uppercase tracking-[0.28em] text-white/40">
+                        {t.commandTitle}
+                      </div>
+                      <UniversalCommandBar
+                        bare
+                        onPayClick={handlePay}
+                        onDepositClick={handleDeposit}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
           {modals}
         </div>

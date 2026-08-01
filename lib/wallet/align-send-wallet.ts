@@ -1,22 +1,11 @@
 "use client"
 
-import type { SmartAccountKit } from "smart-account-kit"
 import { getSmartAccountKit } from "@/lib/stellar/smartAccounts/client"
 import { registerOzSmartAccount } from "@/lib/stellar/smartAccounts/registerWalletClient"
+import { discoverFirstContractIdSafe } from "@/lib/stellar/smartAccounts/discover-contracts"
 import { deriveAndStoreKey } from "@/lib/storage/browser-keys"
 import { getCurrentCredentialId, storeCredentialIdInSession } from "@/lib/storage/key-utils"
 import { persistCanonicalWalletSession } from "@/lib/wallet/persist-wallet-session"
-
-function extractContractId(entry: unknown): string | null {
-  if (!entry || typeof entry !== "object") return null
-  if ("contract_id" in entry && typeof (entry as { contract_id: string }).contract_id === "string") {
-    return (entry as { contract_id: string }).contract_id
-  }
-  if ("contractId" in entry && typeof (entry as { contractId: string }).contractId === "string") {
-    return (entry as { contractId: string }).contractId
-  }
-  return null
-}
 
 type AlignResult = { contractId: string; signerG: string; credentialId: string; realigned: boolean }
 
@@ -150,16 +139,15 @@ export async function alignWalletForSend(
       if (probe.ok) onChainC = derived
     }
     if (!onChainC) {
-      const contracts = await Promise.race([
-        kit.discoverContractsByCredential(credId),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("discoverContractsByCredential timed out")), 8_000),
-        ),
-      ])
-      onChainC = extractContractId(contracts?.[0])?.trim().toUpperCase() ?? null
+      onChainC = await discoverFirstContractIdSafe(kit, credId, {
+        logLabel: "alignWalletForSend",
+      })
     }
   } catch (e) {
-    console.warn("[alignWalletForSend] discoverContracts failed:", e)
+    console.info(
+      "[alignWalletForSend] on-chain probe failed:",
+      e instanceof Error ? e.message : e,
+    )
   }
 
   if (onChainC?.startsWith("C") && onChainC.length === 56) {

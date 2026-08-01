@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { createPortal } from "react-dom"
-import Link from "next/link"
 import { QRCodeSVG } from "qrcode.react"
 import { Copy, Check, X } from "lucide-react"
 import { copyToClipboard, formatAddress } from "@/lib/wallet-utils"
@@ -12,7 +11,7 @@ import { formatWalletText } from "@/lib/wallet-texts"
 import { resolveDepositReceiveAddress } from "@/lib/wallet/deposit-receive-address"
 import { getUserId } from "@/lib/wallet-utils"
 import { depositsEnabled } from "@/lib/app-config"
-import { getDemoFaucetPath } from "@/lib/faucet/demo-path"
+import { fundViaFriendbot } from "@/lib/stellar/friendbot-fund"
 import { FiatDepositFlow } from "@/components/home/fiat-deposit-flow"
 
 type DepositModalProps = {
@@ -53,18 +52,43 @@ export function DepositModal({
   const [mounted, setMounted] = useState(false)
   const [resolving, setResolving] = useState(false)
   const [setupError, setSetupError] = useState<string | null>(null)
+  const [friendbotBusy, setFriendbotBusy] = useState(false)
+  const [friendbotStatus, setFriendbotStatus] = useState<"idle" | "ok" | "err">("idle")
+  const [friendbotError, setFriendbotError] = useState<string | null>(null)
   // "crypto" = existing QR flow; "fiat" = CLP bank transfer (closed beta only)
-  const [depositTab, setDepositTab] = useState<"crypto" | "fiat">(
-    depositsEnabled ? "fiat" : "crypto",
-  )
+  const [depositTab, setDepositTab] = useState<"crypto" | "fiat">(() => {
+    if (typeof window === "undefined") return depositsEnabled ? "fiat" : "crypto"
+    try {
+      const stored = localStorage.getItem("sozu_deposit_tab_v1")
+      if (stored === "crypto" || stored === "fiat") {
+        if (stored === "fiat" && !depositsEnabled) return "crypto"
+        return stored
+      }
+    } catch {
+      /* ignore */
+    }
+    return depositsEnabled ? "fiat" : "crypto"
+  })
 
   useEffect(() => {
     setMounted(true)
   }, [])
 
   useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      localStorage.setItem("sozu_deposit_tab_v1", depositTab)
+    } catch {
+      /* ignore */
+    }
+  }, [depositTab])
+
+  useEffect(() => {
     if (!isOpen) {
       setVisible(false)
+      setFriendbotBusy(false)
+      setFriendbotStatus("idle")
+      setFriendbotError(null)
       return
     }
 
@@ -152,6 +176,27 @@ export function DepositModal({
     setTimeout(() => setAddressCopied(false), 2000)
   }
 
+  const handleFriendbotFund = async () => {
+    if (friendbotBusy || walletNetwork !== "testnet") return
+    setFriendbotBusy(true)
+    setFriendbotStatus("idle")
+    setFriendbotError(null)
+    try {
+      const result = await fundViaFriendbot(effectiveAddress || address)
+      if (result.ok) {
+        setFriendbotStatus("ok")
+      } else {
+        setFriendbotStatus("err")
+        setFriendbotError(result.error)
+      }
+    } catch (e) {
+      setFriendbotStatus("err")
+      setFriendbotError(e instanceof Error ? e.message : t.depositFaucetError)
+    } finally {
+      setFriendbotBusy(false)
+    }
+  }
+
   if (!isOpen || !mounted) return null
 
   const modal = (
@@ -175,10 +220,40 @@ export function DepositModal({
         type="button"
         onClick={onClose}
         aria-label={t.depositClose}
-        className="absolute right-5 top-[max(1.25rem,env(safe-area-inset-top))] flex h-8 w-8 items-center justify-center rounded-full bg-white/8 text-white/40 transition hover:bg-white/15 hover:text-white"
+        className="absolute right-5 top-[max(1.25rem,env(safe-area-inset-top))] z-20 flex h-8 w-8 items-center justify-center rounded-full bg-white/8 text-white/40 transition hover:bg-white/15 hover:text-white"
       >
         <X className="h-4 w-4" />
       </button>
+
+      {/* Testnet Friendbot — top of stack, glass button (not green fill) */}
+      {walletNetwork === "testnet" ? (
+        <div
+          className="relative z-20 flex w-full max-w-sm flex-col gap-1.5"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            transform: visible ? "translateY(0)" : "translateY(8px)",
+            transition: "transform 0.35s cubic-bezier(0.4,0,0.2,1)",
+          }}
+        >
+          <button
+            type="button"
+            disabled={friendbotBusy}
+            onClick={() => void handleFriendbotFund()}
+            className="flex w-full items-center justify-center rounded-2xl border border-white/20 bg-white/[0.08] px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/90 shadow-[0_0_0_1px_rgba(255,255,255,0.04)] backdrop-blur-sm transition hover:bg-white/[0.14] hover:text-white active:scale-[0.99] disabled:opacity-50"
+          >
+            {friendbotBusy ? t.depositFaucetBusy : t.depositFaucetCta}
+          </button>
+          {friendbotStatus === "ok" ? (
+            <p className="text-center text-[10px] text-white/70">{t.depositFaucetSuccess}</p>
+          ) : friendbotStatus === "err" ? (
+            <p className="text-center text-[10px] text-red-300/90">
+              {friendbotError || t.depositFaucetError}
+            </p>
+          ) : (
+            <p className="text-center text-[10px] text-white/40">{t.depositFaucetHint}</p>
+          )}
+        </div>
+      ) : null}
 
       <div className="text-[9px] font-light uppercase tracking-[0.3em] text-white/35">{t.depositTitle}</div>
 
@@ -247,25 +322,6 @@ export function DepositModal({
       {/* Crypto tab content (existing QR flow) — hidden when fiat tab is active */}
       {(!depositsEnabled || depositTab === "crypto") ? (
       <>
-      {walletNetwork === "testnet" ? (
-        <div
-          className="flex w-full max-w-sm flex-col gap-1.5"
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            transform: visible ? "translateY(0)" : "translateY(8px)",
-            transition: "transform 0.35s cubic-bezier(0.4,0,0.2,1)",
-          }}
-        >
-          <Link
-            href={getDemoFaucetPath()}
-            onClick={onClose}
-            className="flex w-full items-center justify-center rounded-2xl border border-emerald-500/40 bg-emerald-500/15 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-200 transition hover:bg-emerald-500/25"
-          >
-            {t.depositFaucetCta}
-          </Link>
-          <p className="text-center text-[10px] text-white/40">{t.depositFaucetHint}</p>
-        </div>
-      ) : null}
       {canShowTagQr ? (
         <div
           className="relative grid w-full max-w-[15.5rem] grid-cols-2 rounded-full border border-white/10 bg-white/[0.04] p-1"

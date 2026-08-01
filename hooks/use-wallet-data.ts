@@ -95,9 +95,14 @@ export function useWalletData() {
   const [transactionHistory, setTransactionHistory] = useState<Transaction[]>([])
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(false)
   const [addressToTagMap, setAddressToTagMap] = useState<Record<string, string>>({})
-  const hasAttemptedWalletRegisterRef = useRef(false)
   /** One-shot client bootstrap: avoids Strict Mode double-fetch and dependency churn loops. */
   const walletBootstrapDoneRef = useRef(false)
+  const [setupIncomplete, setSetupIncomplete] = useState(false)
+  const [setupError, setSetupError] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null
+    return sessionStorage.getItem("wallet_setup_error")
+  })
+  const [isFinishingSetup, setIsFinishingSetup] = useState(false)
 
   // LRU cache for address-to-tag mapping (limit to 100 entries)
   const updateAddressToTagMap = useCallback((address: string, tag: string) => {
@@ -491,264 +496,82 @@ export function useWalletData() {
     ],
   )
 
-  // Fetch wallet address with retry logic
-  const fetchWalletAddress = useCallback(async (userId: string, retryCount = 0): Promise<void> => {
-    console.log(`[Wallet] Syncing canonical wallet for userId: ${userId} (attempt ${retryCount + 1})`)
+  /**
+   * Read-only address load (ADR 0001). Never deploys a Smart Account.
+   * Missing C → Setup Incomplete for an explicit Finish setup CTA.
+   */
+  const fetchWalletAddress = useCallback(async (userId: string): Promise<void> => {
+    console.log(`[Wallet] Loading canonical wallet for userId: ${userId}`)
     try {
       const credId =
         sessionStorage.getItem("credential_id") ?? localStorage.getItem("credential_id") ?? undefined
 
-      try {
-        const { syncCanonicalWallet } = await import("@/lib/wallet/sync-canonical-wallet")
-        const { publicKey, walletType } = await syncCanonicalWallet(userId, credId ?? undefined)
-        if (!publicKey.startsWith("C")) {
-          console.warn("[Wallet] Expected C smart account; got:", publicKey.substring(0, 8))
-        }
-        console.log("[Wallet] ✅ Canonical wallet:", publicKey.substring(0, 10) + "…", walletType)
-        setWalletAddress(publicKey)
-        void bootstrapWalletFetches(publicKey, userId)
+      const { loadCanonicalWallet } = await import("@/lib/wallet/sync-canonical-wallet")
+      const loaded = await loadCanonicalWallet(userId, credId ?? undefined)
+
+      if (loaded?.publicKey.startsWith("C") && loaded.publicKey.length === 56) {
+        console.log("[Wallet] ✅ Canonical wallet:", loaded.publicKey.substring(0, 10) + "…", loaded.walletType)
+        setWalletAddress(loaded.publicKey)
+        setSetupIncomplete(false)
+        setSetupError(null)
+        void bootstrapWalletFetches(loaded.publicKey, userId)
         return
-      } catch (syncErr) {
-        console.warn("[Wallet] syncCanonicalWallet failed, falling back to address API:", syncErr)
       }
 
-      const walletAddressResponse = await fetch("/api/wallet/stellar/address", {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "x-user-id": userId,
-        },
-      })
-
-      console.log(`[Wallet] Wallet address response status: ${walletAddressResponse.status}`)
-
-      if (walletAddressResponse.ok) {
-        const walletData = await walletAddressResponse.json()
-        console.log("[Wallet] Wallet data received:", walletData)
-
-        const publicKeyToUse =
-          typeof walletData.publicKey === "string" ? walletData.publicKey.trim() : ""
-
-        if (publicKeyToUse) {
-          if (publicKeyToUse.startsWith("G")) {
-            const sessionC =
-              typeof window !== "undefined"
-                ? (
-                    localStorage.getItem("stellar_public_key") ??
-                    sessionStorage.getItem("stellar_public_key")
-                  )
-                    ?.trim()
-                    .toUpperCase()
-                : null
-            if (sessionC?.startsWith("C") && sessionC.length === 56) {
-              console.log("[Wallet] DB has legacy G — using session C for UI")
-              setWalletAddress(sessionC)
-              if (walletData.network) setWalletNetwork(walletData.network)
-              void bootstrapWalletFetches(sessionC, userId)
-              return
-            }
-            if (retryCount < 2) {
-              console.log("[Wallet] Legacy G in DB — retrying smart account sync…")
-              setTimeout(() => fetchWalletAddress(userId, retryCount + 1), 1500)
-              return
-            }
-            try {
-              const { ensureSmartWallet } = await import("@/lib/wallet/ensure-smart-wallet")
-              const ensured = await ensureSmartWallet(
-                userId,
-                sessionStorage.getItem("credential_id") ?? undefined,
-              )
-              if (ensured.publicKey.startsWith("C")) {
-                const { persistCanonicalWalletSession } = await import(
-                  "@/lib/wallet/persist-wallet-session"
-                )
-                persistCanonicalWalletSession(
-                  ensured.publicKey,
-                  ensured.walletType,
-                  ensured.credentialId,
-                )
-                setWalletAddress(ensured.publicKey)
-                void bootstrapWalletFetches(ensured.publicKey, userId)
-                return
-              }
-            } catch (ensureErr) {
-              console.warn("[Wallet] ensureSmartWallet after legacy G:", ensureErr)
-            }
-          }
-          console.log("[Wallet] ✅ Stellar wallet address loaded:", publicKeyToUse)
-          setWalletAddress(publicKeyToUse)
-          if (walletData.network) {
-            setWalletNetwork(walletData.network)
-          }
-          if (typeof window !== "undefined" && publicKeyToUse.startsWith("C")) {
-            localStorage.setItem("stellar_public_key", publicKeyToUse)
-            sessionStorage.setItem("stellar_public_key", publicKeyToUse)
-          }
-          void bootstrapWalletFetches(publicKeyToUse, userId)
-          return
-        } else {
-          console.warn("[Wallet] No public key in wallet response:", walletData)
-          if (retryCount < 2 && !hasAttemptedWalletRegisterRef.current) {
-            console.log("[Wallet] Attempting to register wallet with client-derived key (one-shot)...")
-            hasAttemptedWalletRegisterRef.current = true
-            try {
-              const clientPublicKey = typeof window !== "undefined" ? sessionStorage.getItem("stellar_public_key") : null
-              if (!clientPublicKey) {
-                console.warn("[Wallet] No client-derived public key available; skipping server registration.")
-                setWalletAddress("")
-                setIsBalanceLoading(false)
-                refreshBalanceFromSession(userId)
-                return
-              }
-              let createData: { publicKey?: string; network?: string } = {}
-              try {
-                const { ensureSmartWallet } = await import("@/lib/wallet/ensure-smart-wallet")
-                const ensured = await ensureSmartWallet(
-                  userId,
-                  sessionStorage.getItem("credential_id") ?? undefined,
-                )
-                createData = { publicKey: ensured.publicKey, network: undefined }
-              } catch (ensureErr) {
-                console.warn("[Wallet] ensureSmartWallet failed, falling back to create:", ensureErr)
-                const createResponse = await fetch("/api/wallet/stellar/create", {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    "x-user-id": userId,
-                  },
-                  body: JSON.stringify({ publicKey: clientPublicKey }),
-                })
-                if (createResponse.ok) {
-                  createData = await createResponse.json()
-                }
-              }
-
-              if (createData.publicKey) {
-                console.log("[Wallet] ✅ Wallet created and address loaded:", createData.publicKey)
-                setWalletAddress(createData.publicKey)
-                if (createData.network === "testnet" || createData.network === "mainnet") {
-                  setWalletNetwork(createData.network)
-                }
-                if (createData.network === "testnet") {
-                  sessionStorage.setItem("sozu_auto_activate", "1")
-                }
-                void bootstrapWalletFetches(createData.publicKey, userId)
-                return
-              }
-            } catch (createError) {
-              console.error("[Wallet] Error creating wallet:", createError)
-            }
-            
-            setTimeout(() => fetchWalletAddress(userId, retryCount + 1), 1500)
-          } else {
-            // Avoid infinite loops: if we already tried registration, fall back to session key (if any) and stop retrying.
-            const sessionPublicKey = typeof window !== "undefined" ? sessionStorage.getItem("stellar_public_key") : null
-            if (sessionPublicKey?.startsWith("C")) {
-              console.log("[Wallet] Using session C while DB catches up.")
-              setWalletAddress(sessionPublicKey)
-              void bootstrapWalletFetches(sessionPublicKey, userId)
-              return
-            }
-            if (sessionPublicKey?.startsWith("G") && retryCount < 2) {
-              console.log("[Wallet] Session still G — retrying smart wallet sync…")
-              setTimeout(() => fetchWalletAddress(userId, retryCount + 1), 2000)
-              return
-            }
-            setWalletAddress("")
-            setIsBalanceLoading(false)
-            refreshBalanceFromSession(userId)
-          }
-        }
-      } else if (walletAddressResponse.status === 404) {
-        if (retryCount === 0 && !hasAttemptedWalletRegisterRef.current) {
-          try {
-            const clientPublicKey = typeof window !== "undefined" ? sessionStorage.getItem("stellar_public_key") : null
-            hasAttemptedWalletRegisterRef.current = true
-            if (!clientPublicKey) {
-              setWalletAddress("")
-              setIsBalanceLoading(false)
-              refreshBalanceFromSession(userId)
-              return
-            }
-            const createResponse = await fetch("/api/wallet/stellar/create", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "x-user-id": userId,
-              },
-              body: JSON.stringify({ publicKey: clientPublicKey }),
-            })
-            
-            if (createResponse.ok) {
-              const createData = await createResponse.json()
-              if (createData.publicKey) {
-                console.log("[Wallet] ✅ Wallet created/retrieved and address loaded:", createData.publicKey)
-                setWalletAddress(createData.publicKey)
-                if (createData.network) {
-                  setWalletNetwork(createData.network)
-                }
-                if (createData.network === "testnet") {
-                  sessionStorage.setItem("sozu_auto_activate", "1")
-                }
-                void bootstrapWalletFetches(createData.publicKey, userId)
-                return
-              }
-            }
-            if (createResponse.status === 400) {
-              setWalletAddress("")
-              setIsBalanceLoading(false)
-              refreshBalanceFromSession(userId)
-              return
-            }
-          } catch (createError) {
-            console.error("[Wallet] Error creating wallet:", createError)
-          }
-        }
-        
-        // Stop looping hard on 404: rely on session public key UX while server catches up.
-        const sessionPublicKey = typeof window !== "undefined" ? sessionStorage.getItem("stellar_public_key") : null
-        if (sessionPublicKey?.startsWith("C")) {
-          setWalletAddress(sessionPublicKey)
-          void fetchWalletUSDCBalance(sessionPublicKey)
-          void fetchDefindexBalance(userId, sessionPublicKey)
-          deferNonCritical(() => {
-            void fetchTransactionHistory(sessionPublicKey)
-          })
-          return
-        }
-        setWalletAddress("")
-        setIsBalanceLoading(false)
-        refreshBalanceFromSession(userId)
-      } else if (walletAddressResponse.status === 500) {
-        if (retryCount < 3) {
-          console.log(`[Wallet] Retrying after error (attempt ${retryCount + 1}/3)...`)
-          setTimeout(() => fetchWalletAddress(userId, retryCount + 1), 2000)
-        } else {
-          console.error("[Wallet] Failed to fetch wallet address after retries - stopping loading")
-          setWalletAddress("")
-          setIsBalanceLoading(false)
-          refreshBalanceFromSession(userId)
-        }
-      } else {
-        if (retryCount < 5) {
-          setTimeout(() => fetchWalletAddress(userId, retryCount + 1), 2000)
-        } else {
-          setWalletAddress("")
-          setIsBalanceLoading(false)
-          refreshBalanceFromSession(userId)
-        }
-      }
+      console.info("[Wallet] No Smart Account on file — Setup Incomplete")
+      setWalletAddress("")
+      setSetupIncomplete(true)
+      setSetupError(
+        typeof window !== "undefined" ? sessionStorage.getItem("wallet_setup_error") : null,
+      )
+      setIsBalanceLoading(false)
     } catch (walletError) {
-      console.error("[Wallet] Exception fetching Stellar wallet address:", walletError)
-      if (retryCount < 5) {
-        setTimeout(() => fetchWalletAddress(userId, retryCount + 1), 2000)
-      } else {
-        setWalletAddress("")
-        setIsBalanceLoading(false)
-        refreshBalanceFromSession(userId)
-      }
+      console.error("[Wallet] Exception loading wallet address:", walletError)
+      setWalletAddress("")
+      setSetupIncomplete(true)
+      setSetupError(walletError instanceof Error ? walletError.message : "Could not load wallet")
+      setIsBalanceLoading(false)
     }
-  }, [bootstrapWalletFetches, fetchDefindexBalance, refreshBalanceFromSession])
+  }, [bootstrapWalletFetches])
+
+  /** Explicit user-initiated Wallet Provisioning (Finish setup). */
+  const finishWalletSetup = useCallback(async (): Promise<boolean> => {
+    const userId = getUserId()
+    if (!userId || isFinishingSetup) return false
+
+    setIsFinishingSetup(true)
+    setSetupError(null)
+    try {
+      const credId =
+        sessionStorage.getItem("credential_id") ?? localStorage.getItem("credential_id") ?? ""
+      if (!credId) {
+        setSetupError("No passkey on this device. Sign in again.")
+        return false
+      }
+
+      const { alignWalletMaterialAfterLogin } = await import("@/lib/storage/post-login-wallet")
+      const result = await alignWalletMaterialAfterLogin(userId, credId)
+
+      if (result.needsWalletSync || !result.publicKey.startsWith("C")) {
+        setSetupIncomplete(true)
+        setSetupError(result.setupError ?? "Could not finish wallet setup.")
+        return false
+      }
+
+      setWalletAddress(result.publicKey)
+      setSetupIncomplete(false)
+      setSetupError(null)
+      void bootstrapWalletFetches(result.publicKey, userId)
+      return true
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setSetupIncomplete(true)
+      setSetupError(msg)
+      return false
+    } finally {
+      setIsFinishingSetup(false)
+    }
+  }, [bootstrapWalletFetches, isFinishingSetup])
 
   // Initialize wallet data (mount only: dev and prod both require a real /auth session)
   useEffect(() => {
@@ -885,6 +708,9 @@ export function useWalletData() {
     transactionHistory,
     isLoadingTransactions,
     addressToTagMap,
+    setupIncomplete,
+    setupError,
+    isFinishingSetup,
     // Actions
     fetchWalletUSDCBalance,
     fetchXLMBalance,
@@ -892,6 +718,8 @@ export function useWalletData() {
     fetchDefindexBalance,
     fetchAPY,
     fetchAutoDepositStatus,
+    fetchWalletAddress,
+    finishWalletSetup,
     setWalletAddress,
     setWalletNetwork,
     setIsBalanceLoading,

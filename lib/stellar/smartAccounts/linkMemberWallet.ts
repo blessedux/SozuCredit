@@ -4,6 +4,7 @@ import type { SmartAccountKit } from "smart-account-kit"
 import { base64URLToBuffer } from "@/lib/webauthn/utils"
 import { normalizeCredentialId } from "@/lib/webauthn/normalize-credential-id"
 import { resolvePublicKeyFromServer } from "@/lib/stellar/smartAccounts/registerWalletClient"
+import { discoverFirstContractIdSafe } from "@/lib/stellar/smartAccounts/discover-contracts"
 import { getUserId } from "@/lib/wallet-utils"
 
 type ConnectResult = {
@@ -24,17 +25,6 @@ function isNotDeployedError(message: string): boolean {
     message.includes("not deployed") ||
     message.includes("not been deployed")
   )
-}
-
-function extractContractId(entry: unknown): string | null {
-  if (!entry || typeof entry !== "object") return null
-  if ("contract_id" in entry && typeof entry.contract_id === "string") {
-    return entry.contract_id
-  }
-  if ("contractId" in entry && typeof entry.contractId === "string") {
-    return entry.contractId
-  }
-  return null
 }
 
 async function resolveLoginPasskeyPublicKey(credentialId: string): Promise<Uint8Array | null> {
@@ -88,24 +78,6 @@ async function finishLink(
     contractId: linked.contractId,
     credentialId: linked.credentialId,
     publicKey,
-  }
-}
-
-async function discoverFirstContractId(
-  kit: SmartAccountKit,
-  credentialId: string
-): Promise<string | null> {
-  // SDF's public indexer is best-effort. A 5xx must not block first-time deploy —
-  // we already resolve user-scoped contracts on-chain before calling this.
-  try {
-    const contracts = await kit.discoverContractsByCredential(credentialId)
-    return extractContractId(contracts?.[0]) ?? null
-  } catch (e) {
-    console.warn(
-      "[linkMemberWallet] Indexer discovery failed; continuing with on-chain deploy path:",
-      e instanceof Error ? e.message : e,
-    )
-    return null
   }
 }
 
@@ -216,7 +188,9 @@ export async function linkMemberWalletWithLoginPasskey(params: {
     const existing = await linkUserScopedContractIfDeployed(kit, connect, credentialId, userId)
     if (existing) return existing
 
-    const existingId = await discoverFirstContractId(kit, credentialId)
+    const existingId = await discoverFirstContractIdSafe(kit, credentialId, {
+      logLabel: "linkMemberWallet",
+    })
     if (existingId) {
       try {
         return await finishLink(await connect({ credentialId, contractId: existingId }))
@@ -237,7 +211,9 @@ export async function linkMemberWalletWithLoginPasskey(params: {
     const existing = await linkUserScopedContractIfDeployed(kit, connect, credentialId, userId)
     if (existing) return existing
 
-    const existingId = await discoverFirstContractId(kit, credentialId)
+    const existingId = await discoverFirstContractIdSafe(kit, credentialId, {
+      logLabel: "linkMemberWallet",
+    })
     if (existingId) {
       try {
         return await finishLink(await connect({ credentialId, contractId: existingId }))

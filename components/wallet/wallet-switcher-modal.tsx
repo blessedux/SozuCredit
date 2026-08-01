@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
+import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { Check, Copy, LogOut, Plus, X } from "lucide-react"
 import { createClient as createSupabaseClient } from "@/lib/supabase/client"
@@ -77,9 +78,20 @@ export function WalletSwitcherModal({
     ? sozuTag.startsWith("$") ? sozuTag : `$${sozuTag}`
     : abbrev(walletAddress)
 
-  return (
+  // Portal to body so fixed positioning isn't trapped by the shell's translateX
+  // stacking context (otherwise the bottom nav dots paint above this sheet).
+  // Store the element — never pass a bare document.body during HMR / early mount
+  // (createPortal throws "Target container is not a DOM element").
+  const [portalEl, setPortalEl] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    setPortalEl(document.body)
+  }, [])
+
+  if (!portalEl) return null
+
+  return createPortal(
     <AnimatePresence>
-      {isOpen && (
+      {isOpen ? (
         <>
           {/* Backdrop — semi-transparent so the wallet shader shows through */}
           <motion.div
@@ -259,7 +271,8 @@ export function WalletSwitcherModal({
             </div>
           </motion.div>
         </>
-      )}
-    </AnimatePresence>
+      ) : null}
+    </AnimatePresence>,
+    portalEl,
   )
 }

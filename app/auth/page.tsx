@@ -625,27 +625,41 @@ function AuthPageContent() {
             console.warn("[Auth] kit.credentials.save after register:", kitSaveErr)
           }
 
-          try {
-            console.log("[Auth] Reg Step 6.5: Provisioning smart wallet (C…) for userId:", finalUserId)
-            const { alignWalletMaterialAfterLogin } = await import("@/lib/storage/post-login-wallet")
-            const { publicKey, needsWalletSync } = await alignWalletMaterialAfterLogin(
-              finalUserId,
-              credential.id,
-            )
-            console.log("[Auth] ✅ Wallet ready:", publicKey.substring(0, 10) + "…", needsWalletSync)
-
-            if (!needsWalletSync) {
-              persistClientWalletSession({
-                userId: finalUserId,
-                publicKey,
-                credentialId: credential.id,
-                username: registeredUsername,
-              })
+          // Kick off Wallet Provisioning without blocking redirect — Home shows
+          // welcome slides in parallel so deploy latency is hidden behind onboarding.
+          sessionStorage.setItem("wallet_sync_pending", "1")
+          const credIdForProvision = credential.id
+          void (async () => {
+            try {
+              console.log(
+                "[Auth] Reg Step 6.5: Provisioning smart wallet (C…) in background for userId:",
+                finalUserId,
+              )
+              const { alignWalletMaterialAfterLogin } = await import(
+                "@/lib/storage/post-login-wallet"
+              )
+              const { publicKey, needsWalletSync } = await alignWalletMaterialAfterLogin(
+                finalUserId,
+                credIdForProvision,
+              )
+              console.log(
+                "[Auth] ✅ Wallet ready:",
+                publicKey ? publicKey.substring(0, 10) + "…" : "(none)",
+                needsWalletSync,
+              )
+              if (!needsWalletSync && publicKey) {
+                persistClientWalletSession({
+                  userId: finalUserId,
+                  publicKey,
+                  credentialId: credIdForProvision,
+                  username: registeredUsername,
+                })
+              }
+            } catch (walletError) {
+              console.error("[Auth] ❌ Smart wallet provisioning failed:", walletError)
+              sessionStorage.setItem("wallet_sync_pending", "1")
             }
-          } catch (walletError) {
-            console.error("[Auth] ❌ Smart wallet provisioning failed:", walletError)
-            sessionStorage.setItem("wallet_sync_pending", "1")
-          }
+          })()
         } else {
           console.warn("[Auth] ⚠️ Skipping smart wallet setup — no credential id")
         }

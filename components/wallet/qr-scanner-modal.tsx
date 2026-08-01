@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react"
 import jsQR from "jsqr"
 import { X, Camera, CameraOff } from "lucide-react"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 
 interface QrScannerModalProps {
   isOpen: boolean
@@ -105,6 +105,10 @@ export function QrScannerModal({ isOpen, onClose, onScan }: QrScannerModalProps)
         showCloseButton={false}
         overlayClassName="bg-black/30 backdrop-blur-none"
       >
+        <DialogTitle className="sr-only">Scan QR code</DialogTitle>
+        <DialogDescription className="sr-only">
+          Point your camera at a Sozu QR code
+        </DialogDescription>
         <div className="relative w-full aspect-square">
           {/* Video feed */}
           <video

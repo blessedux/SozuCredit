@@ -254,9 +254,12 @@ export type WalletTexts = {
   depositBlendHint: string;
   depositBlendFaucet: string;
   depositBlendPool: string;
-  /** CTA that opens the Sozu testnet faucet claim path from Deposit. */
+  /** CTA that triggers Friendbot funding from Deposit. */
   depositFaucetCta: string;
   depositFaucetHint: string;
+  depositFaucetBusy: string;
+  depositFaucetSuccess: string;
+  depositFaucetError: string;
   // Fiat deposit flow (bank transfer)
   depositFiatTabLabel: string;
   depositCryptoTabLabel: string;
@@ -410,6 +413,10 @@ export type WalletTexts = {
   authDeviceChoiceScanHint: string;
   authDeviceChoiceCreate: string;
   authDeviceChoiceCreateHint: string;
+  setupIncompleteTitle: string;
+  setupIncompleteBody: string;
+  setupIncompleteCta: string;
+  setupIncompleteBusy: string;
 };
 
 export type WalletLanguage = "en" | "es";
@@ -703,8 +710,11 @@ export const walletTexts = {
       "Los pagos usan BlendUSDC en tu cuenta C (no el USDC clásico de Circle en G). Copia tu dirección C abajo y recibe BlendUSDC ahí.",
     depositBlendFaucet: "Abrir testnet.blend.capital",
     depositBlendPool: "Pool USDC (Blend)",
-    depositFaucetCta: "Obtener USDC del faucet",
-    depositFaucetHint: "Fondos de prueba en testnet — sin coaching.",
+    depositFaucetCta: "Fondos de prueba (Friendbot)",
+    depositFaucetHint: "Opcional — fondea XLM de testnet vía Friendbot.",
+    depositFaucetBusy: "Fondeando…",
+    depositFaucetSuccess: "Listo — cuenta fondeada en testnet.",
+    depositFaucetError: "No se pudo fondear. Intenta de nuevo.",
     depositFiatTabLabel: "Pesos CLP",
     depositCryptoTabLabel: "Crypto",
     depositFiatTitle: "Depósito en pesos",
@@ -863,6 +873,11 @@ export const walletTexts = {
     authDeviceChoiceScanHint: "Ya tienes una cuenta. Usa el passkey de tu teléfono u otro dispositivo.",
     authDeviceChoiceCreate: "Crear una cuenta nueva",
     authDeviceChoiceCreateHint: "Elige tu nombre y completa el registro en un dispositivo con biometría.",
+    setupIncompleteTitle: "Falta terminar tu billetera",
+    setupIncompleteBody:
+      "Tu passkey ya existe, pero aún no hay una cuenta inteligente (C…) en este dispositivo. Toca para crearla una vez.",
+    setupIncompleteCta: "Terminar configuración",
+    setupIncompleteBusy: "Creando billetera…",
   },
   en: {
     // Profile
@@ -1118,8 +1133,11 @@ export const walletTexts = {
       "Payments use BlendUSDC on your C smart account (not classic Circle USDC on G). Copy your C address below and receive BlendUSDC there.",
     depositBlendFaucet: "Open testnet.blend.capital",
     depositBlendPool: "USDC pool (Blend)",
-    depositFaucetCta: "Get USDC from faucet",
-    depositFaucetHint: "Testnet funding — no coaching required.",
+    depositFaucetCta: "Get testnet funding",
+    depositFaucetHint: "Optional — fund testnet XLM via Friendbot.",
+    depositFaucetBusy: "Funding…",
+    depositFaucetSuccess: "Done — testnet account funded.",
+    depositFaucetError: "Could not fund. Try again.",
     depositFiatTabLabel: "CLP pesos",
     depositCryptoTabLabel: "Crypto",
     depositFiatTitle: "Peso deposit",
@@ -1278,6 +1296,11 @@ export const walletTexts = {
     authDeviceChoiceScanHint: "You already have an account. Use the passkey on your phone or another device.",
     authDeviceChoiceCreate: "Create a new account",
     authDeviceChoiceCreateHint: "Choose your name, then finish setup on a device with biometrics.",
+    setupIncompleteTitle: "Finish setting up your wallet",
+    setupIncompleteBody:
+      "Your passkey is ready, but this device doesn’t have a smart account (C…) yet. Tap once to create it.",
+    setupIncompleteCta: "Finish setup",
+    setupIncompleteBusy: "Creating wallet…",
   },
 } as const;
 

@@ -26,8 +26,8 @@ function pickBestAddress(
 }
 
 /**
- * Address for deposit QR / copy — always prefer Soroban smart account (C…).
- * Syncs from server when storage only has legacy G.
+ * Address for deposit QR / copy — prefer Soroban smart account (C…).
+ * Read-only: does not provision. Setup Incomplete owns create.
  */
 export async function resolveDepositReceiveAddress(
   walletAddressProp?: string | null,
@@ -46,52 +46,16 @@ export async function resolveDepositReceiveAddress(
     const credId =
       sessionStorage.getItem("credential_id") ?? localStorage.getItem("credential_id")
     try {
-      const { syncCanonicalWallet } = await import("@/lib/wallet/sync-canonical-wallet")
-      const { publicKey, walletType } = await syncCanonicalWallet(userId, credId ?? undefined)
-      const pk = publicKey.trim().toUpperCase()
-      if (pk.startsWith("C")) {
-        persistCanonicalWalletSession(pk, walletType, credId ?? undefined)
+      const { loadCanonicalWallet } = await import("@/lib/wallet/sync-canonical-wallet")
+      const loaded = await loadCanonicalWallet(userId, credId ?? undefined)
+      const pk = loaded?.publicKey.trim().toUpperCase()
+      if (pk?.startsWith("C") && loaded) {
+        persistCanonicalWalletSession(pk, loaded.walletType, credId ?? undefined)
         return { address: pk, source: "sync" }
       }
     } catch (err) {
-      console.warn("[Deposit] syncCanonicalWallet failed:", err)
+      console.info("[Deposit] No Smart Account to show yet:", err instanceof Error ? err.message : err)
     }
-
-    let signerG: string | null = null
-    try {
-      const { deriveAndStoreKey } = await import("@/lib/storage/browser-keys")
-      if (credId) {
-        const { publicKey } = await deriveAndStoreKey(credId, userId)
-        signerG = publicKey.trim().toUpperCase()
-      }
-    } catch {
-      // ignore
-    }
-    if (signerG?.startsWith("G")) {
-      try {
-        const res = await fetch("/api/wallet/smart-account/provision", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-user-id": userId,
-          },
-          body: JSON.stringify({ signerPublicKey: signerG }),
-        })
-        const data = (await res.json().catch(() => ({}))) as { contractId?: string }
-        const c = data.contractId?.trim().toUpperCase()
-        if (c?.startsWith("C")) {
-          persistCanonicalWalletSession(c, "factory", credId ?? undefined)
-          return { address: c, source: "sync" }
-        }
-      } catch (provErr) {
-        console.warn("[Deposit] factory provision failed:", provErr)
-      }
-    }
-  }
-
-  const legacy = walletAddressProp?.trim().toUpperCase()
-  if (legacy?.startsWith("G") && legacy.length === 56) {
-    return { address: legacy, source: "legacy" }
   }
 
   return { address: "", source: "legacy" }

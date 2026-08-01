@@ -8,7 +8,7 @@ import { persistCanonicalWalletSession } from "@/lib/wallet/persist-wallet-sessi
 
 export type EnsureSmartWalletResult = {
   publicKey: string
-  walletType: "oz" | "factory"
+  walletType: "oz"
   credentialId?: string
 }
 
@@ -38,57 +38,23 @@ async function resolveSignerPublicKey(
   throw new Error("No passkey signer available for smart wallet setup.")
 }
 
-async function provisionFactorySmartAccount(
+/**
+ * Wallet Provisioning — OpenZeppelin passkey Smart Account only (ADR 0001).
+ * Call from Auth or an explicit Finish setup CTA. Never from Home remount.
+ */
+export async function ensureSmartWallet(
   userId: string,
-  signerPublicKey: string,
-): Promise<{ contractId: string; walletType: "factory" }> {
-  const g = signerPublicKey.trim().toUpperCase()
-  const provRes = await fetch("/api/wallet/smart-account/provision", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-user-id": userId,
-    },
-    body: JSON.stringify({ signerPublicKey: g }),
-  })
-  const provData = (await provRes.json().catch(() => ({}))) as {
-    contractId?: string
-    error?: string
-  }
-  if (provRes.ok && provData.contractId?.startsWith("C")) {
-    return { contractId: provData.contractId.trim().toUpperCase(), walletType: "factory" }
-  }
-
-  const createRes = await fetch("/api/wallet/stellar/create", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-user-id": userId,
-    },
-    body: JSON.stringify({ publicKey: g }),
-  })
-  const createData = (await createRes.json().catch(() => ({}))) as {
-    publicKey?: string
-    error?: string
-  }
-  if (createRes.ok) {
-    const pk = typeof createData.publicKey === "string" ? createData.publicKey.trim().toUpperCase() : ""
-    if (pk.startsWith("C")) {
-      return { contractId: pk, walletType: "factory" }
-    }
-  }
-
-  throw new Error(
-    provData.error ?? createData.error ?? "Factory smart account provisioning failed",
-  )
-}
-
-async function provisionOzSmartAccount(
-  userId: string,
-  signerG: string,
-  credId?: string,
+  loginCredentialId?: string,
 ): Promise<EnsureSmartWalletResult> {
+  const credId =
+    loginCredentialId?.trim() ||
+    (typeof window !== "undefined" ? sessionStorage.getItem("credential_id") : null) ||
+    (await getCurrentCredentialId(undefined)) ||
+    undefined
+
+  const signerG = await resolveSignerPublicKey(userId, credId)
   const { kit } = await getSmartAccountKit()
+
   const connect = async (opts?: {
     prompt?: boolean
     credentialId?: string
@@ -105,91 +71,33 @@ async function provisionOzSmartAccount(
     }
   }
 
-  const linked = await linkMemberWalletWithLoginPasskey({
-    kit,
-    connect,
-    loginCredentialId: credId ?? undefined,
-    userId,
-  })
+  try {
+    const linked = await linkMemberWalletWithLoginPasskey({
+      kit,
+      connect,
+      loginCredentialId: credId ?? undefined,
+      userId,
+    })
 
-  await registerOzSmartAccount({
-    contractId: linked.contractId,
-    credentialId: linked.credentialId,
-    publicKey: linked.publicKey,
-    signerPublicKey: signerG,
-  })
+    await registerOzSmartAccount({
+      contractId: linked.contractId,
+      credentialId: linked.credentialId,
+      publicKey: linked.publicKey,
+      signerPublicKey: signerG,
+    })
 
-  const contractId = linked.contractId.trim().toUpperCase()
-  persistCanonicalWalletSession(contractId, "oz", linked.credentialId)
+    const contractId = linked.contractId.trim().toUpperCase()
+    persistCanonicalWalletSession(contractId, "oz", linked.credentialId)
 
-  return {
-    publicKey: contractId,
-    walletType: "oz",
-    credentialId: linked.credentialId,
-  }
-}
-
-function factoryPreferredOnClient(): boolean {
-  if (typeof window === "undefined") return false
-  return sessionStorage.getItem("sozu_prefer_factory_wallet") === "1"
-}
-
-/**
- * Provision passkey smart account (C). Uses factory when configured and preferred;
- * otherwise OpenZeppelin passkey kit (same as SozuPay onboarding).
- */
-export async function ensureSmartWallet(
-  userId: string,
-  loginCredentialId?: string,
-): Promise<EnsureSmartWalletResult> {
-  const credId =
-    loginCredentialId?.trim() ||
-    (typeof window !== "undefined" ? sessionStorage.getItem("credential_id") : null) ||
-    (await getCurrentCredentialId(undefined)) ||
-    undefined
-
-  const signerG = await resolveSignerPublicKey(userId, credId)
-  const errors: string[] = []
-
-  const tryFactoryFirst = factoryPreferredOnClient()
-
-  const runFactory = async () => {
-    const { contractId, walletType } = await provisionFactorySmartAccount(userId, signerG)
-    persistCanonicalWalletSession(contractId, walletType, credId)
-    return { publicKey: contractId, walletType, credentialId: credId }
-  }
-
-  const runOz = async () => {
-    return provisionOzSmartAccount(userId, signerG, credId)
-  }
-
-  if (tryFactoryFirst) {
-    try {
-      return await runFactory()
-    } catch (e) {
-      errors.push(e instanceof Error ? e.message : String(e))
+    return {
+      publicKey: contractId,
+      walletType: "oz",
+      credentialId: linked.credentialId,
     }
-    try {
-      return await runOz()
-    } catch (e) {
-      errors.push(e instanceof Error ? e.message : String(e))
-    }
-  } else {
-    try {
-      return await runOz()
-    } catch (e) {
-      errors.push(e instanceof Error ? e.message : String(e))
-    }
-    try {
-      return await runFactory()
-    } catch (e) {
-      errors.push(e instanceof Error ? e.message : String(e))
-    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    throw new Error(
+      `Could not create smart wallet (C…). ${msg}. Check OZ_* env and Soroban RPC, then use Finish setup.`,
+    )
   }
-
-  throw new Error(
-    errors.length
-      ? `Could not create smart wallet (C…). ${errors[0]}`
-      : "Could not create smart wallet (C…). Configure OZ_* or SMART_ACCOUNT_FACTORY_ID in server .env.local.",
-  )
 }
