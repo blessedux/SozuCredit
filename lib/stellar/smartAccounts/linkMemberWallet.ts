@@ -95,8 +95,18 @@ async function discoverFirstContractId(
   kit: SmartAccountKit,
   credentialId: string
 ): Promise<string | null> {
-  const contracts = await kit.discoverContractsByCredential(credentialId)
-  return extractContractId(contracts?.[0]) ?? null
+  // SDF's public indexer is best-effort. A 5xx must not block first-time deploy —
+  // we already resolve user-scoped contracts on-chain before calling this.
+  try {
+    const contracts = await kit.discoverContractsByCredential(credentialId)
+    return extractContractId(contracts?.[0]) ?? null
+  } catch (e) {
+    console.warn(
+      "[linkMemberWallet] Indexer discovery failed; continuing with on-chain deploy path:",
+      e instanceof Error ? e.message : e,
+    )
+    return null
+  }
 }
 
 async function resolveDeployPublicKey(

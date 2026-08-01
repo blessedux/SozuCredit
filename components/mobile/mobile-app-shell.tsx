@@ -7,7 +7,7 @@ import { useHorizontalPanelSwipe } from "@/hooks/use-horizontal-panel-swipe"
 import { useAppViewportLock } from "@/hooks/use-app-viewport-lock"
 import { SmartAccountKitProvider } from "@/components/SmartAccountKitProvider"
 import { WalletDataProvider } from "@/components/wallet/wallet-data-provider"
-import { WalletLanguageProvider, useWalletLanguage } from "@/lib/wallet-language"
+import { WalletLanguageProvider } from "@/lib/wallet-language"
 import { signalBootstrapReady } from "@/lib/app-ready"
 import {
   OnboardingOverlayProvider,
@@ -45,14 +45,12 @@ function panelIndex(name: string | null): number {
 
 function MobileAppShellPanels() {
   const { isOnboardingOverlayOpen } = useOnboardingOverlay()
-  const { t } = useWalletLanguage()
   const searchParams = useSearchParams()
   const [activePanel, setActivePanel] = useState(() => panelIndex(searchParams?.get("panel")))
   const [isSendModalOpen, setIsSendModalOpen] = useState(false)
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false)
   const [historyMounted, setHistoryMounted] = useState(false)
   const panelParamConsumedRef = useRef(false)
-  const panelLabels = [t.settings, t.panelHome, t.panelHistory] as const
 
   useEffect(() => {
     if (activePanel === 2) setHistoryMounted(true)
@@ -171,21 +169,24 @@ function MobileAppShellPanels() {
       {!isOnboardingOverlayOpen ? (
         <nav
           aria-label="Wallet panels"
-          className="absolute bottom-[calc(env(safe-area-inset-bottom)+0.35rem)] left-1/2 z-50 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/35 px-1.5 py-1 backdrop-blur-md"
+          className="absolute bottom-[calc(env(safe-area-inset-bottom)+0.5rem)] left-1/2 z-50 flex -translate-x-1/2 items-center gap-1.5"
         >
-          {panelLabels.map((label, i) => {
+          {[0, 1, 2].map((i) => {
             const active = i === activePanel
             return (
               <button
                 key={PANEL_NAMES[i]}
                 type="button"
                 onClick={() => setActivePanel(i)}
+                aria-label={PANEL_NAMES[i]}
                 aria-current={active ? "page" : undefined}
-                className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                  active ? "bg-white/15 text-white" : "text-white/45 hover:text-white/75"
-                }`}
+                className="flex h-5 w-5 items-center justify-center"
               >
-                {label}
+                <span
+                  className={`block h-1 rounded-full transition-all duration-300 ${
+                    active ? "w-5 bg-white/70" : "w-1 bg-white/25"
+                  }`}
+                />
               </button>
             )
           })}

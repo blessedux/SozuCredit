@@ -2,8 +2,7 @@
 
 import { Suspense, lazy, useEffect, useState, useRef, useCallback, useMemo } from "react"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
-import { getDemoFaucetPath } from "@/lib/faucet/demo-path"
+import { useSearchParams } from "next/navigation"
 import { Wallet } from "lucide-react"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faCoins } from "@fortawesome/free-solid-svg-icons"
@@ -82,7 +81,6 @@ export function WalletScreen({
   onPayClick,
 }: WalletScreenProps) {
   const searchParams = useSearchParams()
-  const router = useRouter()
   const { t } = useWalletLanguage()
 
   // Wallet data hook
@@ -440,11 +438,8 @@ export function WalletScreen({
     setActivationSettled(false)
     setWelcomeNeeded(false)
     await refreshOnboardingState()
-    // Empty wallets continue into the faucet fund path; funded wallets stay on Home.
-    if (walletNetwork === "testnet" && baseBalance <= 0) {
-      router.push(getDemoFaucetPath())
-    }
-  }, [refreshOnboardingState, walletNetwork, baseBalance, router])
+    // Stay on Home. Faucet is only reached via QR / explicit URL — never auto-redirect.
+  }, [refreshOnboardingState])
 
   const runActivationWithOnboarding = useCallback(async () => {
     if (!walletAddress || walletNetwork !== "testnet" || isActivating) return
@@ -843,7 +838,8 @@ export function WalletScreen({
                 </div>
               </div>
 
-              <div className="shrink-0 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] pt-2">
+              {/* Extra bottom pad so the shell page-dots sit below the command pod, not on top of it */}
+              <div className="shrink-0 pb-[calc(env(safe-area-inset-bottom)+2.75rem)] pt-2">
                 <div className="mx-auto w-full max-w-[17rem] rounded-[2rem] border border-white/10 bg-black/20 p-3 shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur-md">
                   <div className="mb-2 text-center text-[8px] font-light uppercase tracking-[0.28em] text-white/40">
                     {t.commandTitle}
@@ -868,7 +864,7 @@ export function WalletScreen({
       <WalletErrorBoundary>
         {activationOnboarding}
         <div className={cn("relative flex h-full min-h-0 w-full flex-col overflow-hidden", walletContentClass)}>
-          <div className="relative z-10 min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain touch-pan-y no-scrollbar px-4 pt-[max(3.5rem,env(safe-area-inset-top))] pb-[max(2.5rem,env(safe-area-inset-bottom))]">
+          <div className="relative z-10 min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain touch-pan-y no-scrollbar px-4 pt-[max(3.5rem,env(safe-area-inset-top))] pb-[calc(env(safe-area-inset-bottom)+2.75rem)]">
             <div className="mx-auto w-full max-w-lg space-y-5 lg:max-w-7xl">
               <WalletActivityList
                 items={walletActivity.items}

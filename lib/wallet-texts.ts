@@ -404,6 +404,12 @@ export type WalletTexts = {
   authUsernameFree: string;
   authUsernameTakenPasskey: string;
   authUsernameTakenPasskeyPin: string;
+  authDeviceChoiceTitle: string;
+  authDeviceChoiceBody: string;
+  authDeviceChoiceScan: string;
+  authDeviceChoiceScanHint: string;
+  authDeviceChoiceCreate: string;
+  authDeviceChoiceCreateHint: string;
 };
 
 export type WalletLanguage = "en" | "es";
@@ -850,6 +856,13 @@ export const walletTexts = {
     authUsernameFree: "Este nombre está disponible.",
     authUsernameTakenPasskey: "Este nombre ya existe. Inicia sesión con tu passkey.",
     authUsernameTakenPasskeyPin: "Este nombre ya existe. Inicia sesión con passkey o PIN.",
+    authDeviceChoiceTitle: "Este dispositivo no tiene biometría",
+    authDeviceChoiceBody:
+      "Sozu necesita Face ID, Touch ID o Windows Hello en el dispositivo donde creas o usas tu passkey.",
+    authDeviceChoiceScan: "Escanear con otro dispositivo",
+    authDeviceChoiceScanHint: "Ya tienes una cuenta. Usa el passkey de tu teléfono u otro dispositivo.",
+    authDeviceChoiceCreate: "Crear una cuenta nueva",
+    authDeviceChoiceCreateHint: "Elige tu nombre y completa el registro en un dispositivo con biometría.",
   },
   en: {
     // Profile
@@ -1258,6 +1271,13 @@ export const walletTexts = {
     authUsernameFree: "This name is free.",
     authUsernameTakenPasskey: "This name is taken. Sign in with your passkey.",
     authUsernameTakenPasskeyPin: "This name is taken. Sign in with your passkey or PIN.",
+    authDeviceChoiceTitle: "This device has no biometrics",
+    authDeviceChoiceBody:
+      "Sozu needs Face ID, Touch ID, or Windows Hello on the device where you create or use your passkey.",
+    authDeviceChoiceScan: "Scan with another device",
+    authDeviceChoiceScanHint: "You already have an account. Use the passkey on your phone or another device.",
+    authDeviceChoiceCreate: "Create a new account",
+    authDeviceChoiceCreateHint: "Choose your name, then finish setup on a device with biometrics.",
   },
 } as const;
 

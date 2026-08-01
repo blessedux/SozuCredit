@@ -2,6 +2,7 @@
 
 import { WelcomeModal } from "@/components/welcome-modal"
 import { TagInputModal } from "@/components/tag-input-modal"
+import { AuthDeviceChoiceModal } from "@/components/auth-device-choice-modal"
 import { QRCodeRegistrationModal } from "@/components/qr-code-registration-modal"
 import { WalletSkeleton } from "@/components/ui/wallet-skeleton"
 import { Button } from "@/components/ui/button"
@@ -15,7 +16,8 @@ import {
   verifyRegistration,
   verifyAuthentication
 } from "@/lib/turnkey/passkeys"
-import { detectDeviceCapabilities, isPasskeyCapable } from "@/lib/webauthn/device-detection"
+import { detectDeviceCapabilities } from "@/lib/webauthn/device-detection"
+import { resolveEnterAuthPath } from "@/lib/webauthn/enter-auth-path"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useState, useRef, useEffect, useCallback, Suspense } from "react"
@@ -43,6 +45,7 @@ function AuthPageContent() {
   const [pwaBannerDismissed, setPwaBannerDismissed] = useState(false)
   const [showQRModal, setShowQRModal] = useState(false)
   const [qrUsername, setQRUsername] = useState<string | null>(null)
+  const [showDeviceChoice, setShowDeviceChoice] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirectingRef = useRef(false)
@@ -55,14 +58,17 @@ function AuthPageContent() {
 
   useAppViewportLock()
 
-  /** Faucet onboarding: /faucet/[slug] sends users here with ?faucet=<slug> (sessionStorage backup). */
+  /**
+   * Faucet return is only valid when this visit came from a faucet URL
+   * (`/auth?faucet=<slug>`). Stale sessionStorage alone must never yank a
+   * normal in-app signup to /faucet/test-orb-001.
+   */
   const faucetReturnPath = (() => {
     const slug = searchParams.get("faucet")?.trim()
     if (slug && /^[a-z0-9-]+$/i.test(slug)) return `/faucet/${slug}`
     if (typeof window !== "undefined") {
       try {
-        const stored = sessionStorage.getItem("sozu_faucet_return")
-        if (stored?.startsWith("/faucet/")) return stored
+        sessionStorage.removeItem("sozu_faucet_return")
       } catch {
         /* private browsing */
       }
@@ -268,6 +274,64 @@ function AuthPageContent() {
     }
   }, [searchParams])
 
+  /**
+   * Explicit discovery login (empty allowCredentials).
+   * Only call when the user chose "scan with another device" — never as the
+   * default Enter path for first-time biometric devices (that surfaces the OS
+   * hybrid QR sheet when no local passkey exists).
+   */
+  const attemptDiscoveryLogin = useCallback(async () => {
+    if (typeof window === "undefined" || !window.PublicKeyCredential) {
+      setIsAuthenticating(false)
+      setShowTagModal(true)
+      return
+    }
+
+    setIsAuthenticating(true)
+    try {
+      const discoveryChallenge = await generateAuthChallenge()
+      console.log("[Auth] Generated discovery challenge, rpId:", discoveryChallenge.rpId)
+
+      const credential = await getPasskey(discoveryChallenge)
+
+      if (!credential) {
+        console.log("[Auth] No passkey selected or user cancelled discovery")
+        setIsAuthenticating(false)
+        setShowTagModal(true)
+        return
+      }
+
+      console.log(
+        "[Auth] Passkey selected in discovery mode, credential ID:",
+        credential.id.substring(0, 20) + "...",
+      )
+
+      const authResult = await verifyAuthentication("", credential, discoveryChallenge.challenge)
+
+      if (!authResult || !authResult.success) {
+        console.log(
+          "[Auth] Discovery mode authentication failed — credential captured for registration reuse",
+        )
+        pendingCredentialRef.current = credential
+        setIsAuthenticating(false)
+        setShowTagModal(true)
+        return
+      }
+
+      console.log("[Auth] ✅ Login successful via passkey discovery")
+      const finalUserId = authResult.userId
+      if (!finalUserId || !credential?.id) {
+        throw new Error("No userId or credential from discovery login")
+      }
+      await finalizePasskeyLoginSuccess(finalUserId, authResult.username, credential)
+    } catch (discoveryError: unknown) {
+      const err = discoveryError as { name?: string; message?: string }
+      console.log("[Auth] Passkey discovery failed:", err?.name, err?.message)
+      setIsAuthenticating(false)
+      setShowTagModal(true)
+    }
+  }, [finalizePasskeyLoginSuccess])
+
   const handleAuth = async () => {
     if (redirectingRef.current) {
       console.log("[Auth] Already redirecting, ignoring...")
@@ -275,28 +339,26 @@ function AuthPageContent() {
     }
 
     setIsAuthenticating(true)
+    setShowDeviceChoice(false)
 
-    // Step 1: Check localStorage for stored username (quick check, no prompts)
-    let usernameToUse: string | null = null
+    let storedUsername: string | null = null
     if (typeof window !== "undefined") {
-      const storedUsername = localStorage.getItem("sozu_username")
-      if (storedUsername && storedUsername !== "user") {
-        usernameToUse = storedUsername
-        console.log("[Auth] Found stored username:", usernameToUse)
+      const value = localStorage.getItem("sozu_username")
+      if (value && value !== "user") {
+        storedUsername = value
+        console.log("[Auth] Found stored username:", storedUsername)
       }
     }
 
-    // Step 2: If username exists, try login directly (assumes passkey exists)
-    if (usernameToUse) {
-      console.log("[Auth] ====== Attempting login with stored username:", usernameToUse)
-      const result = await attemptLoginWithTag(usernameToUse)
+    // Returning user with a remembered tag → authenticate that passkey directly.
+    if (storedUsername) {
+      console.log("[Auth] ====== Attempting login with stored username:", storedUsername)
+      const result = await attemptLoginWithTag(storedUsername)
       if (result.ok) {
         return
       }
       console.log("[Auth] Login with stored tag failed:", result.error, result.cancelled)
 
-      // Stash credential for registration reuse — avoids a second biometric prompt
-      // when the user enters a SozuTag after a failed login (e.g. deleted account).
       if (result.capturedCredential) {
         pendingCredentialRef.current = result.capturedCredential
         console.log("[Auth] Captured credential stashed for registration reuse")
@@ -304,81 +366,34 @@ function AuthPageContent() {
 
       setIsAuthenticating(false)
       if (result.cancelled) {
-        setResumeLoginTag(usernameToUse)
+        setResumeLoginTag(storedUsername)
       } else if (typeof window !== "undefined") {
         localStorage.removeItem("sozu_username")
-        setTagModalPrefill(usernameToUse)
+        setTagModalPrefill(storedUsername)
       }
       setShowTagModal(true)
       return
     }
 
-    // Step 3: No stored username - try passkey discovery mode (for incognito/private browsing)
-    // This allows users to select from passkeys stored on their device even without localStorage
-    console.log("[Auth] No stored username found - attempting passkey discovery mode")
+    // First visit / no remembered tag: decide from device capability BEFORE any
+    // credentials.get. Auto-discovery here is what triggered "scan with another
+    // device" on biometric phones that simply had no Sozu passkey yet.
+    const capabilities = await detectDeviceCapabilities()
+    const path = resolveEnterAuthPath({ storedUsername: null, capabilities })
+    console.log("[Auth] Enter path:", path.action, {
+      canUsePasskeys: capabilities.canUsePasskeys,
+      deviceType: capabilities.deviceType,
+    })
 
-    if (typeof window === "undefined" || !window.PublicKeyCredential) {
-      console.log("[Auth] WebAuthn not supported, showing tag modal")
-      setIsAuthenticating(false)
+    setIsAuthenticating(false)
+
+    if (path.action === "create-or-login" || path.action === "unsupported") {
       setShowTagModal(true)
       return
     }
 
-    try {
-      // Generate challenge in discovery mode (no username)
-      // This allows the browser to show all available passkeys for this rpId
-      const discoveryChallenge = await generateAuthChallenge()
-      console.log("[Auth] Generated discovery challenge, rpId:", discoveryChallenge.rpId)
-
-      // Get passkey from device (browser will show picker if multiple passkeys exist)
-      // In incognito mode, this will show passkeys stored on the device
-      const credential = await getPasskey(discoveryChallenge)
-
-      if (!credential) {
-        // User cancelled or no passkey found - show tag modal
-        console.log("[Auth] No passkey selected or user cancelled discovery")
-        setIsAuthenticating(false)
-        setShowTagModal(true)
-        return
-      }
-
-      console.log("[Auth] Passkey selected in discovery mode, credential ID:", credential.id.substring(0, 20) + "...")
-
-      // Verify authentication in discovery mode (no username needed)
-      // The API will find the user by credential ID
-      const authResult = await verifyAuthentication("", credential, discoveryChallenge.challenge)
-
-      if (!authResult || !authResult.success) {
-        // Auth failed: this passkey isn't registered in our DB yet (e.g. deleted account).
-        // Keep the credential so proceedWithRegistration can reuse it — the user won't
-        // need a second biometric after they enter their SozuTag.
-        console.log("[Auth] Discovery mode authentication failed — credential captured for registration reuse")
-        pendingCredentialRef.current = credential
-        setIsAuthenticating(false)
-        setShowTagModal(true)
-        return
-      }
-
-      // Login successful via discovery mode
-      console.log("[Auth] ✅ Login successful via passkey discovery")
-      const finalUserId = authResult.userId
-      if (!finalUserId || !credential?.id) {
-        throw new Error("No userId or credential from discovery login")
-      }
-      await finalizePasskeyLoginSuccess(finalUserId, authResult.username, credential)
-      return
-    } catch (discoveryError: any) {
-      // Discovery mode failed - could mean:
-      // 1. No passkeys exist on device
-      // 2. User cancelled
-      // 3. Network error
-      console.log("[Auth] Passkey discovery failed:", discoveryError.name, discoveryError.message)
-
-      // Show tag modal for registration
-      setIsAuthenticating(false)
-      setShowTagModal(true)
-      return
-    }
+    // No platform authenticator → let the user choose scan vs create.
+    setShowDeviceChoice(true)
   }
 
   const handleRegisterFromModal = (tag: string) => {
@@ -923,6 +938,22 @@ function AuthPageContent() {
         onRegister={handleRegisterFromModal}
         onLoginPasskey={handleLoginPasskeyFromModal}
         onLoginPin={handlePinLoginFromModal}
+      />
+
+      <AuthDeviceChoiceModal
+        isOpen={showDeviceChoice}
+        onClose={() => {
+          setShowDeviceChoice(false)
+          setIsAuthenticating(false)
+        }}
+        onScanOtherDevice={() => {
+          setShowDeviceChoice(false)
+          void attemptDiscoveryLogin()
+        }}
+        onCreateAccount={() => {
+          setShowDeviceChoice(false)
+          setShowTagModal(true)
+        }}
       />
 
       {showQRModal && qrUsername && (
