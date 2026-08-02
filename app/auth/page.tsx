@@ -31,6 +31,7 @@ import {
 } from "@/lib/client-wallet-session"
 import { clearClientSession } from "@/lib/storage/clear-session"
 import { signalBootstrapReady } from "@/lib/app-ready"
+import { parseFaucetHandoffAuthReturn } from "@/lib/sozu-faucet/return-allowlist"
 import { toast } from "sonner"
 
 function AuthPageContent() {
@@ -59,13 +60,27 @@ function AuthPageContent() {
   useAppViewportLock()
 
   /**
-   * Faucet return is only valid when this visit came from a faucet URL
+   * Login-with-Sozu handoff: `/auth?faucet=1&return=/auth/faucet-handoff?return=…`
+   * Absolute faucet callbacks are never accepted here — only the relative
+   * Wallet handoff path (allowlist enforced inside parseFaucetHandoffAuthReturn).
+   */
+  const faucetHandoffReturn = (() => {
+    if (searchParams.get("faucet")?.trim() !== "1") return null
+    return parseFaucetHandoffAuthReturn(searchParams.get("return"))
+  })()
+
+  /**
+   * In-app NFC faucet return is only valid when this visit came from a faucet URL
    * (`/auth?faucet=<slug>`). Stale sessionStorage alone must never yank a
    * normal in-app signup to /faucet/test-orb-001.
+   * `faucet=1` is reserved for the Login-with-Sozu handoff (not a slug).
    */
   const faucetReturnPath = (() => {
+    if (faucetHandoffReturn) return faucetHandoffReturn
     const slug = searchParams.get("faucet")?.trim()
-    if (slug && /^[a-z0-9-]+$/i.test(slug)) return `/faucet/${slug}`
+    if (slug && slug !== "1" && /^[a-z0-9-]+$/i.test(slug)) {
+      return `/faucet/${slug}`
+    }
     if (typeof window !== "undefined") {
       try {
         sessionStorage.removeItem("sozu_faucet_return")
