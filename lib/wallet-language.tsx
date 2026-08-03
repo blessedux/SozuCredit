@@ -1,14 +1,18 @@
 /**
  * Language context for wallet components
  * Persists preference to localStorage and syncs document lang.
+ * Default language follows browser preference (not hardcoded Spanish).
  */
 
 "use client"
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react"
 import { getWalletTexts, type WalletTexts, type WalletLanguage } from "@/lib/wallet-texts"
-
-const STORAGE_KEY = "sozu_app_language:v2"
+import {
+  detectBrowserLanguage,
+  persistAppLanguage,
+  resolveAppLanguage,
+} from "@/lib/locale"
 
 interface LanguageContextType {
   language: WalletLanguage
@@ -18,23 +22,14 @@ interface LanguageContextType {
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined)
 
-function readStoredLanguage(): WalletLanguage {
-  if (typeof window === "undefined") return "es"
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored === "en" || stored === "es") return stored
-    // Default to Spanish for all new users
-    return "es"
-  } catch {
-    return "es"
-  }
-}
-
 export function WalletLanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<WalletLanguage>("es")
+  // Browser-aware default; avoids forcing Spanish for en-* users.
+  const [language, setLanguageState] = useState<WalletLanguage>(() =>
+    typeof window === "undefined" ? "en" : resolveAppLanguage(),
+  )
 
   useEffect(() => {
-    setLanguageState(readStoredLanguage())
+    setLanguageState(resolveAppLanguage())
   }, [])
 
   useEffect(() => {
@@ -43,11 +38,7 @@ export function WalletLanguageProvider({ children }: { children: ReactNode }) {
 
   const setLanguage = useCallback((lang: WalletLanguage) => {
     setLanguageState(lang)
-    try {
-      localStorage.setItem(STORAGE_KEY, lang)
-    } catch {
-      // private browsing / quota
-    }
+    persistAppLanguage(lang)
   }, [])
 
   const t = getWalletTexts(language)
@@ -62,10 +53,11 @@ export function WalletLanguageProvider({ children }: { children: ReactNode }) {
 export function useWalletLanguage() {
   const context = useContext(LanguageContext)
   if (!context) {
+    const language = typeof window === "undefined" ? "en" : detectBrowserLanguage()
     return {
-      language: "es" as WalletLanguage,
+      language,
       setLanguage: () => {},
-      t: getWalletTexts("es"),
+      t: getWalletTexts(language),
     }
   }
   return context

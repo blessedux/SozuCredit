@@ -417,6 +417,49 @@ export type WalletTexts = {
   setupIncompleteBody: string;
   setupIncompleteCta: string;
   setupIncompleteBusy: string;
+  // Welcome / privacy
+  welcomeHeadline: string;
+  welcomePayReceive: string;
+  welcomePrivacy: string;
+  welcomeCustody: string;
+  welcomeStart: string;
+  // Cross-device QR (must be localized)
+  qrTitle: string;
+  qrBody: string;
+  qrGenerating: string;
+  qrScan: string;
+  qrWaiting: string;
+  qrCameraHint: string;
+  qrTimeout: string;
+  qrRetry: string;
+  qrError: string;
+  qrConnectionError: string;
+  // Receive defaults
+  depositHero: string;
+  depositShareHint: string;
+  depositDetailsToggle: string;
+  // Checkout
+  checkoutPayWithSozu: string;
+  checkoutOneTap: string;
+  checkoutSignInToPay: string;
+  checkoutConfirmPasskey: string;
+  checkoutProcessing: string;
+  checkoutPaid: string;
+  checkoutToMerchant: string;
+  checkoutLoading: string;
+  checkoutCashback: string;
+  // Cross-device mobile registration
+  crossDeviceTitle: string;
+  crossDeviceChecking: string;
+  crossDeviceCreating: string;
+  crossDevicePasskeyHint: string;
+  crossDeviceSuccess: string;
+  crossDeviceDesktopHint: string;
+  crossDeviceFailed: string;
+  crossDeviceReturnLogin: string;
+  crossDeviceIncompatible: string;
+  crossDeviceTryOther: string;
+  crossDeviceCustodyFooter: string;
 };
 
 export type WalletLanguage = "en" | "es";
@@ -650,7 +693,7 @@ export const walletTexts = {
     cmdPay: "Pagar",
     cmdBatch: "Lote",
     cmdOfframp: "Retiro",
-    cmdDeposit: "Depositar",
+    cmdDeposit: "Recibir",
     cmdPlan: "Plan",
     cmdCredit: "Crédito",
     creditPageTitle: "Microcréditos",
@@ -688,22 +731,22 @@ export const walletTexts = {
     activateWallet: "Activar billetera",
     activating: "Activando…",
     openCashflow: "Abrir cashflow",
-    depositTitle: "Depositar",
-    depositClose: "Cerrar depósito",
+    depositTitle: "Recibir",
+    depositClose: "Cerrar",
     depositQrTypeLabel: "Tipo de código QR",
     depositQrTag: "Sozu",
-    depositQrStellar: "Stellar",
+    depositQrStellar: "Dirección",
     depositSozuTag: "Sozu",
-    depositStellarAddress: "Dirección Stellar",
+    depositStellarAddress: "Dirección",
     depositCopied: "Copiado",
     depositNoWallet: "Sin billetera conectada",
-    depositUsdcOnly: "Envía USDC (Circle SAC en testnet) a esta dirección C",
+    depositUsdcOnly: "Avanzado: envía Circle USDC en testnet a esta dirección",
     depositLegacyGWarning:
       "Esta es una cuenta clásica (G…). Para USDC Soroban en tu billetera passkey, cierra sesión y vuelve a entrar para completar la cuenta inteligente (C…).",
-    depositSmartAccountHint: "Cuenta inteligente (C…) · USDC Soroban",
-    depositResolvingWallet: "Configurando cuenta inteligente…",
+    depositSmartAccountHint: "Dirección de billetera personal",
+    depositResolvingWallet: "Preparando tu billetera…",
     depositTagCaption: "@{tag} · escanea para pagar con Sozu",
-    depositAddressCaption: "{addr} · cuenta inteligente Sozu",
+    depositAddressCaption: "{addr} · billetera personal Sozu",
     depositConnectWallet: "Conecta tu billetera",
     depositBlendTitle: "Testnet: BlendUSDC para enviar",
     depositBlendHint:
@@ -843,14 +886,14 @@ export const walletTexts = {
     authPwaInstallIos: "Cómo instalar",
     authPwaInstallAndroid: "Agregar a inicio",
     authClose: "Cerrar",
-    authChooseName: "Elige tu nombre.",
-    authRegisterOnInternet: "Regístrate en internet.",
+    authChooseName: "Elige tu Sozu tag.",
+    authRegisterOnInternet: "Con este nombre pueden pagarte.",
     authLearnMore: "Saber más",
     authLearnMoreBody:
-      "Tu nombre (Sozu tag) es tu identificador. Un passkey en este dispositivo protege el acceso; puedes agregar un PIN de respaldo en Configuración. Nada aquí es asesoría financiera.",
+      "Tu Sozu tag es cómo te encuentran. Un passkey en este dispositivo protege el acceso. Nada aquí es asesoría financiera.",
     authTagPlaceholder: "nombre",
     authSignIn: "Iniciar sesión",
-    authRegister: "Registrarse",
+    authRegister: "Continuar",
     authTagLengthError: "3–30 caracteres",
     authTagCharsError: "Solo letras, números y guion bajo",
     authCouldNotCheck: "No se pudo verificar. Intenta de nuevo.",
@@ -861,11 +904,11 @@ export const walletTexts = {
     authPinPlaceholder: "6–12 dígitos",
     authContinueWithPin: "Continuar con PIN",
     authNoBackupPin:
-      "Aún no hay PIN de respaldo en esta cuenta. Usa tu passkey o configura un PIN en Ajustes después de iniciar sesión.",
+      "Esta cuenta no tiene PIN. Usa tu passkey para iniciar sesión.",
     authBack: "Volver",
     authUsernameFree: "Este nombre está disponible.",
     authUsernameTakenPasskey: "Este nombre ya existe. Inicia sesión con tu passkey.",
-    authUsernameTakenPasskeyPin: "Este nombre ya existe. Inicia sesión con passkey o PIN.",
+    authUsernameTakenPasskeyPin: "Este nombre ya existe. Inicia sesión con tu passkey.",
     authDeviceChoiceTitle: "Este dispositivo no tiene biometría",
     authDeviceChoiceBody:
       "Sozu necesita Face ID, Touch ID o Windows Hello en el dispositivo donde creas o usas tu passkey.",
@@ -873,11 +916,49 @@ export const walletTexts = {
     authDeviceChoiceScanHint: "Ya tienes una cuenta. Usa el passkey de tu teléfono u otro dispositivo.",
     authDeviceChoiceCreate: "Crear una cuenta nueva",
     authDeviceChoiceCreateHint: "Elige tu nombre y completa el registro en un dispositivo con biometría.",
-    setupIncompleteTitle: "Falta terminar tu billetera",
+    setupIncompleteTitle: "Un paso más",
     setupIncompleteBody:
-      "Tu passkey ya existe, pero aún no hay una cuenta inteligente (C…) en este dispositivo. Toca para crearla una vez.",
+      "Tu passkey ya está listo. Tu billetera personal aún debe terminar de configurarse en este dispositivo. Todavía no hay fondos.",
     setupIncompleteCta: "Terminar configuración",
-    setupIncompleteBusy: "Creando billetera…",
+    setupIncompleteBusy: "Configurando tu billetera…",
+    welcomeHeadline: "Paga y recibe dólares digitales con una passkey.",
+    welcomePayReceive: "Paga y recibe dinero desde tu cuenta Sozu.",
+    welcomePrivacy: "Sin subir documento de identidad para empezar.",
+    welcomeCustody: "Solo tú apruebas los pagos — Sozu no puede mover tu dinero.",
+    welcomeStart: "Comenzar",
+    qrTitle: "Completa la configuración en tu teléfono",
+    qrBody: "Este dispositivo no tiene biometría. Escanea el QR con tu teléfono para terminar el registro.",
+    qrGenerating: "Generando código QR…",
+    qrScan: "Escanea con tu teléfono",
+    qrWaiting: "Esperando tu teléfono…",
+    qrCameraHint: "Abre la cámara de tu teléfono y escanea este código",
+    qrTimeout: "El QR expiró. El registro no se completó a tiempo.",
+    qrRetry: "Intentar de nuevo",
+    qrError: "No se pudo crear el código QR. Intenta de nuevo.",
+    qrConnectionError: "Error de conexión. Intenta de nuevo.",
+    depositHero: "Recibir dinero",
+    depositShareHint: "Comparte tu Sozu tag o QR.",
+    depositDetailsToggle: "Detalles del pago",
+    checkoutPayWithSozu: "Pagar con Sozu",
+    checkoutOneTap: "Pago en un toque",
+    checkoutSignInToPay: "Inicia sesión para pagar",
+    checkoutConfirmPasskey: "Confirma con tu passkey",
+    checkoutProcessing: "Procesando el pago…",
+    checkoutPaid: "Pagado",
+    checkoutToMerchant: "a {merchant}",
+    checkoutLoading: "Cargando el pago…",
+    checkoutCashback: "Recompensa instantánea del 3%",
+    crossDeviceTitle: "Completa el registro",
+    crossDeviceChecking: "Comprobando compatibilidad del dispositivo…",
+    crossDeviceCreating: "Creando tu billetera segura…",
+    crossDevicePasskeyHint: "Puede pedirte Face ID, Touch ID o huella",
+    crossDeviceSuccess: "¡Registro completo!",
+    crossDeviceDesktopHint: "Tu computadora se actualizará sola",
+    crossDeviceFailed: "No se pudo completar el registro",
+    crossDeviceReturnLogin: "Volver al inicio",
+    crossDeviceIncompatible: "Dispositivo incompatible",
+    crossDeviceTryOther: "Probar otro dispositivo",
+    crossDeviceCustodyFooter: "Sozu es de autocustodia. Tus llaves no salen de tu dispositivo.",
   },
   en: {
     // Profile
@@ -1073,7 +1154,7 @@ export const walletTexts = {
     cmdPay: "Pay",
     cmdBatch: "Batch",
     cmdOfframp: "Offramp",
-    cmdDeposit: "Deposit",
+    cmdDeposit: "Receive",
     cmdPlan: "Plan",
     cmdCredit: "Credit",
     creditPageTitle: "Microcredit",
@@ -1111,22 +1192,22 @@ export const walletTexts = {
     activateWallet: "Activate wallet",
     activating: "Activating…",
     openCashflow: "Open cashflow",
-    depositTitle: "Deposit",
-    depositClose: "Close deposit",
+    depositTitle: "Receive",
+    depositClose: "Close",
     depositQrTypeLabel: "QR code type",
     depositQrTag: "Sozu",
-    depositQrStellar: "Stellar",
+    depositQrStellar: "Address",
     depositSozuTag: "Sozu",
-    depositStellarAddress: "Stellar address",
+    depositStellarAddress: "Address",
     depositCopied: "Copied",
     depositNoWallet: "No wallet connected",
-    depositUsdcOnly: "Send USDC (Circle SAC on testnet) to this C address",
+    depositUsdcOnly: "Advanced: send Circle USDC on testnet to this address",
     depositLegacyGWarning:
       "This is a classic G address. Soroban USDC belongs on your passkey smart account (C…). Sign out and sign in again to finish smart wallet setup.",
-    depositSmartAccountHint: "Smart account (C…) · Soroban USDC",
-    depositResolvingWallet: "Setting up smart account…",
+    depositSmartAccountHint: "Personal wallet address",
+    depositResolvingWallet: "Preparing your wallet…",
     depositTagCaption: "@{tag} · scan to pay with Sozu",
-    depositAddressCaption: "{addr} · Sozu smart account",
+    depositAddressCaption: "{addr} · Sozu personal wallet",
     depositConnectWallet: "Connect your wallet",
     depositBlendTitle: "Testnet: BlendUSDC for sends",
     depositBlendHint:
@@ -1266,14 +1347,14 @@ export const walletTexts = {
     authPwaInstallIos: "How to install",
     authPwaInstallAndroid: "Add to home screen",
     authClose: "Close",
-    authChooseName: "Choose your name.",
-    authRegisterOnInternet: "Register on the internet.",
+    authChooseName: "Choose your Sozu tag.",
+    authRegisterOnInternet: "People can pay you with this name.",
     authLearnMore: "Learn more",
     authLearnMoreBody:
-      "Your name (Sozu tag) is your handle. A passkey on this device protects access; you may add a backup PIN in Settings. Nothing here is financial advice.",
+      "Your Sozu tag is how people find you. A passkey on this device protects access. Nothing here is financial advice.",
     authTagPlaceholder: "name",
     authSignIn: "Sign in",
-    authRegister: "Register",
+    authRegister: "Continue",
     authTagLengthError: "3–30 characters",
     authTagCharsError: "Letters, numbers, underscore only",
     authCouldNotCheck: "Could not check. Try again.",
@@ -1284,11 +1365,11 @@ export const walletTexts = {
     authPinPlaceholder: "6–12 digits",
     authContinueWithPin: "Continue with PIN",
     authNoBackupPin:
-      "No backup PIN on this account yet. Use your passkey, or set a PIN in Settings after you sign in.",
+      "This account has no PIN. Use your passkey to sign in.",
     authBack: "Back",
     authUsernameFree: "This name is free.",
     authUsernameTakenPasskey: "This name is taken. Sign in with your passkey.",
-    authUsernameTakenPasskeyPin: "This name is taken. Sign in with your passkey or PIN.",
+    authUsernameTakenPasskeyPin: "This name is taken. Sign in with your passkey.",
     authDeviceChoiceTitle: "This device has no biometrics",
     authDeviceChoiceBody:
       "Sozu needs Face ID, Touch ID, or Windows Hello on the device where you create or use your passkey.",
@@ -1296,18 +1377,56 @@ export const walletTexts = {
     authDeviceChoiceScanHint: "You already have an account. Use the passkey on your phone or another device.",
     authDeviceChoiceCreate: "Create a new account",
     authDeviceChoiceCreateHint: "Choose your name, then finish setup on a device with biometrics.",
-    setupIncompleteTitle: "Finish setting up your wallet",
+    setupIncompleteTitle: "One more step",
     setupIncompleteBody:
-      "Your passkey is ready, but this device doesn’t have a smart account (C…) yet. Tap once to create it.",
+      "Your passkey is ready. Your personal wallet still needs to finish setting up on this device. Nothing has been funded yet.",
     setupIncompleteCta: "Finish setup",
-    setupIncompleteBusy: "Creating wallet…",
+    setupIncompleteBusy: "Setting up your wallet…",
+    welcomeHeadline: "Pay and receive digital dollars with a passkey.",
+    welcomePayReceive: "Pay and receive money from your Sozu account.",
+    welcomePrivacy: "No ID upload to start.",
+    welcomeCustody: "Only you can approve payments — Sozu can’t move your money.",
+    welcomeStart: "Get started",
+    qrTitle: "Complete setup on your phone",
+    qrBody: "This device doesn’t have biometrics. Scan the QR with your phone to finish registration.",
+    qrGenerating: "Generating QR code…",
+    qrScan: "Scan with your phone",
+    qrWaiting: "Waiting for your phone…",
+    qrCameraHint: "Open your phone’s camera and scan this code",
+    qrTimeout: "QR expired. Registration wasn’t completed in time.",
+    qrRetry: "Try again",
+    qrError: "Couldn’t create the QR code. Try again.",
+    qrConnectionError: "Connection error. Try again.",
+    depositHero: "Receive money",
+    depositShareHint: "Share your Sozu tag or QR.",
+    depositDetailsToggle: "Payment details",
+    checkoutPayWithSozu: "Pay with Sozu",
+    checkoutOneTap: "One-tap payment",
+    checkoutSignInToPay: "Sign in to pay",
+    checkoutConfirmPasskey: "Confirm with your passkey",
+    checkoutProcessing: "Processing payment…",
+    checkoutPaid: "Paid",
+    checkoutToMerchant: "to {merchant}",
+    checkoutLoading: "Loading checkout…",
+    checkoutCashback: "3% reward instantly",
+    crossDeviceTitle: "Complete registration",
+    crossDeviceChecking: "Checking device compatibility…",
+    crossDeviceCreating: "Creating your secure wallet…",
+    crossDevicePasskeyHint: "You may be prompted for Face ID, Touch ID, or fingerprint",
+    crossDeviceSuccess: "Registration complete!",
+    crossDeviceDesktopHint: "Your desktop will update automatically",
+    crossDeviceFailed: "Registration failed",
+    crossDeviceReturnLogin: "Return to login",
+    crossDeviceIncompatible: "Device not compatible",
+    crossDeviceTryOther: "Try a different device",
+    crossDeviceCustodyFooter: "Sozu is self-custodial. Your keys never leave your device.",
   },
 } as const;
 
 /**
  * Get wallet texts for a specific language
- * Defaults to Spanish
+ * Defaults to English (browser/smart locale chooses es when appropriate)
  */
-export function getWalletTexts(lang: "en" | "es" = "es"): WalletTexts {
+export function getWalletTexts(lang: "en" | "es" = "en"): WalletTexts {
   return walletTexts[lang];
 }

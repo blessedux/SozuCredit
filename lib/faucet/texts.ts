@@ -3,6 +3,8 @@
  * Kept separate from lib/wallet-texts.ts — the faucet is its own surface.
  */
 
+import { resolveAppLanguage } from "@/lib/locale";
+
 export type FaucetLanguage = "es" | "en";
 
 export type FaucetTexts = {
@@ -204,16 +206,10 @@ const en: FaucetTexts = {
 const texts: Record<FaucetLanguage, FaucetTexts> = { es, en };
 
 export function getFaucetTexts(lang: FaucetLanguage): FaucetTexts {
-  return texts[lang] ?? texts.es;
+  return texts[lang] ?? texts.en;
 }
 
-/** Same storage key as the wallet language switcher; Spanish by default. */
+/** Same storage key + browser detection as the wallet language switcher. */
 export function readFaucetLanguage(): FaucetLanguage {
-  if (typeof window === "undefined") return "es";
-  try {
-    const stored = localStorage.getItem("sozu_app_language:v2");
-    return stored === "en" ? "en" : "es";
-  } catch {
-    return "es";
-  }
+  return resolveAppLanguage();
 }

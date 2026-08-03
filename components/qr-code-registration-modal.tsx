@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Loader2, Smartphone, RefreshCw } from "lucide-react"
-import { generateCrossDeviceQR, pollCrossDeviceCompletion, formatRemainingTime } from "@/lib/webauthn/qr-cross-device"
+import { pollCrossDeviceCompletion, formatRemainingTime } from "@/lib/webauthn/qr-cross-device"
 import Image from "next/image"
+import { useWalletLanguage } from "@/lib/wallet-language"
 
 interface QRCodeRegistrationModalProps {
   isOpen: boolean
@@ -20,6 +21,7 @@ export function QRCodeRegistrationModal({
   onComplete,
   onCancel
 }: QRCodeRegistrationModalProps) {
+  const { t } = useWalletLanguage()
   const [qrDataURL, setQrDataURL] = useState<string | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [expiresAt, setExpiresAt] = useState<number>(0)
@@ -27,7 +29,6 @@ export function QRCodeRegistrationModal({
   const [status, setStatus] = useState<'generating' | 'ready' | 'polling' | 'timeout' | 'error'>('generating')
   const [error, setError] = useState<string | null>(null)
 
-  // Generate QR code when modal opens
   useEffect(() => {
     if (!isOpen || !username) return
 
@@ -36,7 +37,6 @@ export function QRCodeRegistrationModal({
         setStatus('generating')
         setError(null)
 
-        // Call init endpoint to create session
         const response = await fetch('/api/auth/cross-device/init', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -44,15 +44,14 @@ export function QRCodeRegistrationModal({
         })
 
         if (!response.ok) {
-          throw new Error('Failed to create session')
+          throw new Error(t.qrError)
         }
 
         const data = await response.json()
-        
-        // Generate QR code with session info
+
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin
         const mobileUrl = `${appUrl}/auth/cross-device?sid=${data.sessionId}&u=${encodeURIComponent(username)}`
-        
+
         const qr = await import('qrcode')
         const qrCode = await qr.toDataURL(mobileUrl, {
           errorCorrectionLevel: 'M',
@@ -68,15 +67,14 @@ export function QRCodeRegistrationModal({
         setStatus('ready')
       } catch (err) {
         console.error('[QR Modal] Failed to generate QR:', err)
-        setError('Failed to generate QR code. Please try again.')
+        setError(t.qrError)
         setStatus('error')
       }
     }
 
-    initSession()
-  }, [isOpen, username])
+    void initSession()
+  }, [isOpen, username, t.qrError])
 
-  // Start polling when QR is ready
   useEffect(() => {
     if (status !== 'ready' || !sessionId) return
 
@@ -96,14 +94,13 @@ export function QRCodeRegistrationModal({
       } catch (err) {
         console.error('[QR Modal] Polling error:', err)
         setStatus('error')
-        setError('Connection error. Please try again.')
+        setError(t.qrConnectionError)
       }
     }
 
-    startPolling()
-  }, [status, sessionId, onComplete])
+    void startPolling()
+  }, [status, sessionId, onComplete, t.qrConnectionError])
 
-  // Countdown timer
   useEffect(() => {
     if (status !== 'polling') return
 
@@ -125,7 +122,6 @@ export function QRCodeRegistrationModal({
     setError(null)
     setQrDataURL(null)
     setSessionId(null)
-    // Trigger re-generation via useEffect
   }, [])
 
   return (
@@ -134,10 +130,10 @@ export function QRCodeRegistrationModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Smartphone className="h-5 w-5" />
-            Complete Setup on Your Phone
+            {t.qrTitle}
           </DialogTitle>
           <DialogDescription>
-            This device doesn't have biometric authentication. Scan this QR code with your phone to complete registration.
+            {t.qrBody}
           </DialogDescription>
         </DialogHeader>
 
@@ -145,17 +141,17 @@ export function QRCodeRegistrationModal({
           {status === 'generating' && (
             <div className="flex flex-col items-center gap-3">
               <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">Generating QR code...</p>
+              <p className="text-sm text-muted-foreground">{t.qrGenerating}</p>
             </div>
           )}
 
           {(status === 'ready' || status === 'polling') && qrDataURL && (
             <>
               <div className="rounded-lg border-4 border-border p-4 bg-white">
-                <Image 
-                  src={qrDataURL} 
-                  alt="QR Code" 
-                  width={300} 
+                <Image
+                  src={qrDataURL}
+                  alt="QR Code"
+                  width={300}
                   height={300}
                   className="w-full h-auto"
                 />
@@ -163,13 +159,13 @@ export function QRCodeRegistrationModal({
 
               <div className="text-center space-y-2">
                 <p className="text-sm font-medium">
-                  {status === 'polling' ? 'Waiting for your phone...' : 'Scan with your phone'}
+                  {status === 'polling' ? t.qrWaiting : t.qrScan}
                 </p>
                 <p className="text-2xl font-mono font-bold">
                   {formatRemainingTime(remainingMs)}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Open your phone's camera and scan this code
+                  {t.qrCameraHint}
                 </p>
               </div>
             </>
@@ -178,11 +174,11 @@ export function QRCodeRegistrationModal({
           {status === 'timeout' && (
             <div className="flex flex-col items-center gap-3 text-center">
               <p className="text-sm text-muted-foreground">
-                QR code expired. Registration not completed in 60 seconds.
+                {t.qrTimeout}
               </p>
               <Button onClick={handleRetry} variant="outline" size="sm">
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Try Again
+                {t.qrRetry}
               </Button>
             </div>
           )}
@@ -192,7 +188,7 @@ export function QRCodeRegistrationModal({
               <p className="text-sm text-destructive">{error}</p>
               <Button onClick={handleRetry} variant="outline" size="sm">
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Try Again
+                {t.qrRetry}
               </Button>
             </div>
           )}
@@ -200,7 +196,7 @@ export function QRCodeRegistrationModal({
 
         <div className="flex justify-end gap-2 pt-4 border-t">
           <Button variant="ghost" onClick={onCancel}>
-            Cancel
+            {t.cancel}
           </Button>
         </div>
       </DialogContent>
