@@ -34,3 +34,8 @@ contracts/**/target/
 
 # Exponential agent working state
 .exponential/
+
+# stellar-build local runtime (keep skills; ignore noisy runtime)
+.stellar-build/traces/
+.stellar-build/backups/
+.stellar-build/bench/
