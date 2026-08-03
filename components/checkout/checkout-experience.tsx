@@ -12,6 +12,7 @@ import { loadClientWalletSession } from "@/lib/client-wallet-session";
 import type { CheckoutSession } from "@/lib/checkout/types";
 import type { PaymentReceipt } from "@/lib/payment/payment-receipt";
 import { BackgroundGradientAnimation } from "@/components/ui/background-gradient-animation";
+import { useWalletLanguage } from "@/lib/wallet-language";
 
 type CheckoutPhase =
   | "loading"
@@ -24,6 +25,7 @@ type CheckoutPhase =
 
 export function CheckoutExperience({ sessionId }: { sessionId: string }) {
   const router = useRouter();
+  const { t } = useWalletLanguage();
   const [phase, setPhase] = useState<CheckoutPhase>("loading");
   const [session, setSession] = useState<CheckoutSession | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -144,7 +146,7 @@ export function CheckoutExperience({ sessionId }: { sessionId: string }) {
       >
         <div className="flex min-h-screen items-center justify-center text-white">
           <div className="text-center">
-            <div className="mb-4 text-lg">Loading checkout...</div>
+            <div className="mb-4 text-lg">{t.checkoutLoading}</div>
           </div>
         </div>
       </BackgroundGradientAnimation>
@@ -271,7 +273,7 @@ export function CheckoutExperience({ sessionId }: { sessionId: string }) {
             <>
               {!isAuthenticated && (
                 <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-center text-sm text-white/60">
-                  Sign in to pay with your SOZU wallet
+                  {t.checkoutSignInToPay}
                 </div>
               )}
               <CheckoutMethodPicker
@@ -286,8 +288,8 @@ export function CheckoutExperience({ sessionId }: { sessionId: string }) {
 
           {phase === "paying" && (
             <div className="text-center">
-              <div className="mb-4 text-lg">Processing payment...</div>
-              <div className="text-sm text-white/60">Please complete the passkey prompt</div>
+              <div className="mb-4 text-lg">{t.checkoutProcessing}</div>
+              <div className="text-sm text-white/60">{t.checkoutConfirmPasskey}</div>
             </div>
           )}
         </div>

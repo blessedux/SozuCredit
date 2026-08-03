@@ -1,8 +1,8 @@
 "use client";
 
 import { Fingerprint, CreditCard } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { iosHapticSingle } from "@/lib/haptics/ios-switch-pulse";
+import { useWalletLanguage } from "@/lib/wallet-language";
 
 export function CheckoutMethodPicker({
   allowDebit,
@@ -17,6 +17,7 @@ export function CheckoutMethodPicker({
   onPayWithSozu: () => void;
   disabled: boolean;
 }) {
+  const { t } = useWalletLanguage();
   const handleSozuClick = () => {
     iosHapticSingle();
     onPayWithSozu();
@@ -24,10 +25,6 @@ export function CheckoutMethodPicker({
 
   return (
     <div className="space-y-4">
-      <div className="text-center text-sm font-medium text-white/60">
-        Choose payment method
-      </div>
-
       {/* SOZU - primary option */}
       <button
         onClick={handleSozuClick}
@@ -40,12 +37,12 @@ export function CheckoutMethodPicker({
               <Fingerprint className="h-6 w-6 text-white" />
             </div>
             <div>
-              <div className="text-lg font-bold text-white">Pay with SOZU</div>
-              <div className="text-sm text-white/60">One-tap passkey payment</div>
+              <div className="text-lg font-bold text-white">{t.checkoutPayWithSozu}</div>
+              <div className="text-sm text-white/60">{t.checkoutOneTap}</div>
             </div>
           </div>
           <div className="rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs font-medium text-white">
-            3% cashback instantly
+            {t.checkoutCashback}
           </div>
         </div>
       </button>

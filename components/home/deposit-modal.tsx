@@ -265,7 +265,10 @@ export function DepositModal({
         </div>
       ) : null}
 
-      <div className="text-[9px] font-light uppercase tracking-[0.3em] text-white/35">{t.depositTitle}</div>
+      <div className="flex flex-col items-center gap-1">
+        <div className="text-[9px] font-light uppercase tracking-[0.3em] text-white/35">{t.depositHero}</div>
+        <p className="text-center text-[10px] text-white/45">{t.depositShareHint}</p>
+      </div>
 
       {/* Rail selector — only shown when fiat deposits are enabled on this deployment */}
       {depositsEnabled ? (
@@ -479,7 +482,15 @@ export function DepositModal({
 
       </div>
 
-      <div className="shrink-0 text-[9px] text-white/25">{t.depositUsdcOnly}</div>
+      <details className="group w-full max-w-sm shrink-0 text-center">
+        <summary className="cursor-pointer list-none text-[9px] uppercase tracking-wider text-white/35 transition hover:text-white/55 [&::-webkit-details-marker]:hidden">
+          {t.depositDetailsToggle}
+        </summary>
+        <div className="mt-2 space-y-1 text-[9px] leading-relaxed text-white/30">
+          <p>{t.depositSmartAccountHint}</p>
+          <p>{t.depositUsdcOnly}</p>
+        </div>
+      </details>
       </>
       ) : null}
     </div>

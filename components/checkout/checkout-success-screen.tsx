@@ -5,6 +5,8 @@ import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { PaymentReceipt } from "@/lib/payment/payment-receipt";
 import { BackgroundGradientAnimation } from "@/components/ui/background-gradient-animation";
+import { useWalletLanguage } from "@/lib/wallet-language";
+import { formatWalletText } from "@/lib/wallet-texts";
 
 export function CheckoutSuccessScreen({
   merchantName,
@@ -18,6 +20,7 @@ export function CheckoutSuccessScreen({
   receipt: PaymentReceipt;
 }) {
   const router = useRouter();
+  const { t } = useWalletLanguage();
 
   const handleDone = () => {
     router.push("/home");
@@ -44,25 +47,27 @@ export function CheckoutSuccessScreen({
 
           {/* Success message */}
           <div>
-            <h1 className="mb-2 text-3xl font-bold text-white">Payment sent</h1>
-            <p className="text-white/60">Your payment has been confirmed</p>
+            <h1 className="mb-2 text-3xl font-bold text-white">{t.checkoutPaid}</h1>
+            <p className="text-white/60">{t.transactionSuccessfulDesc}</p>
           </div>
 
           {/* Amount paid */}
           <div className="rounded-xl border border-white/10 bg-white/5 p-6">
             <div className="mb-4">
-              <div className="text-sm text-white/60">You paid</div>
+              <div className="text-sm text-white/60">{t.checkoutPaid}</div>
               <div className="mt-1 text-3xl font-bold tabular-nums">${amountUsd}</div>
-              <div className="mt-1 text-sm text-white/60">to {merchantName}</div>
+              <div className="mt-1 text-sm text-white/60">
+                {formatWalletText(t.checkoutToMerchant, { merchant: merchantName })}
+              </div>
             </div>
 
-            {/* Cashback badge */}
+            {/* Reward badge — plain money language, not USDC jargon */}
             <div className="rounded-lg border border-white/30 bg-white/10 px-4 py-3 text-center">
               <div className="text-sm font-medium text-white">
-                You earned 3% cashback instantly
+                {t.checkoutCashback}
               </div>
               <div className="mt-1 text-xs text-white/60">
-                ${(parseFloat(amountUsd) * 0.03).toFixed(2)} USDC credited to your wallet
+                ${(parseFloat(amountUsd) * 0.03).toFixed(2)}
               </div>
             </div>
           </div>

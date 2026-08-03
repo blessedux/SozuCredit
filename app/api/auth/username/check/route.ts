@@ -99,13 +99,11 @@ export async function POST(request: NextRequest) {
     }
     
     if (existingProfile) {
-      const pinEnabled = Boolean((existingProfile as { recovery_pin_hash?: string | null }).recovery_pin_hash)
       return NextResponse.json(
         {
           available: false,
           exists: true,
-          pinEnabled,
-          message: pinEnabled ? t.authUsernameTakenPasskeyPin : t.authUsernameTakenPasskey,
+          message: t.authUsernameTakenPasskey,
         },
         { status: 200, headers: corsHeaders(request) }
       )
@@ -115,7 +113,6 @@ export async function POST(request: NextRequest) {
       {
         available: true,
         exists: false,
-        pinEnabled: false,
         message: t.authUsernameFree,
       },
       { status: 200, headers: corsHeaders(request) }

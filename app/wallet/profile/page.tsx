@@ -10,8 +10,7 @@ import { Globe, User, Wallet, Camera, Link2, TrendingUp, Shield } from "lucide-r
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { getUserId } from "@/lib/wallet-utils"
-
-const LANGUAGE_STORAGE_KEY = "sozu_app_language:v2"
+import { persistAppLanguage, resolveAppLanguage } from "@/lib/locale"
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -25,7 +24,9 @@ export default function ProfilePage() {
   const [egoScore, setEgoScore] = useState<any>(null)
   const [trustScore, setTrustScore] = useState<number | null>(null)
   const [isLoadingEgoScore, setIsLoadingEgoScore] = useState(false)
-  const [language, setLanguage] = useState<"es" | "en">("es")
+  const [language, setLanguage] = useState<"es" | "en">(() =>
+    typeof window === "undefined" ? "en" : resolveAppLanguage(),
+  )
   const [profilePic, setProfilePic] = useState<string | null>("/capybara_pfp.png")
 
   const texts = {
@@ -81,12 +82,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      try {
-        const storedLang = localStorage.getItem(LANGUAGE_STORAGE_KEY)
-        if (storedLang === "en" || storedLang === "es") setLanguage(storedLang)
-      } catch {
-        /* ignore */
-      }
+      setLanguage(resolveAppLanguage())
 
       const checkAuth = () => {
         const authenticated = sessionStorage.getItem("dev_authenticated") === "true"
@@ -241,7 +237,7 @@ export default function ProfilePage() {
       try {
         sessionStorage.setItem("dev_username_display", tag)
         localStorage.setItem("sozu_username", tag)
-        localStorage.setItem(LANGUAGE_STORAGE_KEY, language)
+        persistAppLanguage(language)
       } catch {
         /* ignore quota / private mode */
       }
@@ -256,11 +252,7 @@ export default function ProfilePage() {
 
   const handleLanguageChange = (lang: "es" | "en") => {
     setLanguage(lang)
-    try {
-      localStorage.setItem(LANGUAGE_STORAGE_KEY, lang)
-    } catch {
-      /* ignore */
-    }
+    persistAppLanguage(lang)
   }
 
   const handleLinkEVMAddress = async () => {

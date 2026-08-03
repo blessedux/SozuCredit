@@ -2,7 +2,7 @@
  * Welcome Modal Component
  *
  * Shows a welcome message to first-time visitors before authentication.
- * Copy matches the live USDC Pay + Deposit demo shell.
+ * Copy follows docs/ux/copy-matrix-en-es.md (digital dollars, privacy, custody trust).
  */
 
 "use client"
@@ -10,33 +10,15 @@
 import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Fingerprint, ShieldCheck, Wallet } from "lucide-react"
+import { Fingerprint, ShieldCheck, Wallet, EyeOff } from "lucide-react"
 import Image from "next/image"
 import { useWalletLanguage } from "@/lib/wallet-language"
 
 const WELCOME_MODAL_KEY = "sozu_welcome_seen"
 
-const COPY = {
-  es: {
-    headline: "Posee y mueve USDC con una passkey.",
-    payDeposit: "Paga y deposita USDC desde tu billetera.",
-    selfCustody: "Tu dinero está en tu bóveda personal — solo tú tienes las llaves.",
-    passkeyTip: "Guarda tu passkey cuando se te solicite al crear la billetera, o desde Configuración.",
-    start: "Comenzar",
-  },
-  en: {
-    headline: "Own and move USDC with a passkey.",
-    payDeposit: "Pay and deposit USDC from your wallet.",
-    selfCustody: "Your money stays in your personal vault — only you hold the keys.",
-    passkeyTip: "Save your passkey when prompted after creating a wallet, or from Settings.",
-    start: "Get started",
-  },
-} as const
-
 export function WelcomeModal() {
   const [isOpen, setIsOpen] = useState(false)
-  const { language } = useWalletLanguage()
-  const copy = COPY[language] ?? COPY.es
+  const { t } = useWalletLanguage()
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -85,22 +67,27 @@ export function WelcomeModal() {
           </div>
 
           <DialogDescription className="text-white/80 text-center space-y-4 pt-4">
-            <p className="text-base leading-relaxed">{copy.headline}</p>
+            <p className="text-base leading-relaxed">{t.welcomeHeadline}</p>
 
             <div className="space-y-3 pt-2 text-left">
               <div className="flex items-start gap-3">
                 <Wallet className="w-5 h-5 text-white/60 mt-0.5 flex-shrink-0" />
-                <p className="text-sm text-white/70">{copy.payDeposit}</p>
+                <p className="text-sm text-white/70">{t.welcomePayReceive}</p>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <EyeOff className="w-5 h-5 text-white/60 mt-0.5 flex-shrink-0" />
+                <p className="text-sm text-white/70">{t.welcomePrivacy}</p>
               </div>
 
               <div className="flex items-start gap-3">
                 <ShieldCheck className="w-5 h-5 text-white/60 mt-0.5 flex-shrink-0" />
-                <p className="text-sm text-white/70">{copy.selfCustody}</p>
+                <p className="text-sm text-white/70">{t.welcomeCustody}</p>
               </div>
 
               <div className="flex items-start gap-3">
                 <Fingerprint className="w-5 h-5 text-white/60 mt-0.5 flex-shrink-0" />
-                <p className="text-sm text-white/70">{copy.passkeyTip}</p>
+                <p className="text-sm text-white/70">{t.authPasskeyCaption}</p>
               </div>
             </div>
           </DialogDescription>
@@ -111,7 +98,7 @@ export function WelcomeModal() {
             onClick={handleClose}
             className="bg-white text-black hover:bg-white/90 font-semibold px-8 py-2"
           >
-            {copy.start}
+            {t.welcomeStart}
           </Button>
         </div>
       </DialogContent>

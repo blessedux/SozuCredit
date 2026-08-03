@@ -10,10 +10,13 @@ import {
   verifyRegistration,
 } from "@/lib/turnkey/passkeys"
 import { isPasskeyCapable } from "@/lib/webauthn/device-detection"
+import { useWalletLanguage } from "@/lib/wallet-language"
+import { WalletLanguageProvider } from "@/lib/wallet-language"
 
 function CrossDeviceContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
+  const { t } = useWalletLanguage()
   const [status, setStatus] = useState<'checking' | 'registering' | 'success' | 'error' | 'incompatible'>('checking')
   const [error, setError] = useState<string | null>(null)
   const [username, setUsername] = useState<string | null>(null)
@@ -126,7 +129,7 @@ function CrossDeviceContent() {
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
           <Smartphone className="h-12 w-12 mx-auto text-primary" />
-          <h1 className="text-2xl font-bold">Complete Registration</h1>
+          <h1 className="text-2xl font-bold">{t.crossDeviceTitle}</h1>
           {username && (
             <p className="text-sm text-muted-foreground">
               Setting up <span className="font-mono font-medium">{username}</span>
@@ -138,16 +141,16 @@ function CrossDeviceContent() {
           {status === 'checking' && (
             <div className="flex flex-col items-center gap-3 py-8">
               <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">Checking device compatibility...</p>
+              <p className="text-sm text-muted-foreground">{t.crossDeviceChecking}</p>
             </div>
           )}
 
           {status === 'registering' && (
             <div className="flex flex-col items-center gap-3 py-8">
               <Loader2 className="h-12 w-12 animate-spin text-primary" />
-              <p className="text-sm font-medium">Creating your secure wallet...</p>
+              <p className="text-sm font-medium">{t.crossDeviceCreating}</p>
               <p className="text-xs text-muted-foreground text-center">
-                You may be prompted to use Face ID, Touch ID, or fingerprint
+                {t.crossDevicePasskeyHint}
               </p>
             </div>
           )}
@@ -157,10 +160,10 @@ function CrossDeviceContent() {
               <CheckCircle2 className="h-16 w-16 text-green-500" />
               <div className="space-y-1">
                 <p className="text-lg font-medium text-green-700 dark:text-green-400">
-                  Registration Complete!
+                  {t.crossDeviceSuccess}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Your desktop will update automatically
+                  {t.crossDeviceDesktopHint}
                 </p>
               </div>
             </div>
@@ -171,7 +174,7 @@ function CrossDeviceContent() {
               <XCircle className="h-16 w-16 text-destructive" />
               <div className="space-y-2">
                 <p className="text-lg font-medium text-destructive">
-                  Registration Failed
+                  {t.crossDeviceFailed}
                 </p>
                 <p className="text-sm text-muted-foreground">
                   {error}
@@ -182,7 +185,7 @@ function CrossDeviceContent() {
                 onClick={() => router.push('/auth')}
                 className="mt-4"
               >
-                Return to Login
+                {t.crossDeviceReturnLogin}
               </Button>
             </div>
           )}
@@ -192,7 +195,7 @@ function CrossDeviceContent() {
               <XCircle className="h-16 w-16 text-orange-500" />
               <div className="space-y-2">
                 <p className="text-lg font-medium">
-                  Device Not Compatible
+                  {t.crossDeviceIncompatible}
                 </p>
                 <p className="text-sm text-muted-foreground">
                   {error}
@@ -203,14 +206,14 @@ function CrossDeviceContent() {
                 onClick={() => router.push('/auth')}
                 className="mt-4"
               >
-                Try Different Device
+                {t.crossDeviceTryOther}
               </Button>
             </div>
           )}
         </div>
 
         <p className="text-xs text-center text-muted-foreground">
-          Sozu Wallet is self-custodial. Your keys never leave your device.
+          {t.crossDeviceCustodyFooter}
         </p>
       </div>
     </div>
@@ -219,12 +222,14 @@ function CrossDeviceContent() {
 
 export default function CrossDevicePage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
-    }>
-      <CrossDeviceContent />
-    </Suspense>
+    <WalletLanguageProvider>
+      <Suspense fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+      }>
+        <CrossDeviceContent />
+      </Suspense>
+    </WalletLanguageProvider>
   )
 }

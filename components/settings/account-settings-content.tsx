@@ -9,7 +9,6 @@ import {
   Smartphone,
   Copy,
   Check,
-  Lock,
   ChevronLeft,
 } from "lucide-react"
 import { getUserId } from "@/lib/wallet-utils"
@@ -51,10 +50,7 @@ export function AccountSettingsContent({ onBack }: AccountSettingsContentProps) 
     max: number
     canAddMore: boolean
     username?: string
-    pinSet?: boolean
   } | null>(null)
-  const [backupPin, setBackupPin] = useState("")
-  const [pinSaveBusy, setPinSaveBusy] = useState(false)
   const [passkeyLoading, setPasskeyLoading] = useState(true)
   const [passkeyMessage, setPasskeyMessage] = useState<string | null>(null)
   const [passkeyError, setPasskeyError] = useState<string | null>(null)
@@ -217,38 +213,6 @@ export function AccountSettingsContent({ onBack }: AccountSettingsContentProps) 
     }
   }
 
-  const handleSaveBackupPin = async () => {
-    const uid = getUserId()
-    if (!uid) return
-    const digits = backupPin.replace(/\D/g, "")
-    if (digits.length < 6 || digits.length > 12) {
-      setPasskeyError("PIN must be 6–12 digits.")
-      return
-    }
-    setPinSaveBusy(true)
-    setPasskeyError(null)
-    setPasskeyMessage(null)
-    try {
-      const res = await fetch("/api/auth/pin/set", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-user-id": uid },
-        body: JSON.stringify({ pin: digits }),
-      })
-      const j = (await res.json()) as { error?: string; message?: string }
-      if (!res.ok) {
-        setPasskeyError(j.message || j.error || "Could not save PIN")
-        return
-      }
-      setBackupPin("")
-      setPasskeyMessage("Backup PIN saved. You can use it on the sign-in screen with your Sozu tag.")
-      await loadPasskeyStatus()
-    } catch {
-      setPasskeyError("Network error saving PIN.")
-    } finally {
-      setPinSaveBusy(false)
-    }
-  }
-
   const handleDeleteAccount = async () => {
     setIsDeleting(true)
     setDeleteError(null)
@@ -349,41 +313,6 @@ export function AccountSettingsContent({ onBack }: AccountSettingsContentProps) 
           ) : null}
           {passkeyError && <p className="text-sm text-amber-200">{passkeyError}</p>}
           {passkeyMessage && <p className="text-sm text-emerald-200/90">{passkeyMessage}</p>}
-
-          <div className="border border-white/10 rounded-lg p-3 space-y-2 bg-white/[0.02]">
-            <div className="flex items-center gap-2 text-white/80 text-sm">
-              <Lock className="w-4 h-4" />
-              Backup PIN
-            </div>
-            {passkeyStatus?.pinSet ? (
-              <p className="text-xs text-white/45">A backup PIN is already set for this account.</p>
-            ) : (
-              <>
-                <p className="text-xs text-white/45">
-                  Optional. 6–12 digits. Lets you open the app with your tag + PIN when a passkey prompt is awkward.
-                  Does not replace your passkey for signing transactions unless this device already has your keys.
-                </p>
-                <Input
-                  type="password"
-                  inputMode="numeric"
-                  value={backupPin}
-                  onChange={(e) => setBackupPin(e.target.value.replace(/\D/g, "").slice(0, 12))}
-                  placeholder="digits only"
-                  className="bg-white/5 border-white/15 text-white text-sm"
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={pinSaveBusy || backupPin.replace(/\D/g, "").length < 6}
-                  className="border-white/25 text-white hover:bg-white/10"
-                  onClick={() => void handleSaveBackupPin()}
-                >
-                  {pinSaveBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save backup PIN"}
-                </Button>
-              </>
-            )}
-          </div>
 
           <div className="space-y-2">
             <Button

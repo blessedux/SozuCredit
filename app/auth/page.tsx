@@ -222,48 +222,6 @@ function AuthPageContent() {
     [router, finalPostAuthPath]
   )
 
-  const finalizePinLoginSuccess = useCallback(
-    async (userId: string, username: string) => {
-      sessionStorage.removeItem("credential_id")
-      persistAuthIdentitySession({ userId, credentialId: "", username })
-      try {
-        const res = await fetch("/api/wallet/stellar/address", { headers: { "x-user-id": userId } })
-        const data = (await res.json()) as { publicKey?: string | null }
-        const pk = data.publicKey?.trim().toUpperCase()
-        if (pk && (pk.startsWith("C") || pk.startsWith("G")) && pk.length === 56) {
-          const { getCurrentCredentialId } = await import("@/lib/storage/key-utils")
-          const credentialId = (await getCurrentCredentialId(pk)) ?? ""
-          persistClientWalletSession({
-            userId,
-            publicKey: pk,
-            credentialId,
-            username,
-          })
-          if (pk.startsWith("G")) {
-            const { getKeypairByPublicKey } = await import("@/lib/storage/browser-keys")
-            const kp = await getKeypairByPublicKey(pk)
-            if (kp) sessionStorage.removeItem("wallet_sync_pending")
-            else sessionStorage.setItem("wallet_sync_pending", "1")
-          }
-        }
-      } catch (e) {
-        console.warn("[Auth] PIN login: could not load wallet address", e)
-      }
-      setShowTagModal(false)
-      setResumeLoginTag(null)
-      setTagModalPrefill(null)
-      setIsAuthenticated(true)
-      setIsAuthenticating(false)
-      redirectingRef.current = true
-      setIsExiting(true)
-      setTimeout(
-        () => navigatePostAuth(finalPostAuthPath, (p) => router.push(p)),
-        300,
-      )
-    },
-    [router, finalPostAuthPath]
-  )
-
   const attemptLoginWithTag = useCallback(
     async (tag: string): Promise<{
       ok: boolean
@@ -462,30 +420,6 @@ function AuthPageContent() {
       setShowTagModal(true)
     }
     return result
-  }
-
-  const handlePinLoginFromModal = async (tag: string, pin: string) => {
-    try {
-      const res = await fetch("/api/auth/pin/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: tag, pin }),
-      })
-      const data = (await res.json()) as { error?: string; message?: string; userId?: string; username?: string }
-      if (!res.ok) {
-        if (data.error === "pin_not_configured" && typeof data.message === "string") {
-          return { ok: false as const, error: data.message }
-        }
-        return { ok: false as const, error: typeof data.message === "string" ? data.message : "Could not sign in" }
-      }
-      if (!data.userId || !data.username) {
-        return { ok: false as const, error: "Could not sign in" }
-      }
-      await finalizePinLoginSuccess(data.userId, data.username)
-      return { ok: true as const }
-    } catch {
-      return { ok: false as const, error: "Network error" }
-    }
   }
 
   const proceedWithRegistration = async (
@@ -987,7 +921,6 @@ function AuthPageContent() {
         }}
         onRegister={handleRegisterFromModal}
         onLoginPasskey={handleLoginPasskeyFromModal}
-        onLoginPin={handlePinLoginFromModal}
       />
 
       <AuthDeviceChoiceModal
