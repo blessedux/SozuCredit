@@ -31,8 +31,23 @@ import {
 } from "@/lib/client-wallet-session"
 import { clearClientSession } from "@/lib/storage/clear-session"
 import { signalBootstrapReady } from "@/lib/app-ready"
-import { parseFaucetHandoffAuthReturn } from "@/lib/sozu-faucet/return-allowlist"
+import { peekFaucetHandoffReturn } from "@/lib/sozu-faucet/handoff-return-storage"
+import {
+  parseAllowlistedFaucetReturnUrl,
+  parseFaucetHandoffAuthReturn,
+} from "@/lib/sozu-faucet/return-allowlist"
 import { toast } from "sonner"
+
+function navigatePostAuth(
+  path: string,
+  routerPush: (href: string) => void,
+) {
+  if (path.startsWith("/auth/faucet-handoff")) {
+    window.location.assign(path)
+    return
+  }
+  routerPush(path)
+}
 
 function AuthPageContent() {
   const [isAuthenticating, setIsAuthenticating] = useState(false)
@@ -63,10 +78,17 @@ function AuthPageContent() {
    * Login-with-Sozu handoff: `/auth?faucet=1&return=/auth/faucet-handoff?return=…`
    * Absolute faucet callbacks are never accepted here — only the relative
    * Wallet handoff path (allowlist enforced inside parseFaucetHandoffAuthReturn).
+   * sessionStorage stash is a backup if nested query encoding gets mangled.
    */
   const faucetHandoffReturn = (() => {
     if (searchParams.get("faucet")?.trim() !== "1") return null
-    return parseFaucetHandoffAuthReturn(searchParams.get("return"))
+    const fromQuery = parseFaucetHandoffAuthReturn(searchParams.get("return"))
+    if (fromQuery) return fromQuery
+    const stashed = peekFaucetHandoffReturn()
+    if (stashed && parseAllowlistedFaucetReturnUrl(stashed)) {
+      return `/auth/faucet-handoff?return=${encodeURIComponent(stashed)}`
+    }
+    return null
   })()
 
   /**
@@ -134,7 +156,11 @@ function AuthPageContent() {
         redirectingRef.current = true
         const target =
           searchParams.get("sdpInvite") === "1" ? "/sdp/register" : finalPostAuthPath
-        router.replace(target)
+        if (target.startsWith("/auth/faucet-handoff")) {
+          window.location.replace(target)
+        } else {
+          router.replace(target)
+        }
         return
       }
       requestAnimationFrame(() => {
@@ -188,7 +214,10 @@ function AuthPageContent() {
       setIsAuthenticating(false)
       redirectingRef.current = true
       setIsExiting(true)
-      setTimeout(() => router.push(finalPostAuthPath), 300)
+      setTimeout(
+        () => navigatePostAuth(finalPostAuthPath, (p) => router.push(p)),
+        300,
+      )
     },
     [router, finalPostAuthPath]
   )
@@ -227,7 +256,10 @@ function AuthPageContent() {
       setIsAuthenticating(false)
       redirectingRef.current = true
       setIsExiting(true)
-      setTimeout(() => router.push(finalPostAuthPath), 300)
+      setTimeout(
+        () => navigatePostAuth(finalPostAuthPath, (p) => router.push(p)),
+        300,
+      )
     },
     [router, finalPostAuthPath]
   )
@@ -730,19 +762,8 @@ function AuthPageContent() {
 
           // Use router.push with replace to prevent back button issues
           // Don't use window.location.href as it causes hard refresh
-          console.log("[Auth] Attempting router.push after registration...")
-          try {
-            // Use replace: true to prevent adding to history and ensure clean navigation
-            router.push(finalPostAuthPath)
-            // Give router time to navigate - Next.js router.push is async
-            // Don't check pathname immediately as it may not have updated yet
-            console.log("[Auth] Router.push called, navigation in progress...")
-          } catch (routerError) {
-            console.error("[Auth] Router.push error:", routerError)
-            // Only use window.location as absolute last resort, and log it
-            console.warn("[Auth] Router.push failed, using window.location as fallback (this will cause refresh)")
-            window.location.href = finalPostAuthPath
-          }
+          console.log("[Auth] Navigating after registration...")
+          navigatePostAuth(finalPostAuthPath, (p) => router.push(p))
         }, 300) // Wait 300ms for fade-out animation
 
         return
@@ -795,8 +816,8 @@ function AuthPageContent() {
         if (isAuth) {
           console.log("[Auth] Found auth state after error, redirecting anyway...")
           redirectingRef.current = true
-          console.log("[Auth] Executing error recovery redirect via router:", postAuthPath)
-          router.push(finalPostAuthPath)
+          console.log("[Auth] Executing error recovery redirect:", postAuthPath)
+          navigatePostAuth(finalPostAuthPath, (p) => router.push(p))
           return
         }
       }
@@ -1005,7 +1026,10 @@ function AuthPageContent() {
             setIsAuthenticating(false)
             redirectingRef.current = true
             setIsExiting(true)
-            setTimeout(() => router.push(finalPostAuthPath), 300)
+            setTimeout(
+              () => navigatePostAuth(finalPostAuthPath, (p) => router.push(p)),
+              300,
+            )
           }}
           onCancel={() => {
             setShowQRModal(false)
