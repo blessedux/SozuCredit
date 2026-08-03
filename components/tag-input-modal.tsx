@@ -9,8 +9,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Check, Loader2, Fingerprint, Hash } from "lucide-react"
+import { Check, Loader2, Fingerprint } from "lucide-react"
 import { useWalletLanguage } from "@/lib/wallet-language"
 
 export interface TagInputModalProps {
@@ -20,8 +19,6 @@ export interface TagInputModalProps {
   onRegister: (tag: string) => void
   /** Taken name → passkey authentication. */
   onLoginPasskey: (tag: string) => Promise<{ ok: boolean; cancelled?: boolean; error?: string }>
-  /** Taken name + PIN when user has set a backup PIN. */
-  onLoginPin: (tag: string, pin: string) => Promise<{ ok: boolean; error?: string }>
   /** After passkey cancel: reopen on sign-in step with this tag. */
   resumeWithTag?: string | null
   /** After register cancel: reopen name step with this tag. */
@@ -37,21 +34,17 @@ export function TagInputModal({
   onClose,
   onRegister,
   onLoginPasskey,
-  onLoginPin,
   resumeWithTag,
   prefillTag,
 }: TagInputModalProps) {
   const { t, language } = useWalletLanguage()
   const [step, setStep] = useState<Step>("tag")
   const [tag, setTag] = useState("")
-  const [pin, setPin] = useState("")
   const [error, setError] = useState("")
   const [learnOpen, setLearnOpen] = useState(false)
   const [availabilityStatus, setAvailabilityStatus] = useState<AvailabilityStatus>("idle")
   const [availabilityMessage, setAvailabilityMessage] = useState("")
-  const [pinEnabled, setPinEnabled] = useState(false)
   const [passkeyBusy, setPasskeyBusy] = useState(false)
-  const [pinBusy, setPinBusy] = useState(false)
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   const validateTag = (value: string): boolean => {
@@ -73,7 +66,6 @@ export function TagInputModal({
     if (!username || username.length < 3) {
       setAvailabilityStatus("idle")
       setAvailabilityMessage("")
-      setPinEnabled(false)
       return
     }
 
@@ -91,16 +83,13 @@ export function TagInputModal({
       if (data.available) {
         setAvailabilityStatus("available")
         setAvailabilityMessage(typeof data.message === "string" ? data.message : t.authUsernameFree)
-        setPinEnabled(false)
       } else {
         setAvailabilityStatus("taken")
         setAvailabilityMessage(typeof data.message === "string" ? data.message : "")
-        setPinEnabled(Boolean(data.pinEnabled))
       }
     } catch {
       setAvailabilityStatus("error")
       setAvailabilityMessage(t.authCouldNotCheck)
-      setPinEnabled(false)
     }
   }, [language, t.authCouldNotCheck, t.authUsernameFree])
 
@@ -111,7 +100,6 @@ export function TagInputModal({
     if (!trimmedTag) {
       setAvailabilityStatus("idle")
       setAvailabilityMessage("")
-      setPinEnabled(false)
       return
     }
 
@@ -121,7 +109,6 @@ export function TagInputModal({
     if (!isValidFormat) {
       setAvailabilityStatus("idle")
       setAvailabilityMessage("")
-      setPinEnabled(false)
       return
     }
 
@@ -137,12 +124,11 @@ export function TagInputModal({
   useEffect(() => {
     if (!isOpen) {
       setTag("")
-      setPin("")
       setError("")
       setLearnOpen(false)
       setAvailabilityStatus("idle")
       setAvailabilityMessage("")
-      setPinEnabled(false)
+      setPasskeyBusy(false)
       setStep("tag")
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
       return
@@ -151,28 +137,26 @@ export function TagInputModal({
       const resumeTag = resumeWithTag.replace(/^\$/, "").trim()
       setTag(resumeTag)
       setStep("signin")
-      setPin("")
       setError("")
       void checkUsernameAvailability(resumeTag)
     } else if (prefillTag) {
       const prefill = prefillTag.replace(/^\$/, "").trim()
       setTag(prefill)
       setStep("tag")
-      setPin("")
       setError("")
       void checkUsernameAvailability(prefill)
     }
   }, [isOpen, resumeWithTag, prefillTag, checkUsernameAvailability])
+
+  const trimmed = tag.trim()
+  const isTagValid =
+    trimmed.length >= 3 && trimmed.length <= 30 && /^[a-zA-Z0-9_]+$/.test(trimmed) && !error
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.replace(/[^a-zA-Z0-9_]/g, "")
     setTag(value)
     if (error && value.trim().length >= 3) setError("")
   }
-
-  const trimmed = tag.trim()
-  const isTagValid =
-    trimmed.length >= 3 && trimmed.length <= 30 && /^[a-zA-Z0-9_]+$/.test(trimmed) && !error
 
   const handlePrimaryTagStep = () => {
     if (!validateTag(trimmed)) return
@@ -182,7 +166,6 @@ export function TagInputModal({
     }
     if (availabilityStatus === "taken") {
       setStep("signin")
-      setPin("")
       setError("")
     }
   }
@@ -203,24 +186,6 @@ export function TagInputModal({
       }
     } finally {
       setPasskeyBusy(false)
-    }
-  }
-
-  const handlePinSubmit = async () => {
-    if (!validateTag(trimmed)) return
-    if (!/^\d{6,12}$/.test(pin)) {
-      setError(t.authPinLengthError)
-      return
-    }
-    setPinBusy(true)
-    setError("")
-    try {
-      const result = await onLoginPin(trimmed, pin)
-      if (!result.ok) {
-        setError(result.error || t.authCouldNotSignIn)
-      }
-    } finally {
-      setPinBusy(false)
     }
   }
 
@@ -324,6 +289,7 @@ export function TagInputModal({
             <div className="text-center space-y-1">
               <p className="text-[11px] tracking-[0.25em] uppercase text-white/35">{t.authSignIn}</p>
               <p className="text-base font-light text-white/90 tracking-wide">{trimmed}</p>
+              <p className="text-[10px] text-white/35 pt-1">{t.authPasskeyCaption}</p>
             </div>
 
             {error && <p className="text-center text-[11px] text-amber-500/90">{error}</p>}
@@ -344,42 +310,10 @@ export function TagInputModal({
               )}
             </Button>
 
-            {pinEnabled ? (
-              <div className="space-y-3 pt-2 border-t border-white/10">
-                <Label className="text-[10px] tracking-[0.2em] uppercase text-white/30 flex items-center gap-1.5">
-                  <Hash className="w-3 h-3" />
-                  {t.authBackupPin}
-                </Label>
-                <Input
-                  type="password"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  value={pin}
-                  onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 12))}
-                  placeholder={t.authPinPlaceholder}
-                  className="h-10 bg-white/5 border-white/10 text-center text-sm tracking-widest"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => void handlePinSubmit()}
-                  disabled={pinBusy || pin.length < 6}
-                  className="w-full text-white/60 hover:text-white hover:bg-white/5 text-xs"
-                >
-                  {pinBusy ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : t.authContinueWithPin}
-                </Button>
-              </div>
-            ) : (
-              <p className="text-[10px] text-center text-white/30 leading-relaxed">
-                {t.authNoBackupPin}
-              </p>
-            )}
-
             <button
               type="button"
               onClick={() => {
                 setStep("tag")
-                setPin("")
                 setError("")
               }}
               className="w-full text-[10px] tracking-[0.2em] uppercase text-white/30 hover:text-white/45 pt-2"

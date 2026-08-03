@@ -43,16 +43,16 @@ Engineering domain terms (`Passkey`, `Smart Account`, `Fee Payer`, `Setup Incomp
 | authRegister | Continue | Continuar |
 | authSignIn | Sign in | Iniciar sesión |
 
-> PIN backup / “set a PIN in Settings” copy is removed from setup (SOZU-UX-02). Existing PIN login UI for accounts that already have a PIN may remain until recovery policy is final — but must not promise backup during signup.
+> **Passkey-only (ADR-0002):** Backup PIN login/setup UI is removed; PIN APIs return 410. Account recovery is a later initiative — do not revive PIN as interim recovery.
 
 ## Setup incomplete (trust moment)
 
 | Key | EN | ES |
 |-----|----|----|
 | setupIncompleteTitle | One more step | Un paso más |
-| setupIncompleteBody | Your passkey is ready. Your personal wallet still needs to finish setting up on this device. Nothing has been funded yet. | Tu passkey ya está listo. Tu billetera personal aún debe terminar de configurarse en este dispositivo. Todavía no hay fondos. |
+| setupIncompleteBody | Your passkey is ready. Your account still needs to finish setting up on this device. Nothing has been funded yet. | Tu passkey ya está listo. Tu cuenta aún debe terminar de configurarse en este dispositivo. Todavía no hay fondos. |
 | setupIncompleteCta | Finish setup | Terminar configuración |
-| setupIncompleteBusy | Setting up your wallet… | Configurando tu billetera… |
+| setupIncompleteBusy | Setting up your account… | Configurando tu cuenta… |
 
 ## Cross-device QR (must be localized — no English islands)
 

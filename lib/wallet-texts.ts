@@ -397,16 +397,10 @@ export type WalletTexts = {
   authTagCharsError: string;
   authCouldNotCheck: string;
   authCouldNotSignIn: string;
-  authPinLengthError: string;
   authPasskey: string;
-  authBackupPin: string;
-  authPinPlaceholder: string;
-  authContinueWithPin: string;
-  authNoBackupPin: string;
   authBack: string;
   authUsernameFree: string;
   authUsernameTakenPasskey: string;
-  authUsernameTakenPasskeyPin: string;
   authDeviceChoiceTitle: string;
   authDeviceChoiceBody: string;
   authDeviceChoiceScan: string;
@@ -898,17 +892,10 @@ export const walletTexts = {
     authTagCharsError: "Solo letras, números y guion bajo",
     authCouldNotCheck: "No se pudo verificar. Intenta de nuevo.",
     authCouldNotSignIn: "No se pudo iniciar sesión",
-    authPinLengthError: "PIN: 6–12 dígitos",
     authPasskey: "Passkey",
-    authBackupPin: "PIN de respaldo",
-    authPinPlaceholder: "6–12 dígitos",
-    authContinueWithPin: "Continuar con PIN",
-    authNoBackupPin:
-      "Esta cuenta no tiene PIN. Usa tu passkey para iniciar sesión.",
     authBack: "Volver",
     authUsernameFree: "Este nombre está disponible.",
     authUsernameTakenPasskey: "Este nombre ya existe. Inicia sesión con tu passkey.",
-    authUsernameTakenPasskeyPin: "Este nombre ya existe. Inicia sesión con tu passkey.",
     authDeviceChoiceTitle: "Este dispositivo no tiene biometría",
     authDeviceChoiceBody:
       "Sozu necesita Face ID, Touch ID o Windows Hello en el dispositivo donde creas o usas tu passkey.",
@@ -918,9 +905,9 @@ export const walletTexts = {
     authDeviceChoiceCreateHint: "Elige tu nombre y completa el registro en un dispositivo con biometría.",
     setupIncompleteTitle: "Un paso más",
     setupIncompleteBody:
-      "Tu passkey ya está listo. Tu billetera personal aún debe terminar de configurarse en este dispositivo. Todavía no hay fondos.",
+      "Tu passkey ya está listo. Tu cuenta aún debe terminar de configurarse en este dispositivo. Todavía no hay fondos.",
     setupIncompleteCta: "Terminar configuración",
-    setupIncompleteBusy: "Configurando tu billetera…",
+    setupIncompleteBusy: "Configurando tu cuenta…",
     welcomeHeadline: "Paga y recibe dólares digitales con una passkey.",
     welcomePayReceive: "Paga y recibe dinero desde tu cuenta Sozu.",
     welcomePrivacy: "Sin subir documento de identidad para empezar.",
@@ -1359,17 +1346,10 @@ export const walletTexts = {
     authTagCharsError: "Letters, numbers, underscore only",
     authCouldNotCheck: "Could not check. Try again.",
     authCouldNotSignIn: "Could not sign in",
-    authPinLengthError: "PIN: 6–12 digits",
     authPasskey: "Passkey",
-    authBackupPin: "Backup PIN",
-    authPinPlaceholder: "6–12 digits",
-    authContinueWithPin: "Continue with PIN",
-    authNoBackupPin:
-      "This account has no PIN. Use your passkey to sign in.",
     authBack: "Back",
     authUsernameFree: "This name is free.",
     authUsernameTakenPasskey: "This name is taken. Sign in with your passkey.",
-    authUsernameTakenPasskeyPin: "This name is taken. Sign in with your passkey.",
     authDeviceChoiceTitle: "This device has no biometrics",
     authDeviceChoiceBody:
       "Sozu needs Face ID, Touch ID, or Windows Hello on the device where you create or use your passkey.",
@@ -1379,9 +1359,9 @@ export const walletTexts = {
     authDeviceChoiceCreateHint: "Choose your name, then finish setup on a device with biometrics.",
     setupIncompleteTitle: "One more step",
     setupIncompleteBody:
-      "Your passkey is ready. Your personal wallet still needs to finish setting up on this device. Nothing has been funded yet.",
+      "Your passkey is ready. Your account still needs to finish setting up on this device. Nothing has been funded yet.",
     setupIncompleteCta: "Finish setup",
-    setupIncompleteBusy: "Setting up your wallet…",
+    setupIncompleteBusy: "Setting up your account…",
     welcomeHeadline: "Pay and receive digital dollars with a passkey.",
     welcomePayReceive: "Pay and receive money from your Sozu account.",
     welcomePrivacy: "No ID upload to start.",
