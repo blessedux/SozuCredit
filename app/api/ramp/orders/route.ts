@@ -22,12 +22,21 @@ export async function POST(request: NextRequest) {
       || !Number.isSafeInteger(fiatAmountCents) || fiatAmountCents <= 0
       || !Number.isSafeInteger(usdcMinor) || usdcMinor <= 0
       || typeof fxRate !== "number" || !Number.isFinite(fxRate) || fxRate <= 0
-      || !Number.isSafeInteger(feeCents) || feeCents < 0
-      // A fee that consumes (or exceeds) the whole fiat amount is never a
-      // legitimate quote echo — reject it rather than create a nonsensical
-      // order. This can't be verified against the provider (no quote-fetch
-      // endpoint exists), so it's a sanity bound, not a full re-derivation.
-      || feeCents >= fiatAmountCents) {
+      || !Number.isSafeInteger(feeCents) || feeCents < 0) {
+      return NextResponse.json({ error: "invalid_input" }, { status: 400 })
+    }
+    // A fee that consumes (or exceeds) the whole SOURCE amount is never a
+    // legitimate quote echo — reject it rather than create a nonsensical
+    // order. This can't be verified against the provider (no quote-fetch
+    // endpoint exists), so it's a sanity bound, not a full re-derivation.
+    // On-ramp's source is fiat (fiatAmountCents); off-ramp's source is the
+    // token leg (usdcMinor) — comparing an off-ramp fee in fiat cents against
+    // fiatAmountCents (the RECEIVE side) would reject legitimate orders
+    // whenever the fee is a reasonable fraction of a small payout.
+    if (direction === "on" && feeCents >= fiatAmountCents) {
+      return NextResponse.json({ error: "invalid_input" }, { status: 400 })
+    }
+    if (direction === "off" && feeCents >= usdcMinor) {
       return NextResponse.json({ error: "invalid_input" }, { status: 400 })
     }
     const customer = await getRampCustomer(auth.userId)
@@ -117,6 +126,9 @@ export async function POST(request: NextRequest) {
       metadata: {
         withdrawAnchorAccount: anchor.withdrawAnchorAccount,
         withdrawMemoBase64: anchor.withdrawMemoBase64,
+        // Binds the eventual signed envelope to THIS sender — verifyOfframpEnvelope
+        // rejects any envelope whose `from` doesn't match this recorded C address.
+        senderC,
       },
     })
     return NextResponse.json({

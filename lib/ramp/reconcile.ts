@@ -1,8 +1,13 @@
 import "server-only"
 
 import { decimalToUsdcMinor } from "@/lib/ramp/decimal"
-import { claimOrderForSettlement, claimSettlingRetry, transitionRampOrder } from "@/lib/db/ramp"
-import { sendTreasuryUsdcToUser } from "@/lib/ramp/settlement"
+import {
+  claimOrderForSettlement,
+  claimSettlingRetry,
+  setRampOrderSettlementTx,
+  transitionRampOrder,
+} from "@/lib/db/ramp"
+import { sendAnchorPayment, sendTreasuryUsdcToUser } from "@/lib/ramp/settlement"
 import type { RampProvider, RampOrderStatus } from "@/lib/ramp/provider"
 import type { RampDirection, RampOrderDbStatus, RampOrderRow } from "@/lib/ramp/types"
 
@@ -118,6 +123,42 @@ export async function reconcileOrder(order: RampOrderRow, provider: RampProvider
         if (done) current = done
       } catch (e) {
         console.error("[ramp/reconcile] forward retry failed:", current.id, e)
+      }
+    }
+  }
+
+  // Off-ramp retry: the user's C→treasury leg is confirmed (user_tx_hash
+  // set) but the treasury→anchor memo payment hasn't landed yet (previous
+  // sendAnchorPayment crashed/failed, or the submit route never got that
+  // far — either way the funds are safe in treasury). Mirrors the submit
+  // route's settle step: same claimSettlingRetry lease guards against
+  // double-send, and the amount always comes from order.usdc_minor — never
+  // re-derived from provider state, since off-ramp settlement doesn't wait
+  // on anything Etherfuse reports.
+  if (
+    current.direction === "off"
+    && current.status === "settling"
+    && !current.settlement_tx_hash
+    && current.user_tx_hash
+  ) {
+    const claimed = await claimSettlingRetry(current.id, SETTLEMENT_LEASE_MS)
+    if (claimed) {
+      current = claimed
+      const meta = current.metadata as { withdrawAnchorAccount?: string; withdrawMemoBase64?: string }
+      if (!meta.withdrawAnchorAccount || !meta.withdrawMemoBase64) {
+        console.error("[ramp/reconcile] off-ramp settling retry missing anchor metadata:", current.id)
+      } else {
+        try {
+          const { txHash } = await sendAnchorPayment({
+            anchorAccount: meta.withdrawAnchorAccount,
+            memoBase64: meta.withdrawMemoBase64,
+            amountUsdcMinor: current.usdc_minor,
+          })
+          await setRampOrderSettlementTx(current.id, txHash)
+          current = { ...current, settlement_tx_hash: txHash }
+        } catch (e) {
+          console.error("[ramp/reconcile] anchor payment retry failed:", current.id, e)
+        }
       }
     }
   }

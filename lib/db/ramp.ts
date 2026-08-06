@@ -4,6 +4,20 @@ import { createClient as createServiceClient } from "@supabase/supabase-js"
 import { canTransition } from "@/lib/ramp/types"
 import type { RampCustomerRow, RampDirection, RampOrderDbStatus, RampOrderRow } from "@/lib/ramp/types"
 
+/**
+ * Thrown by `transitionRampOrder` when the UPDATE itself fails a DB
+ * constraint (as opposed to simply matching zero rows, which returns null).
+ * `code` is the Postgres SQLSTATE (e.g. `23505` unique_violation) — callers
+ * use it to distinguish "someone reused this envelope's tx hash" from a
+ * generic DB failure.
+ */
+export class RampDbConflictError extends Error {
+  constructor(message: string, public readonly code: string | undefined) {
+    super(message)
+    this.name = "RampDbConflictError"
+  }
+}
+
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -88,15 +102,41 @@ export async function getRampOrder(id: string, userId: string): Promise<RampOrde
   return data as RampOrderRow | null
 }
 
+/**
+ * Rows newer than this are still worth polling even before any money has
+ * moved (`created`/`awaiting_payment`); older abandoned intake rows (e.g. a
+ * user who re-quoted an off-ramp order several times without ever signing)
+ * are dropped from the sweep rather than crowding out real settlement work.
+ */
+const STALE_INTAKE_CUTOFF_MS = 48 * 60 * 60_000
+
 export async function listSettlingOrPendingOrders(provider = "etherfuse", limit = 50): Promise<RampOrderRow[]> {
   const db = getServiceClient()
-  const { data, error } = await db.from("ramp_orders").select()
+  // Active settlement rows are real in-flight money movements — fetch them
+  // first, unbounded by age, so a backlog of abandoned created/
+  // awaiting_payment rows (oldest-first) can never starve them out of a
+  // capped sweep.
+  const { data: active, error: activeError } = await db.from("ramp_orders").select()
     .eq("provider", provider)
-    .in("status", ["created", "awaiting_payment", "funded", "settling"])
+    .in("status", ["funded", "settling"])
     .order("created_at", { ascending: true })
     .limit(limit)
-  if (error) throw new Error(`ramp_orders pending list: ${error.message}`)
-  return (data ?? []) as RampOrderRow[]
+  if (activeError) throw new Error(`ramp_orders pending list (active): ${activeError.message}`)
+  const activeRows = (active ?? []) as RampOrderRow[]
+
+  const remaining = limit - activeRows.length
+  if (remaining <= 0) return activeRows
+
+  const cutoffIso = new Date(Date.now() - STALE_INTAKE_CUTOFF_MS).toISOString()
+  const { data: intake, error: intakeError } = await db.from("ramp_orders").select()
+    .eq("provider", provider)
+    .in("status", ["created", "awaiting_payment"])
+    .gte("created_at", cutoffIso)
+    .order("created_at", { ascending: true })
+    .limit(remaining)
+  if (intakeError) throw new Error(`ramp_orders pending list (intake): ${intakeError.message}`)
+
+  return [...activeRows, ...((intake ?? []) as RampOrderRow[])]
 }
 
 /**
@@ -123,7 +163,28 @@ export async function transitionRampOrder(
     .in("status", fromStatuses)
     .select()
     .maybeSingle()
-  if (error) throw new Error(`ramp_orders transition: ${error.message}`)
+  if (error) {
+    if (error.code === "23505") {
+      throw new RampDbConflictError(`ramp_orders transition: ${error.message}`, error.code)
+    }
+    throw new Error(`ramp_orders transition: ${error.message}`)
+  }
+  return data as RampOrderRow | null
+}
+
+/**
+ * Replay guard lookup: is this Soroban tx hash already recorded against some
+ * order? Checked BEFORE ever calling `submitSignedSorobanEnvelope` so a
+ * resubmitted envelope is rejected without a second on-chain submit attempt
+ * (Soroban RPC treats a resubmitted already-applied tx as a success,
+ * returning the same hash — the DB's unique index on `user_tx_hash` is the
+ * authoritative guard; this is the early, network-call-avoiding half of it).
+ */
+export async function findRampOrderByUserTxHash(userTxHash: string): Promise<RampOrderRow | null> {
+  const db = getServiceClient()
+  const { data, error } = await db.from("ramp_orders").select()
+    .eq("user_tx_hash", userTxHash).maybeSingle()
+  if (error) throw new Error(`ramp_orders find by user_tx_hash: ${error.message}`)
   return data as RampOrderRow | null
 }
 

@@ -37,17 +37,21 @@ const mocks = vi.hoisted(() => ({
   transitionRampOrder: vi.fn(),
   claimOrderForSettlement: vi.fn(),
   claimSettlingRetry: vi.fn(),
+  setRampOrderSettlementTx: vi.fn(),
   sendTreasuryUsdcToUser: vi.fn(),
+  sendAnchorPayment: vi.fn(),
 }))
 
 vi.mock("@/lib/db/ramp", () => ({
   transitionRampOrder: mocks.transitionRampOrder,
   claimOrderForSettlement: mocks.claimOrderForSettlement,
   claimSettlingRetry: mocks.claimSettlingRetry,
+  setRampOrderSettlementTx: mocks.setRampOrderSettlementTx,
 }))
 
 vi.mock("@/lib/ramp/settlement", () => ({
   sendTreasuryUsdcToUser: mocks.sendTreasuryUsdcToUser,
+  sendAnchorPayment: mocks.sendAnchorPayment,
 }))
 
 const SETTLEMENT_LEASE_MS = 5 * 60_000
@@ -187,5 +191,68 @@ describe("reconcileOrder — settling retry (previously-failed forward)", () => 
     expect(mocks.claimSettlingRetry).toHaveBeenCalledWith("order-1", SETTLEMENT_LEASE_MS)
     expect(mocks.sendTreasuryUsdcToUser).not.toHaveBeenCalled()
     expect(result.status).toBe("settling")
+  })
+})
+
+describe("reconcileOrder — off-ramp settling retry (anchor payment)", () => {
+  const MEMO_B64 = Buffer.alloc(32, 1).toString("base64")
+  const offOrder: RampOrderRow = {
+    ...baseOrder,
+    direction: "off",
+    status: "settling",
+    usdc_minor: 100_000_000,
+    user_tx_hash: "USER_TX_HASH",
+    settlement_tx_hash: null,
+    settlement_claimed_at: null,
+    destination_stellar_address: null,
+    metadata: { withdrawAnchorAccount: "GANCHORACCOUNT", withdrawMemoBase64: MEMO_B64 },
+  }
+
+  it("(f) claim wins → sends the anchor payment once → settlement hash recorded, stays settling", async () => {
+    mocks.claimSettlingRetry.mockReset().mockResolvedValue({
+      ...offOrder, settlement_claimed_at: "2026-01-01T00:05:00Z",
+    })
+    mocks.sendAnchorPayment.mockReset().mockResolvedValue({ txHash: "ANCHOR_TX_A" })
+    mocks.setRampOrderSettlementTx.mockReset().mockResolvedValue(undefined)
+    mocks.claimOrderForSettlement.mockReset()
+    mocks.transitionRampOrder.mockReset()
+    mocks.sendTreasuryUsdcToUser.mockReset()
+
+    // "created" (fiat not yet received) keeps mapProviderStatus a no-op so
+    // the row stays 'settling' and the retry block below is what runs.
+    const provider = makeProvider("created", null)
+    const result = await reconcileOrder(offOrder, provider)
+
+    expect(mocks.claimSettlingRetry).toHaveBeenCalledTimes(1)
+    expect(mocks.claimSettlingRetry).toHaveBeenCalledWith("order-1", SETTLEMENT_LEASE_MS)
+    expect(mocks.sendAnchorPayment).toHaveBeenCalledTimes(1)
+    expect(mocks.sendAnchorPayment).toHaveBeenCalledWith({
+      anchorAccount: "GANCHORACCOUNT",
+      memoBase64: MEMO_B64,
+      amountUsdcMinor: 100_000_000,
+    })
+    expect(mocks.setRampOrderSettlementTx).toHaveBeenCalledWith("order-1", "ANCHOR_TX_A")
+    expect(mocks.claimOrderForSettlement).not.toHaveBeenCalled()
+    expect(result.status).toBe("settling")
+    expect(result.settlement_tx_hash).toBe("ANCHOR_TX_A")
+  })
+
+  it("(g) claim loses (another owner still holds the lease) → sends nothing", async () => {
+    mocks.claimSettlingRetry.mockReset().mockResolvedValue(null)
+    mocks.sendAnchorPayment.mockReset()
+    mocks.setRampOrderSettlementTx.mockReset()
+    mocks.claimOrderForSettlement.mockReset()
+    mocks.transitionRampOrder.mockReset()
+    mocks.sendTreasuryUsdcToUser.mockReset()
+
+    const provider = makeProvider("created", null)
+    const result = await reconcileOrder(offOrder, provider)
+
+    expect(mocks.claimSettlingRetry).toHaveBeenCalledTimes(1)
+    expect(mocks.claimSettlingRetry).toHaveBeenCalledWith("order-1", SETTLEMENT_LEASE_MS)
+    expect(mocks.sendAnchorPayment).not.toHaveBeenCalled()
+    expect(mocks.setRampOrderSettlementTx).not.toHaveBeenCalled()
+    expect(result.status).toBe("settling")
+    expect(result.settlement_tx_hash).toBeNull()
   })
 })

@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
-import { Networks, TransactionBuilder } from "@stellar/stellar-sdk"
+import { Networks, Transaction, TransactionBuilder } from "@stellar/stellar-sdk"
 import {
   claimOrderForSettlement,
+  findRampOrderByUserTxHash,
   getRampOrder,
+  RampDbConflictError,
   setRampOrderSettlementTx,
   transitionRampOrder,
 } from "@/lib/db/ramp"
 import { rampRouteGuard } from "@/lib/ramp/onboarding"
 import { RampProviderError } from "@/lib/ramp/provider"
-import { sendAnchorPayment } from "@/lib/ramp/settlement"
+import { getRampTreasuryKeypair, getUsdcSacContractId, sendAnchorPayment } from "@/lib/ramp/settlement"
+import { verifyOfframpEnvelope } from "@/lib/ramp/verify-offramp-envelope"
 import { submitSignedSorobanEnvelope } from "@/lib/stellar/send-token"
 import { getStellarConfig } from "@/lib/turnkey/config"
 
@@ -29,19 +32,78 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
     if (order.direction !== "off" || order.status !== "created") {
       return NextResponse.json({ error: "order_not_signable" }, { status: 409 })
     }
+    const meta = order.metadata as {
+      withdrawAnchorAccount?: string
+      withdrawMemoBase64?: string
+      senderC?: string
+    }
+    if (!meta.senderC) {
+      // Data integrity issue, not a client error — Step 1 always writes this.
+      console.error("[ramp/submit] order missing metadata.senderC:", order.id)
+      return NextResponse.json({ error: "internal_error" }, { status: 500 })
+    }
 
-    // Sanity: the envelope must parse for THIS network before we submit.
+    // Sanity: the envelope must parse for THIS network before we inspect or submit it.
     const networkPassphrase = getStellarConfig().network === "mainnet" ? Networks.PUBLIC : Networks.TESTNET
+    const trimmedXdr = signedEnvelopeXdr.trim()
+    let parsed: ReturnType<typeof TransactionBuilder.fromXDR>
     try {
-      TransactionBuilder.fromXDR(signedEnvelopeXdr.trim(), networkPassphrase)
+      parsed = TransactionBuilder.fromXDR(trimmedXdr, networkPassphrase)
     } catch {
       return NextResponse.json({ error: "invalid_envelope" }, { status: 400 })
     }
+    if (!(parsed instanceof Transaction)) {
+      return NextResponse.json({ error: "invalid_envelope" }, { status: 400 })
+    }
+
+    // Bind the envelope to THIS order. Without this, any envelope the
+    // caller's own passkey can sign (e.g. a 1-stroop self-transfer) would
+    // still be submitted and treated as proof of funding — sendAnchorPayment
+    // below pays the order's FULL usdc_minor from treasury regardless of
+    // what the envelope actually moved. The amount, sender, destination, and
+    // contract must all match the order exactly.
+    const treasuryG = getRampTreasuryKeypair().publicKey()
+    const verification = verifyOfframpEnvelope(trimmedXdr, {
+      senderC: meta.senderC,
+      treasuryG,
+      sacContractId: getUsdcSacContractId(getStellarConfig().network),
+      amountMinor: order.usdc_minor,
+      networkPassphrase,
+    })
+    if (!verification.ok) {
+      return NextResponse.json(
+        { error: "envelope_mismatch", reason: verification.reason },
+        { status: 422 },
+      )
+    }
+
+    // Replay guard #1 (fast path): reject before ever touching the network
+    // if this exact envelope already funded some order. Guard #2 (the
+    // authoritative one) is the DB's unique index on user_tx_hash, enforced
+    // below when we record the confirmed on-chain hash — this pre-check just
+    // avoids a redundant submit attempt for the common "client retried the
+    // same request" case.
+    const envelopeHash = parsed.hash().toString("hex")
+    const priorUse = await findRampOrderByUserTxHash(envelopeHash)
+    if (priorUse) {
+      return NextResponse.json({ error: "envelope_reused" }, { status: 409 })
+    }
 
     // 1. User leg: C → treasury (submitSignedSorobanEnvelope waits for
-    //    on-chain success and throws otherwise).
-    const userTxHash = await submitSignedSorobanEnvelope(signedEnvelopeXdr.trim())
-    const funded = await transitionRampOrder(order.id, ["created"], "funded", { user_tx_hash: userTxHash })
+    //    on-chain success and throws otherwise). Soroban RPC treats a
+    //    resubmitted already-applied tx as a success (DUPLICATE), returning
+    //    the same hash it returned the first time — the unique index below
+    //    is what actually stops that hash from funding a second order.
+    const userTxHash = await submitSignedSorobanEnvelope(trimmedXdr)
+    let funded
+    try {
+      funded = await transitionRampOrder(order.id, ["created"], "funded", { user_tx_hash: userTxHash })
+    } catch (err) {
+      if (err instanceof RampDbConflictError && err.code === "23505") {
+        return NextResponse.json({ error: "envelope_reused" }, { status: 409 })
+      }
+      throw err
+    }
     if (!funded) return NextResponse.json({ error: "order_not_signable" }, { status: 409 })
 
     // 2. Treasury leg: classic payment to the anchor with the hash memo.
@@ -55,7 +117,6 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
     //    safe to re-run later because Etherfuse matches on the memo.
     const claimed = await claimOrderForSettlement(order.id)
     if (!claimed) return NextResponse.json({ error: "order_not_signable" }, { status: 409 })
-    const meta = order.metadata as { withdrawAnchorAccount?: string; withdrawMemoBase64?: string }
     if (!meta.withdrawAnchorAccount || !meta.withdrawMemoBase64) {
       return NextResponse.json({ error: "internal_error" }, { status: 500 })
     }

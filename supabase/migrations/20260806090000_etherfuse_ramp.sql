@@ -54,6 +54,12 @@ CREATE INDEX IF NOT EXISTS ramp_orders_user_created_idx
   ON public.ramp_orders (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS ramp_orders_status_idx
   ON public.ramp_orders (status);
+-- Off-ramp replay guard: the same signed C→treasury envelope must never fund
+-- two orders. Partial (NULLs — on-ramp rows and not-yet-funded off-ramp rows
+-- carry no user_tx_hash) so it only constrains rows that actually recorded a
+-- submitted envelope's tx hash.
+CREATE UNIQUE INDEX IF NOT EXISTS ramp_orders_user_tx_hash_uidx
+  ON public.ramp_orders (user_tx_hash) WHERE user_tx_hash IS NOT NULL;
 
 CREATE OR REPLACE FUNCTION public.set_ramp_updated_at()
 RETURNS trigger LANGUAGE plpgsql AS $$
@@ -78,7 +84,9 @@ ALTER TABLE public.ramp_orders ENABLE ROW LEVEL SECURITY;
 
 -- Users read their own rows; ALL writes go through the service role
 -- (state transitions are server-authoritative — no user INSERT/UPDATE policies).
+DROP POLICY IF EXISTS "users read own ramp customers" ON public.ramp_customers;
 CREATE POLICY "users read own ramp customers"
   ON public.ramp_customers FOR SELECT USING (auth.uid()::text = user_id);
+DROP POLICY IF EXISTS "users read own ramp orders" ON public.ramp_orders;
 CREATE POLICY "users read own ramp orders"
   ON public.ramp_orders FOR SELECT USING (auth.uid()::text = user_id);
