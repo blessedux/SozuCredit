@@ -337,8 +337,12 @@ export type WalletTexts = {
   rampErrorGeneric: string;
   rampOfframpTitle: string;
   rampOfframpAmountLabel: string;
+  rampOfframpAmountPlaceholder: string;
   rampOfframpSign: string;
   rampOfframpSettling: string;
+  rampOfframpClose: string;
+  rampOfframpUserTxLabel: string;
+  rampOfframpSettlementTxLabel: string;
   rampKycReturnTitle: string;
   rampKycReturnBody: string;
   rampNoWallet: string;
@@ -839,8 +843,12 @@ export const walletTexts = {
     rampErrorGeneric: "Algo falló. Intenta de nuevo.",
     rampOfframpTitle: "Retirar a PIX (BRL)",
     rampOfframpAmountLabel: "Monto en USDC",
+    rampOfframpAmountPlaceholder: "Ej. 25.00",
     rampOfframpSign: "Firmar y retirar",
     rampOfframpSettling: "Retiro en camino. Los BRL llegan a tu cuenta PIX más tarde — puedes cerrar esta ventana.",
+    rampOfframpClose: "Cerrar retiro",
+    rampOfframpUserTxLabel: "Tu transferencia",
+    rampOfframpSettlementTxLabel: "Liquidación PIX",
     rampKycReturnTitle: "Verificación enviada",
     rampKycReturnBody: "Puedes cerrar esta pestaña y volver a la app.",
     rampNoWallet: "Necesitas una billetera Stellar antes de continuar.",
@@ -1310,8 +1318,12 @@ export const walletTexts = {
     rampErrorGeneric: "Something went wrong. Try again.",
     rampOfframpTitle: "Withdraw to PIX (BRL)",
     rampOfframpAmountLabel: "Amount in USDC",
+    rampOfframpAmountPlaceholder: "e.g. 25.00",
     rampOfframpSign: "Sign & withdraw",
     rampOfframpSettling: "Withdrawal on its way. BRL arrives in your PIX account later — you can close this window.",
+    rampOfframpClose: "Close withdrawal",
+    rampOfframpUserTxLabel: "Your transfer",
+    rampOfframpSettlementTxLabel: "PIX settlement",
     rampKycReturnTitle: "Verification submitted",
     rampKycReturnBody: "You can close this tab and return to the app.",
     rampNoWallet: "You need a Stellar wallet before you can continue.",
