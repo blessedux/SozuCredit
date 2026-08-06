@@ -19,12 +19,12 @@ export function decimalToScaled(value: string, scale: number, mode: "floor" | "c
   const { digits, scale: valueScale } = parseDecimal(value)
   let result: bigint
   if (valueScale <= scale) {
-    result = digits * 10n ** BigInt(scale - valueScale)
+    result = digits * BigInt("1" + "0".repeat(scale - valueScale))
   } else {
-    const divisor = 10n ** BigInt(valueScale - scale)
+    const divisor = BigInt("1" + "0".repeat(valueScale - scale))
     const truncated = digits / divisor
-    const hasRemainder = digits % divisor > 0n
-    result = mode === "ceil" && hasRemainder ? truncated + 1n : truncated
+    const hasRemainder = digits % divisor > BigInt(0)
+    result = mode === "ceil" && hasRemainder ? truncated + BigInt(1) : truncated
   }
   if (result > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw new Error(`Scaled value exceeds safe integer range: ${value} at scale ${scale}`)
