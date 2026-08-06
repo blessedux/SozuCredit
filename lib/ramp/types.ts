@@ -52,6 +52,7 @@ export interface RampOrderRow {
   provider_order_id: string
   user_tx_hash: string | null
   settlement_tx_hash: string | null
+  settlement_claimed_at: string | null
   destination_stellar_address: string | null
   metadata: Record<string, unknown>
   created_at: string

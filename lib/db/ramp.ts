@@ -109,7 +109,7 @@ export async function transitionRampOrder(
   id: string,
   fromStatuses: RampOrderDbStatus[],
   toStatus: RampOrderDbStatus,
-  patch: Partial<Pick<RampOrderRow, "user_tx_hash" | "settlement_tx_hash" | "usdc_minor" | "metadata">> = {},
+  patch: Partial<Pick<RampOrderRow, "user_tx_hash" | "settlement_tx_hash" | "settlement_claimed_at" | "usdc_minor" | "metadata">> = {},
 ): Promise<RampOrderRow | null> {
   for (const from of fromStatuses) {
     if (!canTransition(from, toStatus)) {
@@ -128,5 +128,42 @@ export async function transitionRampOrder(
 }
 
 export function claimOrderForSettlement(id: string): Promise<RampOrderRow | null> {
-  return transitionRampOrder(id, ["funded"], "settling")
+  return transitionRampOrder(id, ["funded"], "settling", { settlement_claimed_at: new Date().toISOString() })
+}
+
+/**
+ * Re-claims a `settling` row with no settlement tx hash for a retry of the
+ * treasury forward — the lease that makes the retry path concurrency-safe.
+ * `canTransition`/`transitionRampOrder` can't express this: settling→settling
+ * isn't a state change in `FORWARD`, it's a lease renewal, so this issues its
+ * own guarded conditional UPDATE. Wins only when the row is unclaimed
+ * (`settlement_claimed_at IS NULL`) or the previous claimant's lease is older
+ * than `leaseMs` (presumed crashed) — otherwise another reconciler still owns
+ * the in-flight send and this returns null.
+ */
+/**
+ * Builds the `.or()` filter string for `claimSettlingRetry`. Exported and
+ * pure so the PostgREST-quoting contract is pinned by a test: filter values
+ * containing reserved characters (`,` `.` `:` `()`) MUST be double-quoted,
+ * and an ISO-8601 timestamp contains both `:` and `.` — an unquoted value
+ * makes PostgREST fail to parse the filter, silently disabling the retry
+ * claim (fails closed, but defeats the whole retry mechanism).
+ */
+export function buildSettlementLeaseFilter(cutoffIso: string): string {
+  return `settlement_claimed_at.is.null,settlement_claimed_at.lt."${cutoffIso}"`
+}
+
+export async function claimSettlingRetry(id: string, leaseMs: number): Promise<RampOrderRow | null> {
+  const db = getServiceClient()
+  const cutoffIso = new Date(Date.now() - leaseMs).toISOString()
+  const { data, error } = await db.from("ramp_orders")
+    .update({ settlement_claimed_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("status", "settling")
+    .is("settlement_tx_hash", null)
+    .or(buildSettlementLeaseFilter(cutoffIso))
+    .select()
+    .maybeSingle()
+  if (error) throw new Error(`ramp_orders claim settling retry: ${error.message}`)
+  return data as RampOrderRow | null
 }

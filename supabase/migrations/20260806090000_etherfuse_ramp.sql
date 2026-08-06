@@ -38,6 +38,11 @@ CREATE TABLE IF NOT EXISTS public.ramp_orders (
   user_tx_hash text,
   -- on-ramp: treasury→user forward tx. off-ramp: treasury→anchor memo payment tx.
   settlement_tx_hash text,
+  -- Settlement lease: set when a reconciler claims the funded→settling row
+  -- (or re-claims a stale settling retry) for the treasury forward, so a
+  -- crashed claimer's lease expires and a later sweep can safely re-claim
+  -- instead of both callers sending.
+  settlement_claimed_at timestamptz,
   -- on-ramp: the user's smart account that receives the forward.
   destination_stellar_address text,
   metadata jsonb NOT NULL DEFAULT '{}',
