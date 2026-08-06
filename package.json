@@ -8,6 +8,7 @@
     "dev:clean": "bash scripts/dev-clean.sh && npm run dev",
     "lint": "eslint .",
     "start": "next start",
+    "test": "vitest run",
     "auto-deposit": "pnpm exec tsx scripts/auto-deposit-cron.ts",
     "auto-deposit:cron": "pnpm exec tsx scripts/auto-deposit-cron.ts",
     "backfill:ledger-merchant": "pnpm exec tsx scripts/backfill-ledger-email-merchant.ts"
@@ -98,6 +99,7 @@
     "tailwindcss": "^4.1.16",
     "tsx": "^4.19.0",
     "tw-animate-css": "1.3.3",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
   }
 }
