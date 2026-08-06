@@ -47,6 +47,46 @@ describe("createEtherfuseProvider", () => {
     })
   })
 
+  it("falls back to the raw text body for a non-JSON (text/plain) error — sandbox E2E finding", async () => {
+    const fetchFn = vi.fn(async () =>
+      new Response("Organization must be approved before adding a bank account", {
+        status: 409,
+        headers: { "Content-Type": "text/plain" },
+      }))
+    const p = makeProvider(fetchFn as unknown as typeof fetch)
+    await expect(
+      p.registerBankAccount("cid", {
+        transactionId: "t", firstName: "A", lastName: "B",
+        cpf: "00000000000", pixKey: "x@y.z", pixKeyType: "email",
+      }),
+    ).rejects.toMatchObject({
+      name: "RampProviderError",
+      reason: "bank_account_registration_failed",
+      message: "Organization must be approved before adding a bank account",
+    })
+  })
+
+  it("never throws when a non-2xx body is neither valid JSON nor readable text", async () => {
+    // A minimal Response-like stand-in whose body reading always fails —
+    // simulates a genuinely broken/errored stream, distinct from the normal
+    // "valid text, invalid JSON" case above. The defensive fallback must
+    // still resolve to a RampProviderError, never an unhandled rejection.
+    const brokenRes = {
+      ok: false,
+      status: 500,
+      json: async () => { throw new Error("body stream errored") },
+      clone: () => ({ text: async () => { throw new Error("body stream errored") } }),
+    }
+    const fetchFn = vi.fn(async () => brokenRes as unknown as Response)
+    const p = makeProvider(fetchFn as unknown as typeof fetch)
+    await expect(
+      p.registerBankAccount("cid", {
+        transactionId: "t", firstName: "A", lastName: "B",
+        cpf: "00000000000", pixKey: "x@y.z", pixKeyType: "email",
+      }),
+    ).rejects.toBeInstanceOf(RampProviderError)
+  })
+
   it("tolerates the empty 200 body of fiat_received", async () => {
     const fetchFn = vi.fn(async () => new Response("", { status: 200 }))
     await expect(

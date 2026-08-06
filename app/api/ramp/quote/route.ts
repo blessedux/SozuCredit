@@ -4,7 +4,7 @@ import { minorToDecimalString } from "@/lib/ramp/decimal"
 import { rampRouteGuard } from "@/lib/ramp/onboarding"
 import { RampProviderError } from "@/lib/ramp/provider"
 import { getRampProvider } from "@/lib/ramp/registry"
-import { getRampTreasuryKeypair } from "@/lib/ramp/settlement"
+import { deriveUserRampKeypair } from "@/lib/ramp/settlement"
 
 export async function POST(request: NextRequest) {
   const auth = await rampRouteGuard(request)
@@ -21,7 +21,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "onboarding_incomplete" }, { status: 409 })
     }
     const provider = getRampProvider()
-    const walletAddress = getRampTreasuryKeypair().publicKey()
+    // The quote's walletAddress must match the customer's registered
+    // Etherfuse wallet — the per-user G, never the shared treasury G (same
+    // one-wallet-per-organization constraint as onboarding/orders).
+    const walletAddress = deriveUserRampKeypair(auth.userId).publicKey()
     const quote = direction === "on"
       ? await provider.createOnrampQuote({
           customerId: customer.customer_id,

@@ -10,7 +10,7 @@ import {
 } from "@/lib/db/ramp"
 import { rampRouteGuard } from "@/lib/ramp/onboarding"
 import { RampProviderError } from "@/lib/ramp/provider"
-import { getRampTreasuryKeypair, getUsdcSacContractId, sendAnchorPayment } from "@/lib/ramp/settlement"
+import { deriveUserRampKeypair, getUsdcSacContractId, sendAnchorPayment } from "@/lib/ramp/settlement"
 import { verifyOfframpEnvelope } from "@/lib/ramp/verify-offramp-envelope"
 import { submitSignedSorobanEnvelope } from "@/lib/stellar/send-token"
 import { getStellarConfig } from "@/lib/turnkey/config"
@@ -36,10 +36,22 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
       withdrawAnchorAccount?: string
       withdrawMemoBase64?: string
       senderC?: string
+      destinationG?: string
     }
     if (!meta.senderC) {
       // Data integrity issue, not a client error — Step 1 always writes this.
       console.error("[ramp/submit] order missing metadata.senderC:", order.id)
+      return NextResponse.json({ error: "internal_error" }, { status: 500 })
+    }
+
+    // Always derive fresh (it's re-derivable, never stored) rather than trust
+    // the DB blindly; when the order also recorded destinationG, the two
+    // must agree or something is wrong (e.g. RAMP_TREASURY_SECRET rotated
+    // between order creation and submit — the per-user G would silently
+    // change underneath an in-flight order).
+    const destinationG = deriveUserRampKeypair(auth.userId).publicKey()
+    if (meta.destinationG && meta.destinationG.trim().toUpperCase() !== destinationG) {
+      console.error("[ramp/submit] destinationG mismatch vs derived key:", order.id)
       return NextResponse.json({ error: "internal_error" }, { status: 500 })
     }
 
@@ -59,13 +71,12 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
     // Bind the envelope to THIS order. Without this, any envelope the
     // caller's own passkey can sign (e.g. a 1-stroop self-transfer) would
     // still be submitted and treated as proof of funding — sendAnchorPayment
-    // below pays the order's FULL usdc_minor from treasury regardless of
-    // what the envelope actually moved. The amount, sender, destination, and
-    // contract must all match the order exactly.
-    const treasuryG = getRampTreasuryKeypair().publicKey()
+    // below pays the order's FULL usdc_minor from the per-user G regardless
+    // of what the envelope actually moved. The amount, sender, destination,
+    // and contract must all match the order exactly.
     const verification = verifyOfframpEnvelope(trimmedXdr, {
       senderC: meta.senderC,
-      treasuryG,
+      destinationG,
       sacContractId: getUsdcSacContractId(getStellarConfig().network),
       amountMinor: order.usdc_minor,
       networkPassphrase,
@@ -89,7 +100,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
       return NextResponse.json({ error: "envelope_reused" }, { status: 409 })
     }
 
-    // 1. User leg: C → treasury (submitSignedSorobanEnvelope waits for
+    // 1. User leg: C → per-user G (submitSignedSorobanEnvelope waits for
     //    on-chain success and throws otherwise). Soroban RPC treats a
     //    resubmitted already-applied tx as a success (DUPLICATE), returning
     //    the same hash it returned the first time — the unique index below
@@ -106,14 +117,14 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
     }
     if (!funded) return NextResponse.json({ error: "order_not_signable" }, { status: 409 })
 
-    // 2. Treasury leg: classic payment to the anchor with the hash memo.
-    //    claimOrderForSettlement performs the guarded funded→settling
-    //    transition AND stamps settlement_claimed_at — the same lease
-    //    claimSettlingRetry checks before a reconciler may retry a stuck
-    //    send. Only the caller that wins this claim may call
+    // 2. Settlement leg: classic payment from the per-user G to the anchor
+    //    with the hash memo. claimOrderForSettlement performs the guarded
+    //    funded→settling transition AND stamps settlement_claimed_at — the
+    //    same lease claimSettlingRetry checks before a reconciler may retry
+    //    a stuck send. Only the caller that wins this claim may call
     //    sendAnchorPayment, so a duplicate/concurrent submit can never
-    //    double-send. On failure below, the order is left in 'settling'
-    //    with the user's USDC safe in treasury; sendAnchorPayment itself is
+    //    double-send. On failure below, the order is left in 'settling' with
+    //    the user's USDC safe on the per-user G; sendAnchorPayment itself is
     //    safe to re-run later because Etherfuse matches on the memo.
     const claimed = await claimOrderForSettlement(order.id)
     if (!claimed) return NextResponse.json({ error: "order_not_signable" }, { status: 409 })
@@ -121,6 +132,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
       return NextResponse.json({ error: "internal_error" }, { status: 500 })
     }
     const { txHash: settlementTxHash } = await sendAnchorPayment({
+      userId: auth.userId,
       anchorAccount: meta.withdrawAnchorAccount,
       memoBase64: meta.withdrawMemoBase64,
       amountUsdcMinor: order.usdc_minor,

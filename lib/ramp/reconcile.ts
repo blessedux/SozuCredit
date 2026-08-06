@@ -7,13 +7,13 @@ import {
   setRampOrderSettlementTx,
   transitionRampOrder,
 } from "@/lib/db/ramp"
-import { sendAnchorPayment, sendTreasuryUsdcToUser } from "@/lib/ramp/settlement"
+import { sendAnchorPayment, sendRampUsdcToUser } from "@/lib/ramp/settlement"
 import type { RampProvider, RampOrderStatus } from "@/lib/ramp/provider"
 import type { RampDirection, RampOrderDbStatus, RampOrderRow } from "@/lib/ramp/types"
 
 /**
  * Settlement lease for the settling+null-hash retry path. Must exceed the
- * ~45s Soroban confirmation window `sendTreasuryUsdcToUser` can block for, so
+ * ~45s Soroban confirmation window `sendRampUsdcToUser` can block for, so
  * a still-in-flight send is never re-claimed out from under itself; matching
  * it to the cron period means a claimant that crashed mid-send is retryable
  * by the very next sweep, not stuck for longer than necessary.
@@ -57,7 +57,7 @@ export function mapProviderStatus(
 /**
  * Sync one order against the provider and run any due settlement step.
  * Idempotent and concurrency-safe: every write goes through guarded
- * transitions, and the treasury forward only happens on the row that WON
+ * transitions, and the per-user-G forward only happens on the row that WON
  * the funded→settling claim (or, for a retry, the settlement lease via
  * `claimSettlingRetry`).
  */
@@ -70,8 +70,8 @@ export async function reconcileOrder(order: RampOrderRow, provider: RampProvider
     if (moved) current = moved
   }
 
-  // On-ramp settlement: forward treasury → user C once Etherfuse reports the
-  // USDC delivered. amountInTokens only exists at provider status
+  // On-ramp settlement: forward per-user G → user C once Etherfuse reports
+  // the USDC delivered. amountInTokens only exists at provider status
   // 'completed'; until then, stay 'funded' and let the next poll retry.
   if (current.direction === "on" && current.status === "funded" && state.amountTokens) {
     const claimed = await claimOrderForSettlement(current.id)
@@ -79,7 +79,8 @@ export async function reconcileOrder(order: RampOrderRow, provider: RampProvider
       current = claimed
       const amountMinor = decimalToUsdcMinor(state.amountTokens, "floor")
       try {
-        const { txHash } = await sendTreasuryUsdcToUser({
+        const { txHash } = await sendRampUsdcToUser({
+          userId: current.user_id,
           toAddress: current.destination_stellar_address!,
           amountMinor,
         })
@@ -100,7 +101,7 @@ export async function reconcileOrder(order: RampOrderRow, provider: RampProvider
 
   // Retry a previously-failed forward: settling with no settlement_tx_hash.
   // Structural double-send guard — NOT "the window is sub-second so it's
-  // fine": `sendTreasuryUsdcToUser` can block up to ~45s on Soroban
+  // fine": `sendRampUsdcToUser` can block up to ~45s on Soroban
   // confirmation, and this same row is reachable from both the cron sweep
   // and a user's GET landing concurrently. `claimSettlingRetry` re-stamps
   // `settlement_claimed_at` under a guarded UPDATE that only succeeds when
@@ -112,7 +113,8 @@ export async function reconcileOrder(order: RampOrderRow, provider: RampProvider
       current = claimed
       const amountMinor = decimalToUsdcMinor(state.amountTokens, "floor")
       try {
-        const { txHash } = await sendTreasuryUsdcToUser({
+        const { txHash } = await sendRampUsdcToUser({
+          userId: current.user_id,
           toAddress: current.destination_stellar_address!,
           amountMinor,
         })
@@ -127,11 +129,11 @@ export async function reconcileOrder(order: RampOrderRow, provider: RampProvider
     }
   }
 
-  // Off-ramp retry: the user's C→treasury leg is confirmed (user_tx_hash
-  // set) but the treasury→anchor memo payment hasn't landed yet (previous
+  // Off-ramp retry: the user's C→per-user-G leg is confirmed (user_tx_hash
+  // set) but the per-user-G→anchor memo payment hasn't landed yet (previous
   // sendAnchorPayment crashed/failed, or the submit route never got that
-  // far — either way the funds are safe in treasury). Mirrors the submit
-  // route's settle step: same claimSettlingRetry lease guards against
+  // far — either way the funds are safe on the per-user G). Mirrors the
+  // submit route's settle step: same claimSettlingRetry lease guards against
   // double-send, and the amount always comes from order.usdc_minor — never
   // re-derived from provider state, since off-ramp settlement doesn't wait
   // on anything Etherfuse reports.
@@ -150,6 +152,7 @@ export async function reconcileOrder(order: RampOrderRow, provider: RampProvider
       } else {
         try {
           const { txHash } = await sendAnchorPayment({
+            userId: current.user_id,
             anchorAccount: meta.withdrawAnchorAccount,
             memoBase64: meta.withdrawMemoBase64,
             amountUsdcMinor: current.usdc_minor,

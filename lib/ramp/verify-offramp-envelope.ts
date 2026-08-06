@@ -17,8 +17,8 @@ export type OfframpEnvelopeVerification = { ok: true } | { ok: false; reason: st
 export interface VerifyOfframpEnvelopeExpected {
   /** The order's recorded sender — the user's smart account (C…). */
   senderC: string
-  /** Treasury classic G — must be the sole payment destination. */
-  treasuryG: string
+  /** The per-user ramp G — the sole payment destination. */
+  destinationG: string
   /** Circle USDC SAC contract id for the network. */
   sacContractId: string
   /** order.usdc_minor — the ONLY amount the server will ever pay the anchor. */
@@ -89,7 +89,7 @@ export function verifyOfframpEnvelope(
   }
 
   const to = Address.fromScVal(toArg).toString().trim().toUpperCase()
-  if (to !== expected.treasuryG.trim().toUpperCase()) {
+  if (to !== expected.destinationG.trim().toUpperCase()) {
     return { ok: false, reason: "wrong_destination" }
   }
 

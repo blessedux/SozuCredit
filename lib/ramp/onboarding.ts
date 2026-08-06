@@ -6,7 +6,7 @@ import { rampEnabled } from "@/lib/app-config"
 import { resolveUserId } from "@/lib/auth/resolve-user"
 import { rampServerConfigured } from "@/lib/ramp/config"
 import { getRampProvider } from "@/lib/ramp/registry"
-import { getRampTreasuryKeypair } from "@/lib/ramp/settlement"
+import { deriveUserRampKeypair, ensureUserRampAccount } from "@/lib/ramp/settlement"
 import {
   getRampCustomer, setRampCustomerBankAccount, setRampCustomerWallet, upsertRampCustomer,
 } from "@/lib/db/ramp"
@@ -140,9 +140,12 @@ export async function completeSetup(params: {
     await recordBankAccount(params.userId, customer.provider, customer.customer_id, bankAccountId)
   }
   if (!customer.wallet_id) {
-    // Treasury hop: the registered Stellar wallet is Sozu's treasury G.
-    const treasuryPk = getRampTreasuryKeypair().publicKey()
-    const { walletId } = await provider.registerWallet(customer.customer_id, treasuryPk)
+    // Etherfuse rejects reusing the same G across organizations ("This
+    // wallet is claimed by another organization"), so each customer gets a
+    // unique, deterministically-derived per-user G instead of treasury's.
+    await ensureUserRampAccount(params.userId)
+    const userPk = deriveUserRampKeypair(params.userId).publicKey()
+    const { walletId } = await provider.registerWallet(customer.customer_id, userPk)
     await setRampCustomerWallet(params.userId, customer.provider, walletId)
   }
   return { status: "ready" }

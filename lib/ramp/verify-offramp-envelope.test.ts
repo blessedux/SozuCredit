@@ -7,14 +7,14 @@ const SENDER_C = Address.contract(Buffer.alloc(32, 1)).toString()
 const SAC_CONTRACT = Address.contract(Buffer.alloc(32, 2)).toString()
 const OTHER_CONTRACT = Address.contract(Buffer.alloc(32, 3)).toString()
 const OTHER_C = Address.contract(Buffer.alloc(32, 4)).toString()
-const TREASURY_G = Keypair.random().publicKey()
+const DESTINATION_G = Keypair.random().publicKey()
 const OTHER_G = Keypair.random().publicKey()
 const FEE_PAYER_G = Keypair.random().publicKey()
 const AMOUNT_MINOR = 12_345_678
 
 const expected = {
   senderC: SENDER_C,
-  treasuryG: TREASURY_G,
+  destinationG: DESTINATION_G,
   sacContractId: SAC_CONTRACT,
   amountMinor: AMOUNT_MINOR,
   networkPassphrase: NETWORK_PASSPHRASE,
@@ -38,7 +38,7 @@ function buildEnvelope(opts: {
   const contract = new Contract(opts.contractId ?? SAC_CONTRACT)
   const args = [
     Address.fromString(opts.from ?? SENDER_C).toScVal(),
-    Address.fromString(opts.to ?? TREASURY_G).toScVal(),
+    Address.fromString(opts.to ?? DESTINATION_G).toScVal(),
     nativeToScVal(BigInt(opts.amountMinor ?? AMOUNT_MINOR), { type: "i128" }),
   ]
   if (opts.extraArg) args.push(nativeToScVal(BigInt(1), { type: "i128" }))
@@ -48,7 +48,7 @@ function buildEnvelope(opts: {
       contract.call(
         "transfer",
         Address.fromString(SENDER_C).toScVal(),
-        Address.fromString(TREASURY_G).toScVal(),
+        Address.fromString(DESTINATION_G).toScVal(),
         nativeToScVal(BigInt(AMOUNT_MINOR), { type: "i128" }),
       ),
     )

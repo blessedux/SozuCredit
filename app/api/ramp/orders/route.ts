@@ -5,7 +5,7 @@ import { minorToDecimalString } from "@/lib/ramp/decimal"
 import { rampRouteGuard } from "@/lib/ramp/onboarding"
 import { RampProviderError } from "@/lib/ramp/provider"
 import { getRampProvider } from "@/lib/ramp/registry"
-import { decodeAnchorMemo, getRampTreasuryKeypair, getUsdcSacContractId } from "@/lib/ramp/settlement"
+import { decodeAnchorMemo, deriveUserRampKeypair, getUsdcSacContractId } from "@/lib/ramp/settlement"
 import { getStellarConfig } from "@/lib/turnkey/config"
 import { getStellarWallet } from "@/lib/turnkey/stellar-wallet"
 
@@ -72,9 +72,12 @@ export async function POST(request: NextRequest) {
     }
 
     // direction === "off": create the anchor order, then build the user's
-    // C→treasury USDC transfer for passkey signing. The anchor details
+    // C→per-user-G USDC transfer for passkey signing. The anchor details
     // (account + 32-byte memo) are kept server-side in order metadata; the
-    // memo payment is relayed from treasury AFTER the user leg confirms.
+    // memo payment is relayed from that per-user G AFTER the user leg
+    // confirms. Etherfuse rejects a shared destination across customers, so
+    // the destination is this customer's own deterministically-derived G,
+    // never the treasury.
     const anchor = await provider.createAnchorOfframpOrder({
       orderId,
       quoteId,
@@ -85,7 +88,7 @@ export async function POST(request: NextRequest) {
     // payment would be auto-refunded.
     decodeAnchorMemo(anchor.withdrawMemoBase64)
 
-    const treasuryPk = getRampTreasuryKeypair().publicKey()
+    const destinationG = deriveUserRampKeypair(auth.userId).publicKey()
     const senderC = wallet.publicKey.trim().toUpperCase()
     if (!senderC.startsWith("C")) {
       return NextResponse.json({ error: "wallet_must_be_smart_account" }, { status: 422 })
@@ -106,7 +109,7 @@ export async function POST(request: NextRequest) {
     const { unsignedXdr, sorobanDataXdr } = await sendToken({
       contractId: getUsdcSacContractId(getStellarConfig().network),
       from: senderC,
-      to: treasuryPk,
+      to: destinationG,
       amount: minorToDecimalString(usdcMinor, 7),
       relayerPublicKey: feePayer,
       network: getStellarConfig().network,
@@ -129,6 +132,9 @@ export async function POST(request: NextRequest) {
         // Binds the eventual signed envelope to THIS sender — verifyOfframpEnvelope
         // rejects any envelope whose `from` doesn't match this recorded C address.
         senderC,
+        // The per-user G this order's C→G leg must land on — verifyOfframpEnvelope
+        // rejects any envelope whose `to` doesn't match this recorded destination.
+        destinationG,
       },
     })
     return NextResponse.json({

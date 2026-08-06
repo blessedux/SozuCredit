@@ -198,6 +198,15 @@ export function createEtherfuseProvider(deps: EtherfuseDeps): RampProvider {
    * documented #1 cause of 401 (docs/evidence/etherfuse-sandbox-findings.md,
    * header note). Bodies are parsed tolerantly — `POST
    * /ramp/order/fiat_received` answers 200 with an empty body.
+   *
+   * Etherfuse's error responses are frequently `text/plain` with an
+   * UNQUOTED string body (not valid JSON) — a live sandbox E2E found that
+   * `res.json()` on those collapses to the literal message `"null"`,
+   * discarding the real reason. When the body isn't valid JSON, fall back to
+   * the raw response text (trimmed) as the error message; only if that ALSO
+   * fails (e.g. the body stream was already consumed) does it fall back to
+   * `null`, so a body that is neither valid JSON nor readable text still
+   * cannot throw out of this helper.
    */
   async function call<T>(method: string, path: string, body: unknown, reason: string): Promise<T> {
     const res = await fetchFn(`${apiBaseUrl}${path}`, {
@@ -205,8 +214,14 @@ export function createEtherfuseProvider(deps: EtherfuseDeps): RampProvider {
       headers: {Authorization: apiKey, 'Content-Type': 'application/json'},
       body: body === undefined ? undefined : JSON.stringify(body)
     });
+    if (!res.ok) {
+      const clone = res.clone();
+      const json: unknown = await res.json().catch(() => undefined);
+      if (json !== undefined) throw new RampProviderError(reason, extractErrorMessage(json));
+      const text = await clone.text().catch(() => null);
+      throw new RampProviderError(reason, extractErrorMessage(text));
+    }
     const json: unknown = await res.json().catch(() => null);
-    if (!res.ok) throw new RampProviderError(reason, extractErrorMessage(json));
     return json as T;
   }
 

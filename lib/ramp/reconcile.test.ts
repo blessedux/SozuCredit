@@ -38,7 +38,7 @@ const mocks = vi.hoisted(() => ({
   claimOrderForSettlement: vi.fn(),
   claimSettlingRetry: vi.fn(),
   setRampOrderSettlementTx: vi.fn(),
-  sendTreasuryUsdcToUser: vi.fn(),
+  sendRampUsdcToUser: vi.fn(),
   sendAnchorPayment: vi.fn(),
 }))
 
@@ -50,7 +50,7 @@ vi.mock("@/lib/db/ramp", () => ({
 }))
 
 vi.mock("@/lib/ramp/settlement", () => ({
-  sendTreasuryUsdcToUser: mocks.sendTreasuryUsdcToUser,
+  sendRampUsdcToUser: mocks.sendRampUsdcToUser,
   sendAnchorPayment: mocks.sendAnchorPayment,
 }))
 
@@ -93,7 +93,7 @@ describe("reconcileOrder — funded → settling claim + forward", () => {
     mocks.claimOrderForSettlement.mockReset().mockResolvedValue({
       ...baseOrder, status: "settling", settlement_claimed_at: "2026-01-01T00:00:01Z",
     })
-    mocks.sendTreasuryUsdcToUser.mockReset().mockResolvedValue({ txHash: "TXHASH_A" })
+    mocks.sendRampUsdcToUser.mockReset().mockResolvedValue({ txHash: "TXHASH_A" })
     mocks.transitionRampOrder.mockReset().mockResolvedValue({
       ...baseOrder, status: "completed", settlement_tx_hash: "TXHASH_A", usdc_minor: 123_456_789,
     })
@@ -104,9 +104,9 @@ describe("reconcileOrder — funded → settling claim + forward", () => {
 
     expect(mocks.claimOrderForSettlement).toHaveBeenCalledTimes(1)
     expect(mocks.claimOrderForSettlement).toHaveBeenCalledWith("order-1")
-    expect(mocks.sendTreasuryUsdcToUser).toHaveBeenCalledTimes(1)
-    expect(mocks.sendTreasuryUsdcToUser).toHaveBeenCalledWith({
-      toAddress: "GDESTINATIONADDR", amountMinor: 123_456_789,
+    expect(mocks.sendRampUsdcToUser).toHaveBeenCalledTimes(1)
+    expect(mocks.sendRampUsdcToUser).toHaveBeenCalledWith({
+      userId: "user-1", toAddress: "GDESTINATIONADDR", amountMinor: 123_456_789,
     })
     expect(mocks.claimSettlingRetry).not.toHaveBeenCalled()
     expect(result.status).toBe("completed")
@@ -115,7 +115,7 @@ describe("reconcileOrder — funded → settling claim + forward", () => {
 
   it("(b) claim loses (race) → never sends", async () => {
     mocks.claimOrderForSettlement.mockReset().mockResolvedValue(null)
-    mocks.sendTreasuryUsdcToUser.mockReset()
+    mocks.sendRampUsdcToUser.mockReset()
     mocks.transitionRampOrder.mockReset()
     mocks.claimSettlingRetry.mockReset()
 
@@ -124,7 +124,7 @@ describe("reconcileOrder — funded → settling claim + forward", () => {
 
     expect(mocks.claimOrderForSettlement).toHaveBeenCalledTimes(1)
     expect(mocks.claimOrderForSettlement).toHaveBeenCalledWith("order-1")
-    expect(mocks.sendTreasuryUsdcToUser).not.toHaveBeenCalled()
+    expect(mocks.sendRampUsdcToUser).not.toHaveBeenCalled()
     expect(result.status).toBe("funded")
   })
 
@@ -133,7 +133,7 @@ describe("reconcileOrder — funded → settling claim + forward", () => {
       ...baseOrder, status: "settling", settlement_claimed_at: "2026-01-01T00:00:01Z",
     }
     mocks.claimOrderForSettlement.mockReset().mockResolvedValue(claimedRow)
-    mocks.sendTreasuryUsdcToUser.mockReset().mockRejectedValue(new Error("soroban rpc down"))
+    mocks.sendRampUsdcToUser.mockReset().mockRejectedValue(new Error("soroban rpc down"))
     mocks.transitionRampOrder.mockReset()
     // The lease `claimOrderForSettlement` just stamped is fresh, so a
     // same-pass re-claim attempt loses — this is what actually prevents the
@@ -143,7 +143,7 @@ describe("reconcileOrder — funded → settling claim + forward", () => {
     const provider = makeProvider("completed", "12.3456789")
     const result = await reconcileOrder(baseOrder, provider)
 
-    expect(mocks.sendTreasuryUsdcToUser).toHaveBeenCalledTimes(1)
+    expect(mocks.sendRampUsdcToUser).toHaveBeenCalledTimes(1)
     expect(mocks.transitionRampOrder).not.toHaveBeenCalledWith(
       "order-1", ["settling"], "completed", expect.anything(),
     )
@@ -161,7 +161,7 @@ describe("reconcileOrder — settling retry (previously-failed forward)", () => 
     mocks.claimSettlingRetry.mockReset().mockResolvedValue({
       ...settlingOrder, settlement_claimed_at: "2026-01-01T00:05:00Z",
     })
-    mocks.sendTreasuryUsdcToUser.mockReset().mockResolvedValue({ txHash: "TXHASH_C" })
+    mocks.sendRampUsdcToUser.mockReset().mockResolvedValue({ txHash: "TXHASH_C" })
     mocks.transitionRampOrder.mockReset().mockResolvedValue({
       ...settlingOrder, status: "completed", settlement_tx_hash: "TXHASH_C", usdc_minor: 123_456_789,
     })
@@ -173,14 +173,14 @@ describe("reconcileOrder — settling retry (previously-failed forward)", () => 
     expect(mocks.claimOrderForSettlement).not.toHaveBeenCalled()
     expect(mocks.claimSettlingRetry).toHaveBeenCalledTimes(1)
     expect(mocks.claimSettlingRetry).toHaveBeenCalledWith("order-1", SETTLEMENT_LEASE_MS)
-    expect(mocks.sendTreasuryUsdcToUser).toHaveBeenCalledTimes(1)
+    expect(mocks.sendRampUsdcToUser).toHaveBeenCalledTimes(1)
     expect(result.status).toBe("completed")
     expect(result.settlement_tx_hash).toBe("TXHASH_C")
   })
 
   it("(d) claimSettlingRetry loses (another owner still holds the lease) → never sends", async () => {
     mocks.claimSettlingRetry.mockReset().mockResolvedValue(null)
-    mocks.sendTreasuryUsdcToUser.mockReset()
+    mocks.sendRampUsdcToUser.mockReset()
     mocks.transitionRampOrder.mockReset()
     mocks.claimOrderForSettlement.mockReset()
 
@@ -189,7 +189,7 @@ describe("reconcileOrder — settling retry (previously-failed forward)", () => 
 
     expect(mocks.claimSettlingRetry).toHaveBeenCalledTimes(1)
     expect(mocks.claimSettlingRetry).toHaveBeenCalledWith("order-1", SETTLEMENT_LEASE_MS)
-    expect(mocks.sendTreasuryUsdcToUser).not.toHaveBeenCalled()
+    expect(mocks.sendRampUsdcToUser).not.toHaveBeenCalled()
     expect(result.status).toBe("settling")
   })
 })
@@ -216,7 +216,7 @@ describe("reconcileOrder — off-ramp settling retry (anchor payment)", () => {
     mocks.setRampOrderSettlementTx.mockReset().mockResolvedValue(undefined)
     mocks.claimOrderForSettlement.mockReset()
     mocks.transitionRampOrder.mockReset()
-    mocks.sendTreasuryUsdcToUser.mockReset()
+    mocks.sendRampUsdcToUser.mockReset()
 
     // "created" (fiat not yet received) keeps mapProviderStatus a no-op so
     // the row stays 'settling' and the retry block below is what runs.
@@ -227,6 +227,7 @@ describe("reconcileOrder — off-ramp settling retry (anchor payment)", () => {
     expect(mocks.claimSettlingRetry).toHaveBeenCalledWith("order-1", SETTLEMENT_LEASE_MS)
     expect(mocks.sendAnchorPayment).toHaveBeenCalledTimes(1)
     expect(mocks.sendAnchorPayment).toHaveBeenCalledWith({
+      userId: "user-1",
       anchorAccount: "GANCHORACCOUNT",
       memoBase64: MEMO_B64,
       amountUsdcMinor: 100_000_000,
@@ -243,7 +244,7 @@ describe("reconcileOrder — off-ramp settling retry (anchor payment)", () => {
     mocks.setRampOrderSettlementTx.mockReset()
     mocks.claimOrderForSettlement.mockReset()
     mocks.transitionRampOrder.mockReset()
-    mocks.sendTreasuryUsdcToUser.mockReset()
+    mocks.sendRampUsdcToUser.mockReset()
 
     const provider = makeProvider("created", null)
     const result = await reconcileOrder(offOrder, provider)
