@@ -67,7 +67,8 @@ function getSorobanRpcUrl(network: "testnet" | "mainnet"): string {
   )
 }
 
-function getUsdcSacContractId(network: "testnet" | "mainnet"): string {
+/** Circle USDC SAC contract for the network — same resolution the off-ramp order build uses. */
+export function getUsdcSacContractId(network: "testnet" | "mainnet"): string {
   const circle = getAssetById("circle_usdc_sac", network)
   if (circle) return circle.contractId
   return getBlendUsdcAsset(network).contractId

@@ -167,3 +167,12 @@ export async function claimSettlingRetry(id: string, leaseMs: number): Promise<R
   if (error) throw new Error(`ramp_orders claim settling retry: ${error.message}`)
   return data as RampOrderRow | null
 }
+
+/** Records the treasury→anchor payment hash once sendAnchorPayment succeeds. Row must still be 'settling'. */
+export async function setRampOrderSettlementTx(id: string, txHash: string): Promise<void> {
+  const db = getServiceClient()
+  const { error } = await db.from("ramp_orders")
+    .update({ settlement_tx_hash: txHash })
+    .eq("id", id).eq("status", "settling")
+  if (error) throw new Error(`ramp_orders settlement tx update: ${error.message}`)
+}
