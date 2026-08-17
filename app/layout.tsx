@@ -8,6 +8,7 @@ import { PaperShaderBackgroundShell } from "@/components/paper-shader-background
 import { ViewportHeightSync } from "@/components/viewport-height-sync"
 import { Preloader } from "@/components/preloader-remover"
 import { Toaster } from "@/components/ui/sonner"
+import { Analytics } from "@vercel/analytics/next"
 
 export const metadata: Metadata = {
   title: "Sozu Wallet",
@@ -80,6 +81,7 @@ export default function RootLayout({
         <DeferredAnalytics />
         <PWARegister />
         <Toaster />
+        <Analytics />
       </body>
     </html>
   )
