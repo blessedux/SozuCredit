@@ -32,8 +32,9 @@ import {
 import { isValidStellarReceiveAddress } from "@/lib/payment/stellar-address"
 import { formatBalance, getUserId } from "@/lib/wallet-utils"
 import type { ReferenceFiat } from "@/lib/treasury/types"
-
 import type { PaymentReceipt } from "@/lib/payment/payment-receipt"
+import { pizzaBalanceToShow } from "@/lib/stellar/pizza-token"
+import { isPizzaAssetRow } from "@/lib/stellar/sku-send"
 
 interface SendPaymentModalProps {
   isOpen: boolean
@@ -47,6 +48,15 @@ interface SendPaymentModalProps {
     strategyBalance: number
     totalBalance: number
     displayBalance?: number
+    tokenBalances?: Array<{
+      assetId?: string
+      contractId: string
+      symbol?: string
+      displayName?: string
+      balance: number
+      category?: string
+      decimals?: number
+    }>
   } | null
   referenceFiat: ReferenceFiat
   onSuccess: (receipt: PaymentReceipt) => void
@@ -54,6 +64,7 @@ interface SendPaymentModalProps {
   /** When true, opens the QR scanner as soon as the modal mounts. */
   openScannerOnMount?: boolean
   onScannerOpenConsumed?: () => void
+  initialAssetContractId?: string | null
 }
 
 export const SendPaymentModal = memo(function SendPaymentModal({
@@ -67,6 +78,7 @@ export const SendPaymentModal = memo(function SendPaymentModal({
   onRefresh,
   openScannerOnMount = false,
   onScannerOpenConsumed,
+  initialAssetContractId = null,
 }: SendPaymentModalProps) {
   const { t } = useWalletLanguage()
 
@@ -84,6 +96,8 @@ export const SendPaymentModal = memo(function SendPaymentModal({
     amountError,
     isVibrating,
     legacyPaymentNotice,
+    sendAssetContractId,
+    isPizzaSend,
     setSendRecipient,
     setSendAmount,
     setIsManualMode,
@@ -91,6 +105,7 @@ export const SendPaymentModal = memo(function SendPaymentModal({
     setRecipientError,
     setAmountError,
     toggleAmountCurrency,
+    setSendAssetContractId,
     handleResolveRecipient,
     handleSendPayment,
     resetSendPayment,
@@ -130,6 +145,21 @@ export const SendPaymentModal = memo(function SendPaymentModal({
     setIsScannerOpen(true)
     onScannerOpenConsumed?.()
   }, [isOpen, openScannerOnMount, onScannerOpenConsumed])
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSendAssetContractId(null)
+      return
+    }
+    if (!initialAssetContractId) return
+    setSendAssetContractId(initialAssetContractId)
+    const pizza = defindexBalance?.tokenBalances?.find(
+      (r) =>
+        isPizzaAssetRow(r) &&
+        r.contractId.toUpperCase() === initialAssetContractId.trim().toUpperCase(),
+    )
+    if (pizza) setSendAmount("1")
+  }, [isOpen, initialAssetContractId, defindexBalance?.tokenBalances, setSendAssetContractId, setSendAmount])
 
   // Warm up kit + credential storage as soon as modal opens so the passkey
   // prompt can appear quickly when the user taps Send.
@@ -298,11 +328,15 @@ export const SendPaymentModal = memo(function SendPaymentModal({
   }, [isOpen])
 
   const parsedAmount = parseFloat(sendAmount)
-  const hasValidAmount = sendAmount.length > 0 && !Number.isNaN(parsedAmount) && parsedAmount > 0
+  const hasValidAmount = isPizzaSend
+    ? Number.isInteger(parsedAmount) && parsedAmount >= 1
+    : sendAmount.length > 0 && !Number.isNaN(parsedAmount) && parsedAmount > 0
   const amountPlaceholder =
-    amountInputCurrency === "fiat" && fiatDecimals(referenceFiat) === 0 ? "0" : "0.00"
+    isPizzaSend || (amountInputCurrency === "fiat" && fiatDecimals(referenceFiat) === 0)
+      ? "0"
+      : "0.00"
   const amountUsesIntegerPad =
-    amountInputCurrency === "fiat" && fiatDecimals(referenceFiat) === 0
+    isPizzaSend || (amountInputCurrency === "fiat" && fiatDecimals(referenceFiat) === 0)
   const amountInputMode = amountUsesIntegerPad ? "numeric" : "decimal"
 
   const handleAmountChange = useCallback(
@@ -331,6 +365,9 @@ export const SendPaymentModal = memo(function SendPaymentModal({
     const local = fiatFromUsdcAmount(usdcAmount, referenceFiat)
     return referenceFiat === "CLP" || referenceFiat === "ARS" ? Math.round(local) : local
   }
+
+  const pizzaHeld = pizzaBalanceToShow(defindexBalance?.tokenBalances)
+  const pizzaContractId = defindexBalance?.tokenBalances?.find((r) => isPizzaAssetRow(r))?.contractId ?? null
 
   /** Spendable USDC on C (Blend + Circle SAC); excludes DeFindex strategy. */
   const availableBalance =
@@ -527,16 +564,56 @@ export const SendPaymentModal = memo(function SendPaymentModal({
               Disponible
             </p>
             <div className="min-w-0 text-left">
-              <div className="flex max-w-full items-baseline gap-1.5 justify-start">
-                <div className={balanceSizeClass}>{availableFiatFormatted}</div>
-                <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-white/40">
-                  {referenceFiat}
-                </span>
-              </div>
-              <p className="mt-1.5 text-xs tabular-nums text-white/35 sm:text-sm">
-                {availableUsdcFormatted}
-              </p>
+              {isPizzaSend ? (
+                <div className="flex max-w-full items-baseline gap-1.5 justify-start">
+                  <div className={balanceSizeClass}>{pizzaHeld ?? 0}</div>
+                  <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-white/40">
+                    {t.sendAssetPizza}
+                  </span>
+                </div>
+              ) : (
+                <>
+                  <div className="flex max-w-full items-baseline gap-1.5 justify-start">
+                    <div className={balanceSizeClass}>{availableFiatFormatted}</div>
+                    <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-white/40">
+                      {referenceFiat}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-xs tabular-nums text-white/35 sm:text-sm">
+                    {availableUsdcFormatted}
+                  </p>
+                </>
+              )}
             </div>
+            {pizzaHeld != null && pizzaContractId ? (
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSendAssetContractId(null)}
+                  className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-widest ${
+                    !isPizzaSend
+                      ? "border-white/40 bg-white/15 text-white"
+                      : "border-white/15 text-white/50"
+                  }`}
+                >
+                  {t.sendAssetUsdc}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSendAssetContractId(pizzaContractId)
+                    setSendAmount("1")
+                  }}
+                  className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-widest ${
+                    isPizzaSend
+                      ? "border-white/40 bg-white/15 text-white"
+                      : "border-white/15 text-white/50"
+                  }`}
+                >
+                  {t.sendAssetPizza}
+                </button>
+              </div>
+            ) : null}
           </div>
 
           {/* Divider */}
@@ -786,6 +863,16 @@ export const SendPaymentModal = memo(function SendPaymentModal({
                   {legacyPaymentNotice}
                 </p>
               ) : null}
+              {isPizzaSend ? (
+                <div className="w-full py-2 text-center">
+                  <div className="flex max-w-full items-baseline gap-1.5 justify-center">
+                    <div className={balanceSizeClass}>{hasValidAmount ? parsedAmount : 1}</div>
+                    <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-white/40">
+                      {t.sendAssetPizza}
+                    </span>
+                  </div>
+                </div>
+              ) : (
               <button
                 type="button"
                 onClick={toggleAmountCurrency}
@@ -803,6 +890,7 @@ export const SendPaymentModal = memo(function SendPaymentModal({
                 </p>
                 <p className="text-white/35 text-xs mt-2">{t.sendTapToSwitchCurrency}</p>
               </button>
+              )}
 
             <motion.div
               animate={isVibrating ? { x: [0, -10, 10, -10, 10, 0] } : {}}

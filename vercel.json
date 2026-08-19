@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/gmail-sync",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/ramp-sync",
+      "schedule": "0 6 * * *"
     }
   ]
 }

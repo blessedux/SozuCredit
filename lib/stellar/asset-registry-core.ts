@@ -3,6 +3,13 @@ import {
   getDefaultTestnetBlendUsdcId,
 } from "@/lib/stellar/contract-id"
 import type { SozuAsset, StellarNetwork } from "@/lib/stellar/asset-types"
+import {
+  DEFAULT_TESTNET_PIZZA_TOKEN_ID,
+  PIZZA_ASSET_ID,
+  PIZZA_DECIMALS,
+  PIZZA_NAME,
+  PIZZA_SYMBOL,
+} from "@/lib/stellar/pizza-token"
 
 const MAINNET_USDC_DEFAULT =
   "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75"
@@ -58,6 +65,19 @@ export function getDefaultAssetRegistry(network: StellarNetwork): SozuAsset[] {
       category: "stablecoin",
       /** Default send rail for Sozu / SozuPay C↔C (same SAC as org treasuries). */
       sendPriority: 5,
+    },
+    {
+      id: PIZZA_ASSET_ID,
+      contractId: DEFAULT_TESTNET_PIZZA_TOKEN_ID,
+      symbol: PIZZA_SYMBOL,
+      name: PIZZA_NAME,
+      displayName: PIZZA_NAME,
+      decimals: PIZZA_DECIMALS,
+      network: "testnet",
+      issuer: "Sozu",
+      category: "sku",
+      /** Never auto-pick ahead of USDC; Send must pass this contractId explicitly. */
+      sendPriority: 90,
     },
   ]
 }

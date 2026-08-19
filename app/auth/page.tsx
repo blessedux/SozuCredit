@@ -37,6 +37,8 @@ import {
   parseFaucetHandoffAuthReturn,
 } from "@/lib/sozu-faucet/return-allowlist"
 import { toast } from "sonner"
+import { resolvePizzaAuthSearch } from "@/lib/pizza/pay-return"
+import { PizzaAuthContinuation } from "@/components/pizza/PizzaAuthContinuation"
 
 function navigatePostAuth(
   path: string,
@@ -129,6 +131,8 @@ function AuthPageContent() {
   })()
 
   const finalPostAuthPath = checkoutRedirect ?? postAuthPath
+  const pizzaAuth = resolvePizzaAuthSearch(searchParams)
+  const stayOnAuthForPizza = pizzaAuth.kind !== "none"
 
   useEffect(() => {
     if (redirectingRef.current || isAuthenticating || isAuthenticated) return
@@ -153,6 +157,13 @@ function AuthPageContent() {
       const session = await loadClientWalletSession()
       if (cancelled) return
       if (session.isAuthenticated && session.userId) {
+        if (stayOnAuthForPizza) {
+          setIsAuthenticated(true)
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => signalBootstrapReady())
+          })
+          return
+        }
         redirectingRef.current = true
         const target =
           searchParams.get("sdpInvite") === "1" ? "/sdp/register" : finalPostAuthPath
@@ -171,7 +182,7 @@ function AuthPageContent() {
     return () => {
       cancelled = true
     }
-  }, [searchParams, router, finalPostAuthPath, isAuthenticating, isAuthenticated])
+  }, [searchParams, router, finalPostAuthPath, stayOnAuthForPizza, isAuthenticating, isAuthenticated])
 
   const finalizePasskeyLoginSuccess = useCallback(
     async (userId: string, username: string | undefined, credential: { id: string }) => {
@@ -212,6 +223,11 @@ function AuthPageContent() {
       setTagModalPrefill(null)
       setIsAuthenticated(true)
       setIsAuthenticating(false)
+      if (stayOnAuthForPizza) {
+        redirectingRef.current = false
+        setIsExiting(false)
+        return
+      }
       redirectingRef.current = true
       setIsExiting(true)
       setTimeout(
@@ -219,7 +235,7 @@ function AuthPageContent() {
         300,
       )
     },
-    [router, finalPostAuthPath]
+    [router, finalPostAuthPath, stayOnAuthForPizza]
   )
 
   const finalizePinLoginSuccess = useCallback(
@@ -254,6 +270,11 @@ function AuthPageContent() {
       setTagModalPrefill(null)
       setIsAuthenticated(true)
       setIsAuthenticating(false)
+      if (stayOnAuthForPizza) {
+        redirectingRef.current = false
+        setIsExiting(false)
+        return
+      }
       redirectingRef.current = true
       setIsExiting(true)
       setTimeout(
@@ -261,7 +282,7 @@ function AuthPageContent() {
         300,
       )
     },
-    [router, finalPostAuthPath]
+    [router, finalPostAuthPath, stayOnAuthForPizza]
   )
 
   const attemptLoginWithTag = useCallback(
@@ -763,6 +784,12 @@ function AuthPageContent() {
           // Use router.push with replace to prevent back button issues
           // Don't use window.location.href as it causes hard refresh
           console.log("[Auth] Navigating after registration...")
+          if (stayOnAuthForPizza) {
+            setIsAuthenticated(true)
+            redirectingRef.current = false
+            setIsExiting(false)
+            return
+          }
           navigatePostAuth(finalPostAuthPath, (p) => router.push(p))
         }, 300) // Wait 300ms for fade-out animation
 
@@ -815,6 +842,10 @@ function AuthPageContent() {
 
         if (isAuth) {
           console.log("[Auth] Found auth state after error, redirecting anyway...")
+          if (stayOnAuthForPizza) {
+            setIsAuthenticated(true)
+            return
+          }
           redirectingRef.current = true
           console.log("[Auth] Executing error recovery redirect:", postAuthPath)
           navigatePostAuth(finalPostAuthPath, (p) => router.push(p))
@@ -832,6 +863,9 @@ function AuthPageContent() {
 
   return (
     <div className="relative h-full min-h-[var(--sozu-app-height,100lvh)] w-full overflow-hidden">
+      {isAuthenticated && pizzaAuth.kind !== "none" ? (
+        <PizzaAuthContinuation continuation={pizzaAuth} />
+      ) : null}
 
       {/* ── PWA install banner — fixed top toast, visible on mobile before install ── */}
       <AnimatePresence>
@@ -1024,6 +1058,11 @@ function AuthPageContent() {
             }
             setIsAuthenticated(true)
             setIsAuthenticating(false)
+            if (stayOnAuthForPizza) {
+              redirectingRef.current = false
+              setIsExiting(false)
+              return
+            }
             redirectingRef.current = true
             setIsExiting(true)
             setTimeout(

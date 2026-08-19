@@ -39,6 +39,16 @@ export const depositsEnabled =
 /** CLP threshold below which the auto-release job may skip manual review (Phase 5). */
 export const autoReleaseLimitClp = Number(process.env.BETA_AUTO_RELEASE_LIMIT_CLP ?? "500000")
 
+/**
+ * Whether the Etherfuse fiat ramp (BRL/PIX on/off-ramp) is available.
+ * UI requires NEXT_PUBLIC_RAMP_ENABLED=true at build/dev start; server routes
+ * also accept RAMP_ENABLED. Server routes additionally require the
+ * ETHERFUSE_* credentials (lib/ramp/config.ts) or they 503.
+ */
+export const rampEnabled =
+  process.env.NEXT_PUBLIC_RAMP_ENABLED === "true" ||
+  process.env.RAMP_ENABLED === "true"
+
 /** Public app origin (no trailing slash). Used for callbacks and health diagnostics. */
 export const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "")
 

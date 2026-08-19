@@ -9,6 +9,7 @@ import {
 } from "@/lib/stellar/soroban-token"
 import { getStellarConfig } from "@/lib/turnkey/config"
 import { Horizon } from "@stellar/stellar-sdk"
+import { isUsdcSpendableCategory } from "@/lib/stellar/asset-types"
 
 export async function OPTIONS(request: Request) {
   return handleOPTIONS(request as any)
@@ -126,6 +127,7 @@ export async function GET(request: NextRequest) {
     }
     const tokenSumByContract = new Map<string, number>()
     for (const row of usdcBreakdown.tokenBalances ?? []) {
+      if (!isUsdcSpendableCategory(row.asset.category)) continue
       const id = row.asset.contractId.trim().toUpperCase()
       tokenSumByContract.set(
         id,
@@ -253,7 +255,9 @@ export async function GET(request: NextRequest) {
         })),
         maxSingleTokenBalance: Math.max(
           0,
-          ...(usdcBreakdown.tokenBalances ?? []).map((r) => r.balance),
+          ...(usdcBreakdown.tokenBalances ?? [])
+            .filter((r) => isUsdcSpendableCategory(r.asset.category))
+            .map((r) => r.balance),
         ),
         classicUsdcOnSigner: usdcBreakdown.classicOnSigner,
         legacyUsdcOnSigner: usdcBreakdown.legacyUsdcOnSigner,

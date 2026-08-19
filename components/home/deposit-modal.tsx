@@ -11,13 +11,16 @@ import { useWalletLanguage } from "@/lib/wallet-language"
 import { formatWalletText } from "@/lib/wallet-texts"
 import { resolveDepositReceiveAddress } from "@/lib/wallet/deposit-receive-address"
 import { getUserId } from "@/lib/wallet-utils"
-import { depositsEnabled } from "@/lib/app-config"
+import { depositsEnabled, rampEnabled } from "@/lib/app-config"
 import { fundViaSozuFaucet } from "@/lib/stellar/sozu-faucet-fund"
 import {
   markWalletActivationComplete,
   markWelcomeOnboardingComplete,
 } from "@/lib/wallet/needs-activation-onboarding"
 import { FiatDepositFlow } from "@/components/home/fiat-deposit-flow"
+import { BrazilOnrampFlow } from "@/components/home/brazil-onramp-flow"
+
+type RampCountry = "CL" | "BR"
 
 type DepositModalProps = {
   isOpen: boolean
@@ -76,6 +79,19 @@ export function DepositModal({
     return depositsEnabled ? "fiat" : "crypto"
   })
 
+  // Fiat-tab country selector — CL keeps the existing bank-transfer/SumUp flow,
+  // BR routes to the Etherfuse PIX on-ramp. Only rendered when rampEnabled.
+  const [rampCountry, setRampCountry] = useState<RampCountry>(() => {
+    if (typeof window === "undefined") return "CL"
+    try {
+      const stored = localStorage.getItem("sozu_ramp_country_v1")
+      if (stored === "CL" || stored === "BR") return stored
+    } catch {
+      /* ignore */
+    }
+    return "CL"
+  })
+
   useEffect(() => {
     setMounted(true)
   }, [])
@@ -88,6 +104,15 @@ export function DepositModal({
       /* ignore */
     }
   }, [depositTab])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      localStorage.setItem("sozu_ramp_country_v1", rampCountry)
+    } catch {
+      /* ignore */
+    }
+  }, [rampCountry])
 
   useEffect(() => {
     if (!isOpen) {
@@ -325,7 +350,47 @@ export function DepositModal({
             touchAction: "manipulation",
           }}
         >
-          <FiatDepositFlow />
+          {rampEnabled ? (
+            <div
+              className="relative mx-auto grid w-full max-w-[15.5rem] grid-cols-2 rounded-full border border-white/10 bg-white/[0.04] p-1"
+              role="tablist"
+              aria-label={t.rampCountryLabel}
+            >
+              <span
+                aria-hidden
+                className={cn(
+                  "pointer-events-none absolute inset-y-1 w-[calc(50%-0.25rem)] rounded-full bg-white/12 shadow-[0_0_0_1px_rgba(255,255,255,0.06)] transition-[left] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
+                  rampCountry === "CL" ? "left-1" : "left-[calc(50%+0.125rem)]",
+                )}
+              />
+              <button
+                type="button"
+                role="tab"
+                aria-selected={rampCountry === "CL"}
+                onClick={() => setRampCountry("CL")}
+                className={cn(
+                  "relative z-10 rounded-full px-3 py-2 text-[10px] font-medium uppercase tracking-wider transition-colors",
+                  rampCountry === "CL" ? "text-white" : "text-white/45 hover:text-white/70",
+                )}
+              >
+                {t.rampCountryChile}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={rampCountry === "BR"}
+                onClick={() => setRampCountry("BR")}
+                className={cn(
+                  "relative z-10 rounded-full px-3 py-2 text-[10px] font-medium uppercase tracking-wider transition-colors",
+                  rampCountry === "BR" ? "text-white" : "text-white/45 hover:text-white/70",
+                )}
+              >
+                {t.rampCountryBrazil}
+              </button>
+            </div>
+          ) : null}
+
+          {!rampEnabled || rampCountry === "CL" ? <FiatDepositFlow /> : <BrazilOnrampFlow />}
         </div>
       ) : null}
 

@@ -6,6 +6,7 @@ import type {
   PickedSendToken,
   StellarNetwork,
 } from "@/lib/stellar/asset-types"
+import { isUsdcSpendableCategory } from "@/lib/stellar/asset-types"
 
 export function pickSendToken(params: {
   balances: HolderTokenBalance[]
@@ -34,6 +35,7 @@ export function pickSendToken(params: {
   )
 
   for (const row of sorted) {
+    if (!isUsdcSpendableCategory(row.asset.category)) continue
     if (row.balance >= need) {
       return { asset: row.asset, balance: row.balance }
     }

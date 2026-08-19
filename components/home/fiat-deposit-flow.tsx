@@ -34,7 +34,7 @@ function useStatusDisplay(status: string, t: ReturnType<typeof useWalletLanguage
   return map[status] ?? { label: status, color: "text-white/50" }
 }
 
-function CopyButton({ value, label }: { value: string; label: string }) {
+export function CopyButton({ value, label }: { value: string; label: string }) {
   const { t } = useWalletLanguage()
   const [copied, setCopied] = useState(false)
   const handleCopy = async () => {

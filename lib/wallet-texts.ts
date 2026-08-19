@@ -44,7 +44,15 @@ export type WalletTexts = {
   sendTapToSwitchCurrency: string;
   sendApproxUsdc: string;
   sendApproxFiat: string;
-  sendInsufficientBalance: string;
+    sendInsufficientBalance: string;
+  pizzaBalanceRow: string;
+  sendAssetUsdc: string;
+  sendAssetPizza: string;
+  pizzaAuthWorking: string;
+  pizzaAuthSigning: string;
+  pizzaAuthDone: string;
+  pizzaAuthRetry: string;
+  pizzaAuthMissingWallet: string;
   // Success Modal
   transactionSuccessful: string;
   transactionSuccessfulDesc: string;
@@ -300,6 +308,59 @@ export type WalletTexts = {
   depositFiatCardRedirect: string;
   depositFiatCardSubmit: string;
   depositFiatFxSource: string;
+  // Brazil PIX on-ramp / off-ramp (Etherfuse)
+  rampCountryLabel: string;
+  rampCountryChile: string;
+  rampCountryBrazil: string;
+  rampOnboardTitle: string;
+  rampOnboardNameLabel: string;
+  rampOnboardEmailLabel: string;
+  rampOnboardStart: string;
+  rampOnboardVerifying: string;
+  rampOnboardOpenKyc: string;
+  rampOnboardKycHint: string;
+  rampBankTitle: string;
+  rampFirstName: string;
+  rampLastName: string;
+  rampCpf: string;
+  rampPixKey: string;
+  rampPixKeyType: string;
+  rampSaveBank: string;
+  rampAmountLabel: string;
+  rampQuoteReceive: string;
+  rampQuoteFee: string;
+  rampQuoteExpires: string;
+  rampCreateOrder: string;
+  rampDepositTitle: string;
+  rampDepositAmount: string;
+  rampDepositBank: string;
+  rampDepositHolder: string;
+  rampStatusPending: string;
+  rampStatusFunded: string;
+  rampStatusSettling: string;
+  rampStatusCompleted: string;
+  rampStatusFailed: string;
+  rampStatusRefunded: string;
+  rampSimulate: string;
+  rampErrorGeneric: string;
+  rampOfframpTitle: string;
+  rampOfframpAmountLabel: string;
+  rampOfframpAmountPlaceholder: string;
+  rampOfframpSign: string;
+  rampOfframpSettling: string;
+  rampOfframpClose: string;
+  rampOfframpUserTxLabel: string;
+  rampOfframpSettlementTxLabel: string;
+  rampKycReturnTitle: string;
+  rampKycReturnBody: string;
+  rampNoWallet: string;
+  rampCpfPlaceholder: string;
+  rampAmountPlaceholder: string;
+  rampInstructionsConfirm: string;
+  rampPixKeyTypeEmail: string;
+  rampPixKeyTypePhone: string;
+  rampPixKeyTypeCpf: string;
+  rampPixKeyTypeRandom: string;
   // Balance card
   hideBalance: string;
   showBalance: string;
@@ -494,6 +555,14 @@ export const walletTexts = {
     sendApproxUsdc: "≈ {amount} USDC",
     sendApproxFiat: "≈ {amount} {fiat}",
     sendInsufficientBalance: "Monto mayor al disponible",
+    pizzaBalanceRow: "{count} PIZZA",
+    sendAssetUsdc: "USDC",
+    sendAssetPizza: "PIZZA",
+    pizzaAuthWorking: "Volviendo a la pizzería…",
+    pizzaAuthSigning: "Confirmá 1 PIZZA con passkey",
+    pizzaAuthDone: "Pizza reclamada",
+    pizzaAuthRetry: "Reintentar",
+    pizzaAuthMissingWallet: "No encontramos tu billetera. Entrá de nuevo.",
     // Success Modal
     transactionSuccessful: "Transacción Exitosa",
     transactionSuccessfulDesc: "Tu pago fue enviado exitosamente",
@@ -754,6 +823,58 @@ export const walletTexts = {
     depositFiatCardRedirect: "Redirigiendo a SumUp…",
     depositFiatCardSubmit: "Pagar con tarjeta",
     depositFiatFxSource: "Tipo de cambio en vivo",
+    rampCountryLabel: "País",
+    rampCountryChile: "Chile · CLP",
+    rampCountryBrazil: "Brasil · BRL",
+    rampOnboardTitle: "Verificación para depósitos PIX",
+    rampOnboardNameLabel: "Nombre completo",
+    rampOnboardEmailLabel: "Email (recibirás un código)",
+    rampOnboardStart: "Comenzar verificación",
+    rampOnboardVerifying: "Verificando tu identidad…",
+    rampOnboardOpenKyc: "Abrir verificación",
+    rampOnboardKycHint: "Se abre en una pestaña nueva. Completa los pasos y vuelve aquí.",
+    rampBankTitle: "Datos bancarios PIX",
+    rampFirstName: "Nombre",
+    rampLastName: "Apellido",
+    rampCpf: "CPF",
+    rampPixKey: "Clave PIX",
+    rampPixKeyType: "Tipo de clave PIX",
+    rampSaveBank: "Guardar",
+    rampAmountLabel: "Monto en BRL",
+    rampQuoteReceive: "Recibes",
+    rampQuoteFee: "Comisión",
+    rampQuoteExpires: "La cotización expira en",
+    rampCreateOrder: "Continuar",
+    rampDepositTitle: "Transfiere por PIX",
+    rampDepositAmount: "Monto",
+    rampDepositBank: "Banco",
+    rampDepositHolder: "Titular",
+    rampStatusPending: "Esperando tu transferencia",
+    rampStatusFunded: "Pago recibido, enviando USDC…",
+    rampStatusSettling: "Enviando USDC a tu wallet…",
+    rampStatusCompleted: "¡USDC depositado!",
+    rampStatusFailed: "La orden falló",
+    rampStatusRefunded: "Orden reembolsada",
+    rampSimulate: "Simular pago (testnet)",
+    rampErrorGeneric: "Algo falló. Intenta de nuevo.",
+    rampOfframpTitle: "Retirar a PIX (BRL)",
+    rampOfframpAmountLabel: "Monto en USDC",
+    rampOfframpAmountPlaceholder: "Ej. 25.00",
+    rampOfframpSign: "Firmar y retirar",
+    rampOfframpSettling: "Retiro en camino. Los BRL llegan a tu cuenta PIX más tarde — puedes cerrar esta ventana.",
+    rampOfframpClose: "Cerrar retiro",
+    rampOfframpUserTxLabel: "Tu transferencia",
+    rampOfframpSettlementTxLabel: "Liquidación PIX",
+    rampKycReturnTitle: "Verificación enviada",
+    rampKycReturnBody: "Puedes cerrar esta pestaña y volver a la app.",
+    rampNoWallet: "Necesitas una billetera Stellar antes de continuar.",
+    rampCpfPlaceholder: "Ej. 000.000.000-00",
+    rampAmountPlaceholder: "Ej. 150.00",
+    rampInstructionsConfirm: "Ya transferí, continuar",
+    rampPixKeyTypeEmail: "Email",
+    rampPixKeyTypePhone: "Teléfono",
+    rampPixKeyTypeCpf: "CPF",
+    rampPixKeyTypeRandom: "Aleatoria",
     hideBalance: "Ocultar saldo",
     showBalance: "Mostrar saldo",
     purchasingPowerSubline: "+{pct}% poder adquisitivo · {days}d",
@@ -921,6 +1042,14 @@ export const walletTexts = {
     sendApproxUsdc: "≈ {amount} USDC",
     sendApproxFiat: "≈ {amount} {fiat}",
     sendInsufficientBalance: "Amount exceeds available balance",
+    pizzaBalanceRow: "{count} PIZZA",
+    sendAssetUsdc: "USDC",
+    sendAssetPizza: "PIZZA",
+    pizzaAuthWorking: "Returning to the pizzeria…",
+    pizzaAuthSigning: "Confirm 1 PIZZA with passkey",
+    pizzaAuthDone: "Pizza claimed",
+    pizzaAuthRetry: "Try again",
+    pizzaAuthMissingWallet: "We could not find your wallet. Sign in again.",
     // Success Modal
     transactionSuccessful: "Transaction Successful",
     transactionSuccessfulDesc: "Your payment was sent successfully",
@@ -1177,6 +1306,58 @@ export const walletTexts = {
     depositFiatCardRedirect: "Redirecting to SumUp…",
     depositFiatCardSubmit: "Pay with card",
     depositFiatFxSource: "Live exchange rate",
+    rampCountryLabel: "Country",
+    rampCountryChile: "Chile · CLP",
+    rampCountryBrazil: "Brazil · BRL",
+    rampOnboardTitle: "Verification for PIX deposits",
+    rampOnboardNameLabel: "Full name",
+    rampOnboardEmailLabel: "Email (you'll receive a code)",
+    rampOnboardStart: "Start verification",
+    rampOnboardVerifying: "Verifying your identity…",
+    rampOnboardOpenKyc: "Open verification",
+    rampOnboardKycHint: "Opens in a new tab. Complete the steps and come back here.",
+    rampBankTitle: "PIX bank details",
+    rampFirstName: "First name",
+    rampLastName: "Last name",
+    rampCpf: "CPF",
+    rampPixKey: "PIX key",
+    rampPixKeyType: "PIX key type",
+    rampSaveBank: "Save",
+    rampAmountLabel: "Amount in BRL",
+    rampQuoteReceive: "You receive",
+    rampQuoteFee: "Fee",
+    rampQuoteExpires: "Quote expires in",
+    rampCreateOrder: "Continue",
+    rampDepositTitle: "Transfer via PIX",
+    rampDepositAmount: "Amount",
+    rampDepositBank: "Bank",
+    rampDepositHolder: "Account holder",
+    rampStatusPending: "Waiting for your transfer",
+    rampStatusFunded: "Payment received, sending USDC…",
+    rampStatusSettling: "Sending USDC to your wallet…",
+    rampStatusCompleted: "USDC deposited!",
+    rampStatusFailed: "Order failed",
+    rampStatusRefunded: "Order refunded",
+    rampSimulate: "Simulate payment (testnet)",
+    rampErrorGeneric: "Something went wrong. Try again.",
+    rampOfframpTitle: "Withdraw to PIX (BRL)",
+    rampOfframpAmountLabel: "Amount in USDC",
+    rampOfframpAmountPlaceholder: "e.g. 25.00",
+    rampOfframpSign: "Sign & withdraw",
+    rampOfframpSettling: "Withdrawal on its way. BRL arrives in your PIX account later — you can close this window.",
+    rampOfframpClose: "Close withdrawal",
+    rampOfframpUserTxLabel: "Your transfer",
+    rampOfframpSettlementTxLabel: "PIX settlement",
+    rampKycReturnTitle: "Verification submitted",
+    rampKycReturnBody: "You can close this tab and return to the app.",
+    rampNoWallet: "You need a Stellar wallet before you can continue.",
+    rampCpfPlaceholder: "e.g. 000.000.000-00",
+    rampAmountPlaceholder: "e.g. 150.00",
+    rampInstructionsConfirm: "I've made the payment, continue",
+    rampPixKeyTypeEmail: "Email",
+    rampPixKeyTypePhone: "Phone",
+    rampPixKeyTypeCpf: "CPF",
+    rampPixKeyTypeRandom: "Random",
     hideBalance: "Hide balance",
     showBalance: "Show balance",
     purchasingPowerSubline: "+{pct}% purchasing power · {days}d",

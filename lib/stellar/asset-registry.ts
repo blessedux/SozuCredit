@@ -4,6 +4,7 @@ import { Asset, Networks } from "@stellar/stellar-sdk"
 import { normalizeStellarContractId } from "@/lib/stellar/contract-id"
 import { getDefaultAssetRegistry } from "@/lib/stellar/asset-registry-core"
 import type { SozuAsset, StellarNetwork } from "@/lib/stellar/asset-types"
+import { PIZZA_ASSET_ID } from "@/lib/stellar/pizza-token"
 
 function contractFromEnv(
   envKey: string,
@@ -77,6 +78,18 @@ function buildTestnetRegistry(): SozuAsset[] {
       issuer: "Sozu",
       category: "internal",
       sendPriority: 30,
+    })
+  }
+
+  const pizzaDefault = defaults.find((a) => a.id === PIZZA_ASSET_ID)
+  if (pizzaDefault) {
+    const pizzaId =
+      optionalContractFromEnv("SOROBAN_PIZZA_TOKEN_ID") ??
+      optionalContractFromEnv("TESTNET_PIZZA_TOKEN_CONTRACT_ID") ??
+      pizzaDefault.contractId
+    assets.push({
+      ...pizzaDefault,
+      contractId: pizzaId,
     })
   }
 

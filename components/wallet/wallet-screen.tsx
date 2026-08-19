@@ -13,6 +13,7 @@ import { WalletErrorBoundary } from "@/components/wallet/wallet-error-boundary"
 import { useWalletLanguage } from "@/lib/wallet-language"
 import { getUserId } from "@/lib/wallet-utils"
 import { cn } from "@/lib/utils"
+import { rampEnabled } from "@/lib/app-config"
 import { getOrCreateRealWallet } from "@/lib/stellar/wallet-creator"
 import {
   isSmartContractWalletAddress,
@@ -35,6 +36,7 @@ import { useSetOnboardingOverlayOpen } from "@/lib/onboarding-overlay-context"
 // Components
 import { WalletActivationOnboarding } from "@/components/wallet/wallet-activation-onboarding"
 import { BalanceDisplay } from "@/components/wallet/balance-display"
+import { PizzaBalanceRow } from "@/components/wallet/pizza-balance-row"
 import { TransactionHistory } from "@/components/wallet/transaction-history"
 import { BottomMenuBar } from "@/components/wallet/bottom-menu-bar"
 import { PullToRefreshIndicator } from "@/components/wallet/pull-to-refresh-indicator"
@@ -50,6 +52,7 @@ import type { ReceiptModalVariant } from "@/components/wallet/success-modal"
 import { WalletSwitcherModal } from "@/components/wallet/wallet-switcher-modal"
 const SendPaymentModal = lazy(() => import("@/components/wallet/send-payment-modal").then(mod => ({ default: mod.SendPaymentModal })))
 const DepositModal = lazy(() => import("@/components/home/deposit-modal").then(mod => ({ default: mod.DepositModal })))
+const OfframpModal = lazy(() => import("@/components/home/offramp-modal").then(mod => ({ default: mod.OfframpModal })))
 const ProfileSheet = lazy(() => import("@/components/wallet/profile-sheet").then(mod => ({ default: mod.ProfileSheet })))
 const TrustPointsModal = lazy(() => import("@/components/wallet/trust-points-modal").then(mod => ({ default: mod.TrustPointsModal })))
 const BalanceAuditModal = lazy(() => import("@/components/wallet/balance-audit-modal").then(mod => ({ default: mod.BalanceAuditModal })))
@@ -120,6 +123,7 @@ export function WalletScreen({
   const swipeUpStartY = useRef<number | null>(null)
   const swipeUpStartX = useRef<number | null>(null)
   const [openPayScannerOnMount, setOpenPayScannerOnMount] = useState(false)
+  const [sendAssetContractId, setSendAssetContractId] = useState<string | null>(null)
   const [isBalanceVisible, setIsBalanceVisible] = useState(true)
   const [animatedBalance, setAnimatedBalance] = useState<number>(0)
   const [isTrustModalOpen, setIsTrustModalOpen] = useState(false)
@@ -129,6 +133,7 @@ export function WalletScreen({
   const [isSendModalOpenInternal, setIsSendModalOpenInternal] = useState(false)
   const isSendModalOpen = isSendModalOpenProp !== undefined ? isSendModalOpenProp : isSendModalOpenInternal
   const setSendModalOpen = useCallback((open: boolean) => {
+    if (!open) setSendAssetContractId(null)
     if (onSendModalOpenChange) onSendModalOpenChange(open)
     else setIsSendModalOpenInternal(open)
   }, [onSendModalOpenChange])
@@ -157,6 +162,7 @@ export function WalletScreen({
     },
     [onDepositModalOpenChange],
   )
+  const [isOfframpOpen, setIsOfframpOpen] = useState(false)
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [paymentReceipt, setPaymentReceipt] = useState<PaymentReceipt | null>(null)
@@ -401,6 +407,15 @@ export function WalletScreen({
   const handleDeposit = useCallback(() => {
     setIsDepositOpen(true)
   }, [setIsDepositOpen])
+
+  const handleOfframp = useCallback(() => {
+    setIsOfframpOpen(true)
+  }, [])
+
+  const handleOfframpClose = useCallback(() => {
+    setIsOfframpOpen(false)
+    void refreshWalletData({ pollSoroban: true })
+  }, [refreshWalletData])
 
   const refreshOnboardingState = useCallback(async () => {
     if (walletNetwork !== "testnet") {
@@ -652,6 +667,16 @@ export function WalletScreen({
         walletNetwork={walletNetwork}
         onRefresh={handleEarnRefresh}
       />
+      <PizzaBalanceRow
+        tokenBalances={defindexBalance?.tokenBalances}
+        onSend={() => {
+          const row = defindexBalance?.tokenBalances?.find(
+            (r) => r.assetId === "pizza_token" || r.symbol?.toUpperCase() === "PIZZA",
+          )
+          setSendAssetContractId(row?.contractId ?? null)
+          setSendModalOpen(true)
+        }}
+      />
     </Suspense>
   )
 
@@ -669,6 +694,7 @@ export function WalletScreen({
           onRefresh={handleSendModalRefresh}
           openScannerOnMount={openPayScannerOnMount}
           onScannerOpenConsumed={() => setOpenPayScannerOnMount(false)}
+          initialAssetContractId={sendAssetContractId}
         />
       </Suspense>
 
@@ -680,6 +706,12 @@ export function WalletScreen({
           walletNetwork={walletNetwork}
         />
       </Suspense>
+
+      {rampEnabled ? (
+        <Suspense fallback={null}>
+          <OfframpModal open={isOfframpOpen} onClose={handleOfframpClose} />
+        </Suspense>
+      ) : null}
 
       <Suspense fallback={null}>
         <SuccessModal
@@ -886,6 +918,15 @@ export function WalletScreen({
                         onPayClick={handlePay}
                         onDepositClick={handleDeposit}
                       />
+                      {rampEnabled ? (
+                        <button
+                          type="button"
+                          onClick={handleOfframp}
+                          className="mt-2 flex h-12 w-full flex-col items-center justify-center rounded-2xl border border-white/12 bg-white/[0.04] text-[9px] font-medium uppercase tracking-[0.16em] text-white/90 transition-colors hover:bg-white/[0.08] active:scale-[0.97] active:bg-white/12"
+                        >
+                          {t.cmdOfframp}
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                 </div>

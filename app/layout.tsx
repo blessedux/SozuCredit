@@ -8,6 +8,11 @@ import { PaperShaderBackgroundShell } from "@/components/paper-shader-background
 import { ViewportHeightSync } from "@/components/viewport-height-sync"
 import { Preloader } from "@/components/preloader-remover"
 import { Toaster } from "@/components/ui/sonner"
+import { authRoutingInlineScript } from "@/lib/client-auth-gate"
+
+const VIEWPORT_SYNC_INLINE = `(function(){function isStandalone(){return window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone}function sync(){try{var inner=window.innerHeight;var gap=isStandalone()?Math.max(0,window.screen.height-inner):0;var total=inner+gap;var vv=window.visualViewport?Math.round(window.visualViewport.height):inner;var css=":root{--sozu-layout-height:"+inner+"px;--sozu-viewport-gap:"+gap+"px;--sozu-app-height:"+total+"px;--sozu-visual-viewport-height:"+vv+"px}";var el=document.getElementById("sozu-viewport-vars");if(!el){el=document.createElement("style");el.id="sozu-viewport-vars";document.head.appendChild(el)}el.textContent=css}catch(e){}}sync();if(window.visualViewport)window.visualViewport.addEventListener("resize",sync);window.addEventListener("resize",sync);window.addEventListener("orientationchange",sync);if(isStandalone()){document.documentElement.classList.add("sozu-standalone")}})();`
+
+const BEFORE_PAINT_INLINE = `${VIEWPORT_SYNC_INLINE}${authRoutingInlineScript()}`
 
 export const metadata: Metadata = {
   title: "Sozu Wallet",
@@ -70,7 +75,7 @@ export default function RootLayout({
         */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){function isStandalone(){return window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone}function sync(){try{var inner=window.innerHeight;var gap=isStandalone()?Math.max(0,window.screen.height-inner):0;var total=inner+gap;var vv=window.visualViewport?Math.round(window.visualViewport.height):inner;var css=":root{--sozu-layout-height:"+inner+"px;--sozu-viewport-gap:"+gap+"px;--sozu-app-height:"+total+"px;--sozu-visual-viewport-height:"+vv+"px}";var el=document.getElementById("sozu-viewport-vars");if(!el){el=document.createElement("style");el.id="sozu-viewport-vars";document.head.appendChild(el)}el.textContent=css}catch(e){}}sync();if(window.visualViewport)window.visualViewport.addEventListener("resize",sync);window.addEventListener("resize",sync);window.addEventListener("orientationchange",sync);if(isStandalone()){document.documentElement.classList.add("sozu-standalone")}})();(function(){try{var p=location.pathname;var auth=localStorage.getItem("dev_authenticated")==="true"||sessionStorage.getItem("dev_authenticated")==="true";var uid=localStorage.getItem("dev_username")||sessionStorage.getItem("dev_username");var authed=auth&&uid&&String(uid).indexOf("dev-user-")!==0;var walletPath=p==="/home"||p==="/wallet"||p==="/settings"||p==="/ledger"||p.indexOf("/ledger/")===0||p==="/credit"||p.indexOf("/credit/")===0;if(walletPath&&!authed){location.replace("/auth"+location.search+location.hash);return}if(p.indexOf("/auth")===0&&authed&&p.indexOf("add-device")===-1&&location.search.indexOf("sdpInvite=1")===-1&&location.search.indexOf("faucet=")===-1){location.replace("/home");return}}catch(e){}})();`,
+            __html: BEFORE_PAINT_INLINE,
           }}
         />
         <Preloader />

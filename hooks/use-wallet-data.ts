@@ -43,6 +43,9 @@ export interface DefindexBalance {
     contractId: string
     balance: number
     displayName?: string
+    symbol?: string
+    category?: string
+    decimals?: number
   }>
   contractIds?: { blend?: string | null; circleSac?: string | null }
 }

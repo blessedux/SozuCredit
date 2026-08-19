@@ -49,6 +49,13 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // Ramp KYC return landing page is a public hosted-KYC redirect target
+  // (Etherfuse lands the user's browser tab here after /idv) — no session
+  // required, it only renders static copy.
+  if (pathname.startsWith("/ramp")) {
+    return NextResponse.next()
+  }
+
   // Checkout pages are public (payer links from merchants)
   if (pathname.startsWith("/checkout")) {
     return NextResponse.next()
