@@ -207,6 +207,13 @@ export async function updateSession(request: NextRequest) {
       if (request.nextUrl.searchParams.get("sdpInvite") === "1") {
         return supabaseResponse
       }
+      // Login-with-Sozu: must complete mint + redirect to faucet (not /home).
+      if (pathname.startsWith("/auth/faucet-handoff")) {
+        return supabaseResponse
+      }
+      if (request.nextUrl.searchParams.get("faucet") === "1") {
+        return supabaseResponse
+      }
       const url = request.nextUrl.clone()
       url.pathname = "/home"
       return NextResponse.redirect(url)

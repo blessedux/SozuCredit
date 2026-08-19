@@ -31,9 +31,25 @@ import {
 } from "@/lib/client-wallet-session"
 import { clearClientSession } from "@/lib/storage/clear-session"
 import { signalBootstrapReady } from "@/lib/app-ready"
+import { peekFaucetHandoffReturn } from "@/lib/sozu-faucet/handoff-return-storage"
+import {
+  parseAllowlistedFaucetReturnUrl,
+  parseFaucetHandoffAuthReturn,
+} from "@/lib/sozu-faucet/return-allowlist"
 import { toast } from "sonner"
 import { resolvePizzaAuthSearch } from "@/lib/pizza/pay-return"
 import { PizzaAuthContinuation } from "@/components/pizza/PizzaAuthContinuation"
+
+function navigatePostAuth(
+  path: string,
+  routerPush: (href: string) => void,
+) {
+  if (path.startsWith("/auth/faucet-handoff")) {
+    window.location.assign(path)
+    return
+  }
+  routerPush(path)
+}
 
 function AuthPageContent() {
   const [isAuthenticating, setIsAuthenticating] = useState(false)
@@ -61,13 +77,34 @@ function AuthPageContent() {
   useAppViewportLock()
 
   /**
-   * Faucet return is only valid when this visit came from a faucet URL
+   * Login-with-Sozu handoff: `/auth?faucet=1&return=/auth/faucet-handoff?return=…`
+   * Absolute faucet callbacks are never accepted here — only the relative
+   * Wallet handoff path (allowlist enforced inside parseFaucetHandoffAuthReturn).
+   * sessionStorage stash is a backup if nested query encoding gets mangled.
+   */
+  const faucetHandoffReturn = (() => {
+    if (searchParams.get("faucet")?.trim() !== "1") return null
+    const fromQuery = parseFaucetHandoffAuthReturn(searchParams.get("return"))
+    if (fromQuery) return fromQuery
+    const stashed = peekFaucetHandoffReturn()
+    if (stashed && parseAllowlistedFaucetReturnUrl(stashed)) {
+      return `/auth/faucet-handoff?return=${encodeURIComponent(stashed)}`
+    }
+    return null
+  })()
+
+  /**
+   * In-app NFC faucet return is only valid when this visit came from a faucet URL
    * (`/auth?faucet=<slug>`). Stale sessionStorage alone must never yank a
    * normal in-app signup to /faucet/test-orb-001.
+   * `faucet=1` is reserved for the Login-with-Sozu handoff (not a slug).
    */
   const faucetReturnPath = (() => {
+    if (faucetHandoffReturn) return faucetHandoffReturn
     const slug = searchParams.get("faucet")?.trim()
-    if (slug && /^[a-z0-9-]+$/i.test(slug)) return `/faucet/${slug}`
+    if (slug && slug !== "1" && /^[a-z0-9-]+$/i.test(slug)) {
+      return `/faucet/${slug}`
+    }
     if (typeof window !== "undefined") {
       try {
         sessionStorage.removeItem("sozu_faucet_return")
@@ -130,7 +167,11 @@ function AuthPageContent() {
         redirectingRef.current = true
         const target =
           searchParams.get("sdpInvite") === "1" ? "/sdp/register" : finalPostAuthPath
-        router.replace(target)
+        if (target.startsWith("/auth/faucet-handoff")) {
+          window.location.replace(target)
+        } else {
+          router.replace(target)
+        }
         return
       }
       requestAnimationFrame(() => {
@@ -189,7 +230,10 @@ function AuthPageContent() {
       }
       redirectingRef.current = true
       setIsExiting(true)
-      setTimeout(() => router.push(finalPostAuthPath), 300)
+      setTimeout(
+        () => navigatePostAuth(finalPostAuthPath, (p) => router.push(p)),
+        300,
+      )
     },
     [router, finalPostAuthPath, stayOnAuthForPizza]
   )
@@ -233,7 +277,10 @@ function AuthPageContent() {
       }
       redirectingRef.current = true
       setIsExiting(true)
-      setTimeout(() => router.push(finalPostAuthPath), 300)
+      setTimeout(
+        () => navigatePostAuth(finalPostAuthPath, (p) => router.push(p)),
+        300,
+      )
     },
     [router, finalPostAuthPath, stayOnAuthForPizza]
   )
@@ -736,21 +783,14 @@ function AuthPageContent() {
 
           // Use router.push with replace to prevent back button issues
           // Don't use window.location.href as it causes hard refresh
-          console.log("[Auth] Attempting router.push after registration...")
-          try {
-            if (stayOnAuthForPizza) {
-              setIsAuthenticated(true)
-              redirectingRef.current = false
-              setIsExiting(false)
-              return
-            }
-            router.push(finalPostAuthPath)
-            console.log("[Auth] Router.push called, navigation in progress...")
-          } catch (routerError) {
-            console.error("[Auth] Router.push error:", routerError)
-            console.warn("[Auth] Router.push failed, using window.location as fallback (this will cause refresh)")
-            window.location.href = finalPostAuthPath
+          console.log("[Auth] Navigating after registration...")
+          if (stayOnAuthForPizza) {
+            setIsAuthenticated(true)
+            redirectingRef.current = false
+            setIsExiting(false)
+            return
           }
+          navigatePostAuth(finalPostAuthPath, (p) => router.push(p))
         }, 300) // Wait 300ms for fade-out animation
 
         return
@@ -807,8 +847,8 @@ function AuthPageContent() {
             return
           }
           redirectingRef.current = true
-          console.log("[Auth] Executing error recovery redirect via router:", postAuthPath)
-          router.push(finalPostAuthPath)
+          console.log("[Auth] Executing error recovery redirect:", postAuthPath)
+          navigatePostAuth(finalPostAuthPath, (p) => router.push(p))
           return
         }
       }
@@ -1025,7 +1065,10 @@ function AuthPageContent() {
             }
             redirectingRef.current = true
             setIsExiting(true)
-            setTimeout(() => router.push(finalPostAuthPath), 300)
+            setTimeout(
+              () => navigatePostAuth(finalPostAuthPath, (p) => router.push(p)),
+              300,
+            )
           }}
           onCancel={() => {
             setShowQRModal(false)
