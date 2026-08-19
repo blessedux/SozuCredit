@@ -32,6 +32,8 @@ import {
 import { clearClientSession } from "@/lib/storage/clear-session"
 import { signalBootstrapReady } from "@/lib/app-ready"
 import { toast } from "sonner"
+import { resolvePizzaAuthSearch } from "@/lib/pizza/pay-return"
+import { PizzaAuthContinuation } from "@/components/pizza/PizzaAuthContinuation"
 
 function AuthPageContent() {
   const [isAuthenticating, setIsAuthenticating] = useState(false)
@@ -92,6 +94,8 @@ function AuthPageContent() {
   })()
 
   const finalPostAuthPath = checkoutRedirect ?? postAuthPath
+  const pizzaAuth = resolvePizzaAuthSearch(searchParams)
+  const stayOnAuthForPizza = pizzaAuth.kind !== "none"
 
   useEffect(() => {
     if (redirectingRef.current || isAuthenticating || isAuthenticated) return
@@ -116,6 +120,13 @@ function AuthPageContent() {
       const session = await loadClientWalletSession()
       if (cancelled) return
       if (session.isAuthenticated && session.userId) {
+        if (stayOnAuthForPizza) {
+          setIsAuthenticated(true)
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => signalBootstrapReady())
+          })
+          return
+        }
         redirectingRef.current = true
         const target =
           searchParams.get("sdpInvite") === "1" ? "/sdp/register" : finalPostAuthPath
@@ -130,7 +141,7 @@ function AuthPageContent() {
     return () => {
       cancelled = true
     }
-  }, [searchParams, router, finalPostAuthPath, isAuthenticating, isAuthenticated])
+  }, [searchParams, router, finalPostAuthPath, stayOnAuthForPizza, isAuthenticating, isAuthenticated])
 
   const finalizePasskeyLoginSuccess = useCallback(
     async (userId: string, username: string | undefined, credential: { id: string }) => {
@@ -171,11 +182,16 @@ function AuthPageContent() {
       setTagModalPrefill(null)
       setIsAuthenticated(true)
       setIsAuthenticating(false)
+      if (stayOnAuthForPizza) {
+        redirectingRef.current = false
+        setIsExiting(false)
+        return
+      }
       redirectingRef.current = true
       setIsExiting(true)
       setTimeout(() => router.push(finalPostAuthPath), 300)
     },
-    [router, finalPostAuthPath]
+    [router, finalPostAuthPath, stayOnAuthForPizza]
   )
 
   const finalizePinLoginSuccess = useCallback(
@@ -210,11 +226,16 @@ function AuthPageContent() {
       setTagModalPrefill(null)
       setIsAuthenticated(true)
       setIsAuthenticating(false)
+      if (stayOnAuthForPizza) {
+        redirectingRef.current = false
+        setIsExiting(false)
+        return
+      }
       redirectingRef.current = true
       setIsExiting(true)
       setTimeout(() => router.push(finalPostAuthPath), 300)
     },
-    [router, finalPostAuthPath]
+    [router, finalPostAuthPath, stayOnAuthForPizza]
   )
 
   const attemptLoginWithTag = useCallback(
@@ -717,14 +738,16 @@ function AuthPageContent() {
           // Don't use window.location.href as it causes hard refresh
           console.log("[Auth] Attempting router.push after registration...")
           try {
-            // Use replace: true to prevent adding to history and ensure clean navigation
+            if (stayOnAuthForPizza) {
+              setIsAuthenticated(true)
+              redirectingRef.current = false
+              setIsExiting(false)
+              return
+            }
             router.push(finalPostAuthPath)
-            // Give router time to navigate - Next.js router.push is async
-            // Don't check pathname immediately as it may not have updated yet
             console.log("[Auth] Router.push called, navigation in progress...")
           } catch (routerError) {
             console.error("[Auth] Router.push error:", routerError)
-            // Only use window.location as absolute last resort, and log it
             console.warn("[Auth] Router.push failed, using window.location as fallback (this will cause refresh)")
             window.location.href = finalPostAuthPath
           }
@@ -779,6 +802,10 @@ function AuthPageContent() {
 
         if (isAuth) {
           console.log("[Auth] Found auth state after error, redirecting anyway...")
+          if (stayOnAuthForPizza) {
+            setIsAuthenticated(true)
+            return
+          }
           redirectingRef.current = true
           console.log("[Auth] Executing error recovery redirect via router:", postAuthPath)
           router.push(finalPostAuthPath)
@@ -796,6 +823,9 @@ function AuthPageContent() {
 
   return (
     <div className="relative h-full min-h-[var(--sozu-app-height,100lvh)] w-full overflow-hidden">
+      {isAuthenticated && pizzaAuth.kind !== "none" ? (
+        <PizzaAuthContinuation continuation={pizzaAuth} />
+      ) : null}
 
       {/* ── PWA install banner — fixed top toast, visible on mobile before install ── */}
       <AnimatePresence>
@@ -988,6 +1018,11 @@ function AuthPageContent() {
             }
             setIsAuthenticated(true)
             setIsAuthenticating(false)
+            if (stayOnAuthForPizza) {
+              redirectingRef.current = false
+              setIsExiting(false)
+              return
+            }
             redirectingRef.current = true
             setIsExiting(true)
             setTimeout(() => router.push(finalPostAuthPath), 300)

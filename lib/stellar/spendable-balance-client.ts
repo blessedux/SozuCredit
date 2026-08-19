@@ -2,6 +2,8 @@
  * Client-safe spendable balance helpers (mirrors server pick-send-token logic).
  */
 
+import { isUsdcSpendableCategory } from "@/lib/stellar/asset-types"
+
 export type ApiTokenBalanceRow = {
   assetId?: string
   contractId: string
@@ -25,9 +27,13 @@ export type BalancePayloadForSend = {
   tokenBalances?: ApiTokenBalanceRow[]
 }
 
-/** Sum of all registered token rows (informational — sends use one contract per tx). */
+function usdcRows(rows: ApiTokenBalanceRow[]): ApiTokenBalanceRow[] {
+  return rows.filter((r) => isUsdcSpendableCategory(r.category))
+}
+
+/** Sum of USDC-rail token rows (SKU tokens like PIZZA are excluded). */
 export function totalSpendableFromPayload(data: BalancePayloadForSend): number {
-  const rows = data.tokenBalances ?? []
+  const rows = usdcRows(data.tokenBalances ?? [])
   if (rows.length > 0) {
     return rows.reduce((sum, r) => sum + (Number(r.balance) || 0), 0)
   }
@@ -38,12 +44,12 @@ export function totalSpendableFromPayload(data: BalancePayloadForSend): number {
   return blend + sac + sozu
 }
 
-/** Largest balance in any single token contract. */
+/** Largest USDC balance in any single token contract. */
 export function maxSingleTokenBalance(data: BalancePayloadForSend): number {
   if (typeof data.maxSingleTokenBalance === "number" && data.maxSingleTokenBalance > 0) {
     return data.maxSingleTokenBalance
   }
-  const rows = data.tokenBalances ?? []
+  const rows = usdcRows(data.tokenBalances ?? [])
   if (rows.length > 0) {
     return Math.max(0, ...rows.map((r) => Number(r.balance) || 0))
   }
@@ -69,6 +75,7 @@ export function pickTokenRowForSend(
     (a, b) => (a.sendPriority ?? 99) - (b.sendPriority ?? 99),
   )
   for (const row of sorted) {
+    if (!isUsdcSpendableCategory(row.category)) continue
     if (row.balance >= need) return row
   }
   return null

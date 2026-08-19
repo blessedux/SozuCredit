@@ -44,7 +44,15 @@ export type WalletTexts = {
   sendTapToSwitchCurrency: string;
   sendApproxUsdc: string;
   sendApproxFiat: string;
-  sendInsufficientBalance: string;
+    sendInsufficientBalance: string;
+  pizzaBalanceRow: string;
+  sendAssetUsdc: string;
+  sendAssetPizza: string;
+  pizzaAuthWorking: string;
+  pizzaAuthSigning: string;
+  pizzaAuthDone: string;
+  pizzaAuthRetry: string;
+  pizzaAuthMissingWallet: string;
   // Success Modal
   transactionSuccessful: string;
   transactionSuccessfulDesc: string;
@@ -547,6 +555,14 @@ export const walletTexts = {
     sendApproxUsdc: "≈ {amount} USDC",
     sendApproxFiat: "≈ {amount} {fiat}",
     sendInsufficientBalance: "Monto mayor al disponible",
+    pizzaBalanceRow: "{count} PIZZA",
+    sendAssetUsdc: "USDC",
+    sendAssetPizza: "PIZZA",
+    pizzaAuthWorking: "Volviendo a la pizzería…",
+    pizzaAuthSigning: "Confirmá 1 PIZZA con passkey",
+    pizzaAuthDone: "Pizza reclamada",
+    pizzaAuthRetry: "Reintentar",
+    pizzaAuthMissingWallet: "No encontramos tu billetera. Entrá de nuevo.",
     // Success Modal
     transactionSuccessful: "Transacción Exitosa",
     transactionSuccessfulDesc: "Tu pago fue enviado exitosamente",
@@ -1026,6 +1042,14 @@ export const walletTexts = {
     sendApproxUsdc: "≈ {amount} USDC",
     sendApproxFiat: "≈ {amount} {fiat}",
     sendInsufficientBalance: "Amount exceeds available balance",
+    pizzaBalanceRow: "{count} PIZZA",
+    sendAssetUsdc: "USDC",
+    sendAssetPizza: "PIZZA",
+    pizzaAuthWorking: "Returning to the pizzeria…",
+    pizzaAuthSigning: "Confirm 1 PIZZA with passkey",
+    pizzaAuthDone: "Pizza claimed",
+    pizzaAuthRetry: "Try again",
+    pizzaAuthMissingWallet: "We could not find your wallet. Sign in again.",
     // Success Modal
     transactionSuccessful: "Transaction Successful",
     transactionSuccessfulDesc: "Your payment was sent successfully",

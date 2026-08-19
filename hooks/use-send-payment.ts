@@ -30,6 +30,8 @@ import {
   maxSingleTokenBalance,
   type BalancePayloadForSend,
 } from "@/lib/stellar/spendable-balance-client"
+import { isPizzaAssetRow, parseWholeTokenAmount } from "@/lib/stellar/sku-send"
+import { PIZZA_SYMBOL } from "@/lib/stellar/pizza-token"
 
 /** Warm kit + on-chain connect so Send can open the passkey prompt immediately on tap. */
 async function warmKitForSend(contractId: string, credentialId: string): Promise<void> {
@@ -58,6 +60,16 @@ export function useSendPayment(
     strategyBalance: number
     totalBalance: number
     displayBalance?: number
+    tokenBalances?: Array<{
+      assetId?: string
+      contractId: string
+      symbol?: string
+      displayName?: string
+      balance: number
+      category?: string
+      decimals?: number
+      sendPriority?: number
+    }>
   } | null,
   referenceFiat: ReferenceFiat,
   onSuccess?: (receipt: PaymentReceipt) => void,
@@ -81,6 +93,7 @@ export function useSendPayment(
   const [recipientError, setRecipientError] = useState<string | null>(null)
   const [amountError, setAmountError] = useState<string | null>(null)
   const [isVibrating, setIsVibrating] = useState(false)
+  const [sendAssetContractId, setSendAssetContractId] = useState<string | null>(null)
 
   /** Tag → address from live validation; avoids a second resolve on Continue. */
   const recipientResolveCacheRef = useRef<{
@@ -102,6 +115,7 @@ export function useSendPayment(
     forAmount: number
     forRecipient: string
     forSender: string
+    forContractId?: string
   } | null>(null)
 
   const PAYMENT_ERROR_SHAKE_MS = 500
@@ -112,6 +126,13 @@ export function useSendPayment(
     setTimeout(() => setIsVibrating(false), PAYMENT_ERROR_SHAKE_MS)
   }, [])
 
+  const pizzaRow = defindexBalance?.tokenBalances?.find((r) => isPizzaAssetRow(r))
+  const isPizzaSend = Boolean(
+    sendAssetContractId &&
+      pizzaRow &&
+      pizzaRow.contractId.toUpperCase() === sendAssetContractId.trim().toUpperCase(),
+  )
+
   const buildCachedBalancePayload = useCallback((): BalancePayloadForSend => {
     const cachedWalletUsdc =
       defindexBalance?.spendableOnC ??
@@ -121,6 +142,16 @@ export function useSendPayment(
       usdcBalance: cachedWalletUsdc,
       sorobanUsdcBalance: defindexBalance?.walletBalance,
       sorobanSacUsdcBalance: defindexBalance?.sorobanSacBalance,
+      tokenBalances: (defindexBalance?.tokenBalances ?? []).map((r) => ({
+        assetId: r.assetId,
+        contractId: r.contractId,
+        symbol: r.symbol,
+        displayName: r.displayName ?? r.symbol ?? r.contractId.slice(0, 8),
+        decimals: r.decimals,
+        balance: r.balance,
+        category: r.category,
+        sendPriority: r.sendPriority,
+      })),
     }
   }, [defindexBalance])
 
@@ -160,6 +191,7 @@ export function useSendPayment(
             amount: amount.toString(),
             sender: senderC,
             ...(passkeySignerG ? { signer: passkeySignerG } : {}),
+            ...(sendAssetContractId ? { contractId: sendAssetContractId } : {}),
           }),
         })
         if (!res.ok || ctrl.signal.aborted) return
@@ -180,6 +212,7 @@ export function useSendPayment(
           forAmount: amount,
           forRecipient: resolvedRecipientAddress,
           forSender: senderC,
+          forContractId: sendAssetContractId ?? undefined,
         }
         if (sessionCredentialId) {
           const { storeCredentialIdInSession } = await import("@/lib/storage/key-utils")
@@ -196,7 +229,7 @@ export function useSendPayment(
       window.clearTimeout(timer)
       prefetchedBuildRef.current = null
     }
-  }, [sendAmount, resolvedRecipientAddress, walletAddress])
+  }, [sendAmount, resolvedRecipientAddress, walletAddress, sendAssetContractId])
 
   const toggleAmountCurrency = useCallback(() => {
     const nextCurrency: SendAmountCurrency =
@@ -227,6 +260,7 @@ export function useSendPayment(
     setSendMemo("")
     setRecipientError(null)
     setSendPhase(null)
+    setSendAssetContractId(null)
     prefetchedBuildRef.current = null
     recipientResolveCacheRef.current = null
     setAmountError(null)
@@ -358,8 +392,10 @@ export function useSendPayment(
     }
 
     const inputAmount = parseFloat(sendAmount)
-    const amount = usdcFromInputAmount(inputAmount, amountInputCurrency, referenceFiat)
-    if (amount <= 0) {
+    const amount = isPizzaSend
+      ? parseWholeTokenAmount(sendAmount)
+      : usdcFromInputAmount(inputAmount, amountInputCurrency, referenceFiat)
+    if (amount == null || amount <= 0) {
       return
     }
     if (!walletAddress) {
@@ -381,10 +417,15 @@ export function useSendPayment(
 
     // Full balance sends are allowed — Soroban fees are paid in XLM, not USDC.
     const requiredBalance = amount
+    const preferredContractId = sendAssetContractId?.trim().toUpperCase() || undefined
 
     setAmountError(null)
 
-    const coverCached = canCoverSendAmount(buildCachedBalancePayload(), requiredBalance)
+    const coverCached = canCoverSendAmount(
+      buildCachedBalancePayload(),
+      requiredBalance,
+      preferredContractId,
+    )
     if (!coverCached.ok) {
       rejectInsufficientAmount()
       return
@@ -398,14 +439,13 @@ export function useSendPayment(
     const prefetchHit =
       prefetch &&
       Math.abs(prefetch.forAmount - amount) < 0.000001 &&
-      prefetch.forRecipient === resolvedRecipientAddress
+      prefetch.forRecipient === resolvedRecipientAddress &&
+      (prefetch.forContractId ?? undefined) === preferredContractId
 
     // Prefetch hit → jump straight to signing UI so the passkey prompt opens on the user gesture.
     setSendPhase(prefetchHit ? "signing" : "preparing")
 
     try {
-      let preferredContractId: string | undefined
-
       let senderC = walletAddress.trim().toUpperCase()
       let passkeySignerG: string | undefined
       let sessionCredentialId: string | undefined
@@ -639,7 +679,7 @@ export function useSendPayment(
         if (onSuccess) {
           onSuccess({
             amount,
-            currency: "USDC",
+            currency: isPizzaSend ? PIZZA_SYMBOL : "USDC",
             fromLabel: getSenderDisplayLabel(),
             toLabel: formatRecipientDisplayLabel(sendRecipient, resolvedRecipientAddress),
             toAddress: resolvedRecipientAddress ?? undefined,
@@ -676,6 +716,8 @@ export function useSendPayment(
     walletNetwork,
     defindexBalance,
     sendMemo,
+    sendAssetContractId,
+    isPizzaSend,
     onSuccess,
     onRefresh,
     resetSendPayment,
@@ -699,6 +741,8 @@ export function useSendPayment(
     recipientError,
     amountError,
     isVibrating,
+    sendAssetContractId,
+    isPizzaSend,
     setSendRecipient,
     setSendAmount,
     setIsManualMode,
@@ -706,6 +750,7 @@ export function useSendPayment(
     setRecipientError,
     setAmountError,
     toggleAmountCurrency,
+    setSendAssetContractId,
     handleResolveRecipient,
     handleSendPayment,
     resetSendPayment,

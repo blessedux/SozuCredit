@@ -21,7 +21,12 @@ import { Api } from "@stellar/stellar-sdk/rpc"
 import { getBlendUsdcAsset } from "@/lib/stellar/asset-registry"
 
 const DUMMY_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
-const STROOPS_PER_UNIT = 10_000_000
+const DEFAULT_TOKEN_DECIMALS = 7
+
+function unitsToDecimal(raw: bigint, decimals: number): number {
+  if (decimals <= 0) return Number(raw)
+  return Number(raw) / 10 ** decimals
+}
 
 function resolveSorobanRpcUrl(network: "testnet" | "mainnet"): string {
   return (
@@ -60,8 +65,8 @@ function scValToBalanceStroops(val: xdr.ScVal): bigint {
   }
 }
 
-function stroopsToDecimal(stroops: bigint): number {
-  return Number(stroops) / STROOPS_PER_UNIT
+function stroopsToDecimal(stroops: bigint, decimals = DEFAULT_TOKEN_DECIMALS): number {
+  return unitsToDecimal(stroops, decimals)
 }
 
 function normalizeHolderAddress(holderAddress: string): string {
@@ -103,6 +108,7 @@ async function readBalanceViaSimulate(
   tokenAddress: string,
   holderAddress: string,
   network: "testnet" | "mainnet",
+  decimals = DEFAULT_TOKEN_DECIMALS,
 ): Promise<number | null> {
   const rpcUrl = resolveSorobanRpcUrl(network)
   const server = new rpc.Server(rpcUrl, { allowHttp: network === "testnet" })
@@ -130,7 +136,7 @@ async function readBalanceViaSimulate(
 
   const stroops = parseSimulationBalance(result)
   if (stroops === null) return null
-  return stroopsToDecimal(stroops)
+  return stroopsToDecimal(stroops, decimals)
 }
 
 /** Direct ledger read when simulation fails (e.g. archived state edge cases). */
@@ -138,6 +144,7 @@ async function readBalanceViaLedger(
   tokenAddress: string,
   holderAddress: string,
   network: "testnet" | "mainnet",
+  decimals = DEFAULT_TOKEN_DECIMALS,
 ): Promise<number | null> {
   const rpcUrl = resolveSorobanRpcUrl(network)
   const server = new rpc.Server(rpcUrl, { allowHttp: network === "testnet" })
@@ -155,7 +162,7 @@ async function readBalanceViaLedger(
       const entry = await server.getContractData(tokenAddress, key)
       const val = entry?.val
       if (val instanceof xdr.ScVal) {
-        return stroopsToDecimal(scValToBalanceStroops(val))
+        return stroopsToDecimal(scValToBalanceStroops(val), decimals)
       }
     } catch {
       // try next key shape
@@ -167,12 +174,13 @@ async function readBalanceViaLedger(
 
 /**
  * Read the Soroban token balance for `userAddress` from contract `tokenAddress`.
- * Returns a decimal value (divided by 10^7).
+ * Returns a decimal value (divided by 10^decimals; PizzaToken uses 0).
  */
 export async function getSorobanTokenBalance(
   tokenAddress: string,
   userAddress: string,
   network: "testnet" | "mainnet" = "testnet",
+  decimals = DEFAULT_TOKEN_DECIMALS,
 ): Promise<number> {
   const holder = normalizeHolderAddress(userAddress)
   const token = tokenAddress.trim().toUpperCase()
@@ -180,12 +188,12 @@ export async function getSorobanTokenBalance(
   const hasFunder = Boolean(process.env.STELLAR_FUNDER_SECRET?.trim())
   const attempts = hasFunder
     ? [
-        () => readBalanceViaSimulate(token, holder, network),
-        () => readBalanceViaLedger(token, holder, network),
+        () => readBalanceViaSimulate(token, holder, network, decimals),
+        () => readBalanceViaLedger(token, holder, network, decimals),
       ]
     : [
-        () => readBalanceViaLedger(token, holder, network),
-        () => readBalanceViaSimulate(token, holder, network),
+        () => readBalanceViaLedger(token, holder, network, decimals),
+        () => readBalanceViaSimulate(token, holder, network, decimals),
       ]
 
   for (const attempt of attempts) {
