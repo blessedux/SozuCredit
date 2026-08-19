@@ -44,8 +44,10 @@ export type WalletTexts = {
   sendTapToSwitchCurrency: string;
   sendApproxUsdc: string;
   sendApproxFiat: string;
-  sendInsufficientBalance: string;
+    sendInsufficientBalance: string;
   pizzaBalanceRow: string;
+  sendAssetUsdc: string;
+  sendAssetPizza: string;
   // Success Modal
   transactionSuccessful: string;
   transactionSuccessfulDesc: string;
@@ -549,6 +551,8 @@ export const walletTexts = {
     sendApproxFiat: "≈ {amount} {fiat}",
     sendInsufficientBalance: "Monto mayor al disponible",
     pizzaBalanceRow: "{count} PIZZA",
+    sendAssetUsdc: "USDC",
+    sendAssetPizza: "PIZZA",
     // Success Modal
     transactionSuccessful: "Transacción Exitosa",
     transactionSuccessfulDesc: "Tu pago fue enviado exitosamente",
@@ -1029,6 +1033,8 @@ export const walletTexts = {
     sendApproxFiat: "≈ {amount} {fiat}",
     sendInsufficientBalance: "Amount exceeds available balance",
     pizzaBalanceRow: "{count} PIZZA",
+    sendAssetUsdc: "USDC",
+    sendAssetPizza: "PIZZA",
     // Success Modal
     transactionSuccessful: "Transaction Successful",
     transactionSuccessfulDesc: "Your payment was sent successfully",

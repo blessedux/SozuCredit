@@ -123,6 +123,7 @@ export function WalletScreen({
   const swipeUpStartY = useRef<number | null>(null)
   const swipeUpStartX = useRef<number | null>(null)
   const [openPayScannerOnMount, setOpenPayScannerOnMount] = useState(false)
+  const [sendAssetContractId, setSendAssetContractId] = useState<string | null>(null)
   const [isBalanceVisible, setIsBalanceVisible] = useState(true)
   const [animatedBalance, setAnimatedBalance] = useState<number>(0)
   const [isTrustModalOpen, setIsTrustModalOpen] = useState(false)
@@ -132,6 +133,7 @@ export function WalletScreen({
   const [isSendModalOpenInternal, setIsSendModalOpenInternal] = useState(false)
   const isSendModalOpen = isSendModalOpenProp !== undefined ? isSendModalOpenProp : isSendModalOpenInternal
   const setSendModalOpen = useCallback((open: boolean) => {
+    if (!open) setSendAssetContractId(null)
     if (onSendModalOpenChange) onSendModalOpenChange(open)
     else setIsSendModalOpenInternal(open)
   }, [onSendModalOpenChange])
@@ -665,7 +667,16 @@ export function WalletScreen({
         walletNetwork={walletNetwork}
         onRefresh={handleEarnRefresh}
       />
-      <PizzaBalanceRow tokenBalances={defindexBalance?.tokenBalances} />
+      <PizzaBalanceRow
+        tokenBalances={defindexBalance?.tokenBalances}
+        onSend={() => {
+          const row = defindexBalance?.tokenBalances?.find(
+            (r) => r.assetId === "pizza_token" || r.symbol?.toUpperCase() === "PIZZA",
+          )
+          setSendAssetContractId(row?.contractId ?? null)
+          setSendModalOpen(true)
+        }}
+      />
     </Suspense>
   )
 
@@ -683,6 +694,7 @@ export function WalletScreen({
           onRefresh={handleSendModalRefresh}
           openScannerOnMount={openPayScannerOnMount}
           onScannerOpenConsumed={() => setOpenPayScannerOnMount(false)}
+          initialAssetContractId={sendAssetContractId}
         />
       </Suspense>
 
