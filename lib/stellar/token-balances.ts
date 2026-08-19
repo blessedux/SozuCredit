@@ -3,6 +3,7 @@ import "server-only"
 import { getSorobanTokenBalance } from "@/lib/stellar/soroban-token"
 import { getAssetRegistry } from "@/lib/stellar/asset-registry"
 import type { HolderTokenBalance, StellarNetwork } from "@/lib/stellar/asset-types"
+import { isUsdcSpendableCategory } from "@/lib/stellar/asset-types"
 import { normalizeHolderAddress } from "@/lib/stellar/stellar-holder"
 
 export async function getHolderTokenBalances(
@@ -24,6 +25,7 @@ export async function getHolderTokenBalances(
         contractId,
         holder,
         network,
+        asset.decimals,
       )
       rows.push({ asset, balance })
     }),
@@ -33,10 +35,11 @@ export async function getHolderTokenBalances(
   return rows
 }
 
-/** Sum per unique contractId (avoids double-count when registry lists the same token twice). */
+/** Sum per unique USDC contractId. SKU tokens (PIZZA) are excluded. */
 export function sumRegistryBalances(balances: HolderTokenBalance[]): number {
   const byContract = new Map<string, number>()
   for (const row of balances) {
+    if (!isUsdcSpendableCategory(row.asset.category)) continue
     const id = row.asset.contractId.trim().toUpperCase()
     byContract.set(id, Math.max(byContract.get(id) ?? 0, row.balance))
   }

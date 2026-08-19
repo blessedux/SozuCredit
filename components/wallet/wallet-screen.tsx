@@ -36,6 +36,7 @@ import { useSetOnboardingOverlayOpen } from "@/lib/onboarding-overlay-context"
 // Components
 import { WalletActivationOnboarding } from "@/components/wallet/wallet-activation-onboarding"
 import { BalanceDisplay } from "@/components/wallet/balance-display"
+import { PizzaBalanceRow } from "@/components/wallet/pizza-balance-row"
 import { TransactionHistory } from "@/components/wallet/transaction-history"
 import { BottomMenuBar } from "@/components/wallet/bottom-menu-bar"
 import { PullToRefreshIndicator } from "@/components/wallet/pull-to-refresh-indicator"
@@ -664,6 +665,7 @@ export function WalletScreen({
         walletNetwork={walletNetwork}
         onRefresh={handleEarnRefresh}
       />
+      <PizzaBalanceRow tokenBalances={defindexBalance?.tokenBalances} />
     </Suspense>
   )
 

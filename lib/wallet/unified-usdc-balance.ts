@@ -1,11 +1,15 @@
 "use client"
 
+import { isUsdcSpendableCategory } from "@/lib/stellar/asset-types"
+
 export type TokenBalanceRow = {
   assetId: string
   contractId: string
   symbol: string
   displayName: string
   balance: number
+  category?: string
+  decimals?: number
 }
 
 export type UnifiedUsdcBalance = {
@@ -33,9 +37,10 @@ export type UnifiedUsdcBalance = {
   }
 }
 
-function uniqueTokenSum(rows: TokenBalanceRow[]): number {
+function uniqueUsdcTokenSum(rows: TokenBalanceRow[]): number {
   const byContract = new Map<string, number>()
   for (const row of rows) {
+    if (!isUsdcSpendableCategory(row.category)) continue
     const key = (row.contractId || row.assetId).trim().toUpperCase()
     byContract.set(key, Math.max(byContract.get(key) ?? 0, Number(row.balance) || 0))
   }
@@ -89,7 +94,7 @@ export async function fetchUnifiedUsdcBalance(
   }
 
   const tokenRows = Array.isArray(data.tokenBalances) ? data.tokenBalances : []
-  const tokenSum = uniqueTokenSum(tokenRows)
+  const tokenSum = uniqueUsdcTokenSum(tokenRows)
 
   const blendBalance =
     typeof data.sorobanUsdcBalance === "number"

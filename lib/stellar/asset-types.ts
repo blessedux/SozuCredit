@@ -1,6 +1,13 @@
 export type StellarNetwork = "testnet" | "mainnet"
 
-export type AssetCategory = "stablecoin" | "internal" | "rwa" | "yield"
+export type AssetCategory = "stablecoin" | "internal" | "rwa" | "yield" | "sku"
+
+/** USDC rails that may auto-pick on Send. SKU tokens (PIZZA) must be explicit. */
+export function isUsdcSpendableCategory(
+  category: AssetCategory | string | undefined | null,
+): boolean {
+  return category === "stablecoin" || category === "internal" || category == null || category === ""
+}
 
 /**
  * Contract-native asset descriptor. `contractId` is the source of truth;
