@@ -49,6 +49,7 @@ export type WalletTexts = {
   sendAssetUsdc: string;
   sendAssetPizza: string;
   pizzaAuthWorking: string;
+  pizzaAuthPreparing: string;
   pizzaAuthSigning: string;
   pizzaAuthDone: string;
   pizzaAuthRetry: string;
@@ -559,6 +560,7 @@ export const walletTexts = {
     sendAssetUsdc: "USDC",
     sendAssetPizza: "PIZZA",
     pizzaAuthWorking: "Volviendo a la pizzería…",
+    pizzaAuthPreparing: "Preparando tu billetera…",
     pizzaAuthSigning: "Confirmá 1 PIZZA con passkey",
     pizzaAuthDone: "Pizza reclamada",
     pizzaAuthRetry: "Reintentar",
@@ -1046,6 +1048,7 @@ export const walletTexts = {
     sendAssetUsdc: "USDC",
     sendAssetPizza: "PIZZA",
     pizzaAuthWorking: "Returning to the pizzeria…",
+    pizzaAuthPreparing: "Preparing your wallet…",
     pizzaAuthSigning: "Confirm 1 PIZZA with passkey",
     pizzaAuthDone: "Pizza claimed",
     pizzaAuthRetry: "Try again",
