@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { shouldRegisterServiceWorker } from '@/lib/pwa-host'
+import { consumePwaLaunchQueue, type PwaLaunchQueue } from '@/lib/pwa/launch-queue'
 import { markPwaInstalled } from '@/lib/pwa/standalone'
 
 export function PWARegister() {
@@ -9,6 +10,15 @@ export function PWARegister() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
+
+    consumePwaLaunchQueue({
+      launchQueue: (window as Window & { launchQueue?: PwaLaunchQueue }).launchQueue,
+      currentOrigin: window.location.origin,
+      currentHref: () => window.location.href,
+      navigate: (path) => {
+        window.location.replace(path)
+      },
+    })
 
     // ngrok / localhost: skip SW so failed tunnel fetches don't show plain "Offline"
     if (!shouldRegisterServiceWorker()) {
