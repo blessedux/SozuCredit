@@ -38,6 +38,7 @@ import {
 } from "@/lib/sozu-faucet/return-allowlist"
 import { toast } from "sonner"
 import { resolvePizzaAuthSearch } from "@/lib/pizza/pay-return"
+import { stashPizzaHopReturn } from "@/lib/pizza/hop-return-storage"
 import { PizzaAuthContinuation } from "@/components/pizza/PizzaAuthContinuation"
 
 function navigatePostAuth(
@@ -133,6 +134,11 @@ function AuthPageContent() {
   const finalPostAuthPath = checkoutRedirect ?? postAuthPath
   const pizzaAuth = resolvePizzaAuthSearch(searchParams)
   const stayOnAuthForPizza = pizzaAuth.kind !== "none"
+  const pizzaHopReturnTo = pizzaAuth.kind === "hop" ? pizzaAuth.returnTo : null
+
+  useEffect(() => {
+    if (pizzaHopReturnTo) stashPizzaHopReturn(pizzaHopReturnTo)
+  }, [pizzaHopReturnTo])
 
   useEffect(() => {
     if (redirectingRef.current || isAuthenticating || isAuthenticated) return
@@ -763,6 +769,7 @@ function AuthPageContent() {
         setIsExiting(true)
 
         setTimeout(() => {
+          void (async () => {
           // Ensure sessionStorage is committed, then redirect using Next.js router
           // This prevents full page refresh and preserves console logs
           console.log("[Auth] About to redirect after registration - final check:", {
@@ -785,12 +792,35 @@ function AuthPageContent() {
           // Don't use window.location.href as it causes hard refresh
           console.log("[Auth] Navigating after registration...")
           if (stayOnAuthForPizza) {
+            try {
+              const credId = credential?.id
+              if (finalUserId && credId) {
+                const { alignWalletMaterialAfterLogin } = await import(
+                  "@/lib/storage/post-login-wallet"
+                )
+                const { publicKey, needsWalletSync } = await alignWalletMaterialAfterLogin(
+                  finalUserId,
+                  credId,
+                )
+                if (!needsWalletSync && publicKey) {
+                  persistClientWalletSession({
+                    userId: finalUserId,
+                    publicKey,
+                    credentialId: credId,
+                    username: registeredUsername,
+                  })
+                }
+              }
+            } catch (walletError) {
+              console.error("[Auth] Pizza hop still waiting on wallet after signup:", walletError)
+            }
             setIsAuthenticated(true)
             redirectingRef.current = false
             setIsExiting(false)
             return
           }
           navigatePostAuth(finalPostAuthPath, (p) => router.push(p))
+          })()
         }, 300) // Wait 300ms for fade-out animation
 
         return
@@ -1059,6 +1089,25 @@ function AuthPageContent() {
             setIsAuthenticated(true)
             setIsAuthenticating(false)
             if (stayOnAuthForPizza) {
+              try {
+                const { alignWalletMaterialAfterLogin } = await import(
+                  "@/lib/storage/post-login-wallet"
+                )
+                const { publicKey, needsWalletSync } = await alignWalletMaterialAfterLogin(
+                  userId,
+                  credentialId,
+                )
+                if (!needsWalletSync && publicKey) {
+                  persistClientWalletSession({
+                    userId,
+                    publicKey,
+                    credentialId,
+                    username,
+                  })
+                }
+              } catch (walletError) {
+                console.error("[Auth] Pizza hop still waiting on wallet after QR signup:", walletError)
+              }
               redirectingRef.current = false
               setIsExiting(false)
               return
