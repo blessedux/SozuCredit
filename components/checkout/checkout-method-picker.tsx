@@ -10,12 +10,16 @@ export function CheckoutMethodPicker({
   allowBankTransfer,
   onPayWithSozu,
   disabled,
+  sozuSubtitle = "One-tap passkey payment",
+  sozuBadge = "3% cashback instantly",
 }: {
   allowDebit: boolean;
   allowCredit: boolean;
   allowBankTransfer: boolean;
   onPayWithSozu: () => void;
   disabled: boolean;
+  sozuSubtitle?: string;
+  sozuBadge?: string | null;
 }) {
   const handleSozuClick = () => {
     iosHapticSingle();
@@ -41,12 +45,14 @@ export function CheckoutMethodPicker({
             </div>
             <div>
               <div className="text-lg font-bold text-white">Pay with SOZU</div>
-              <div className="text-sm text-white/60">One-tap passkey payment</div>
+              <div className="text-sm text-white/60">{sozuSubtitle}</div>
             </div>
           </div>
-          <div className="rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs font-medium text-white">
-            3% cashback instantly
-          </div>
+          {sozuBadge ? (
+            <div className="rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs font-medium text-white">
+              {sozuBadge}
+            </div>
+          ) : null}
         </div>
       </button>
 

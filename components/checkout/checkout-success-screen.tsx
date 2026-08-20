@@ -9,13 +9,19 @@ import { BackgroundGradientAnimation } from "@/components/ui/background-gradient
 export function CheckoutSuccessScreen({
   merchantName,
   amountUsd,
+  amountDisplay,
+  assetLabel = "USD",
+  showCashback = true,
   transactionHash,
-  receipt,
+  receipt: _receipt,
 }: {
   merchantName: string;
-  amountUsd: string;
+  amountUsd?: string;
+  amountDisplay?: string;
+  assetLabel?: string;
+  showCashback?: boolean;
   transactionHash: string | null;
-  receipt: PaymentReceipt;
+  receipt?: PaymentReceipt;
 }) {
   const router = useRouter();
 
@@ -52,19 +58,25 @@ export function CheckoutSuccessScreen({
           <div className="rounded-xl border border-white/10 bg-white/5 p-6">
             <div className="mb-4">
               <div className="text-sm text-white/60">You paid</div>
-              <div className="mt-1 text-3xl font-bold tabular-nums">${amountUsd}</div>
-              <div className="mt-1 text-sm text-white/60">to {merchantName}</div>
+              <div className="mt-1 text-3xl font-bold tabular-nums">
+                {amountDisplay ?? (amountUsd != null ? `$${amountUsd}` : "")}
+              </div>
+              <div className="mt-1 text-sm text-white/60">
+                {assetLabel === "USD" ? `to ${merchantName}` : `${assetLabel} to ${merchantName}`}
+              </div>
             </div>
 
             {/* Cashback badge */}
-            <div className="rounded-lg border border-white/30 bg-white/10 px-4 py-3 text-center">
-              <div className="text-sm font-medium text-white">
-                You earned 3% cashback instantly
+            {showCashback && amountUsd ? (
+              <div className="rounded-lg border border-white/30 bg-white/10 px-4 py-3 text-center">
+                <div className="text-sm font-medium text-white">
+                  You earned 3% cashback instantly
+                </div>
+                <div className="mt-1 text-xs text-white/60">
+                  ${(parseFloat(amountUsd) * 0.03).toFixed(2)} USDC credited to your wallet
+                </div>
               </div>
-              <div className="mt-1 text-xs text-white/60">
-                ${(parseFloat(amountUsd) * 0.03).toFixed(2)} USDC credited to your wallet
-              </div>
-            </div>
+            ) : null}
           </div>
 
           {/* Transaction details */}

@@ -9,6 +9,7 @@ import { fetchCheckoutSession } from "@/lib/checkout/fetch-checkout-session";
 import { submitSozuCheckoutPayment } from "@/lib/checkout/submit-sozu-checkout-payment";
 import { isClientAuthed } from "@/lib/client-auth-gate";
 import { loadClientWalletSession } from "@/lib/client-wallet-session";
+import { warmKitForPay } from "@/lib/stellar/smartAccounts/warm-kit-for-pay";
 import type { CheckoutSession } from "@/lib/checkout/types";
 import type { PaymentReceipt } from "@/lib/payment/payment-receipt";
 import { BackgroundGradientAnimation } from "@/components/ui/background-gradient-animation";
@@ -78,6 +79,7 @@ export function CheckoutExperience({ sessionId }: { sessionId: string }) {
         if (walletSession.publicKey) {
           setWalletAddress(walletSession.publicKey);
         }
+        void warmKitForPay(walletSession.publicKey, walletSession.credentialId);
       }
 
       setPhase("ready");
@@ -118,11 +120,6 @@ export function CheckoutExperience({ sessionId }: { sessionId: string }) {
       setReceipt(result.receipt);
       setTransactionHash(result.transactionHash);
       setPhase("success");
-
-      // Auto-redirect to /home after showing success for 2 seconds
-      setTimeout(() => {
-        router.push("/home");
-      }, 2000);
     } else {
       setError(result.error);
       setPhase("error");
